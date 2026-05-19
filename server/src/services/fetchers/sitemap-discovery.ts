@@ -46,7 +46,12 @@ const sitemapXmlCache = new Map<string, { xml: string; ts: number }>();
 
 function normalizeDate(value: string | null): string | null {
   if (!value) return null;
-  const date = new Date(value);
+  let normalized = value.trim();
+  // If datetime looks like ISO but has no timezone suffix, assume UTC
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/.test(normalized)) {
+    normalized += 'Z';
+  }
+  const date = new Date(normalized);
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
