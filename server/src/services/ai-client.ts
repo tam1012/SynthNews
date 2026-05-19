@@ -41,6 +41,28 @@ function resolveGeminiMaxTokens(providerMaxTokens: number): number {
   return Math.max(base, GEMINI_MIN_OUTPUT_TOKENS);
 }
 
+// Build the optional `thinkingConfig` block for Gemini generationConfig.
+// Provider can opt out of thinking entirely (thinkingBudget=0) or cap it via
+// `extra_config.thinking_budget` in the DB. Returns undefined when the provider
+// hasn't configured anything, so we keep the model's default behavior.
+function resolveGeminiThinkingConfig(provider: AiProvider): { thinkingBudget: number } | undefined {
+  const raw = provider.extra_config?.thinking_budget;
+  if (raw === undefined || raw === null) return undefined;
+  const n = typeof raw === 'number' ? raw : parseInt(String(raw), 10);
+  if (!Number.isFinite(n) || n < 0) return undefined;
+  return { thinkingBudget: n };
+}
+
+function buildGeminiGenerationConfig(provider: AiProvider) {
+  const cfg: any = {
+    temperature: provider.temperature,
+    maxOutputTokens: resolveGeminiMaxTokens(provider.max_tokens),
+  };
+  const thinking = resolveGeminiThinkingConfig(provider);
+  if (thinking) cfg.thinkingConfig = thinking;
+  return cfg;
+}
+
 function extractGeminiText(data: any): string {
   const candidate = data?.candidates?.[0];
   const parts = candidate?.content?.parts;
@@ -257,10 +279,7 @@ async function callVertexAiKey(provider: AiProvider, prompt: string, timeoutMs: 
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      generationConfig: {
-        temperature: provider.temperature,
-        maxOutputTokens: resolveGeminiMaxTokens(provider.max_tokens),
-      },
+      generationConfig: buildGeminiGenerationConfig(provider),
       safetySettings: [
         { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
         { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
@@ -294,10 +313,7 @@ async function callGeminiStudio(provider: AiProvider, prompt: string, timeoutMs:
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      generationConfig: {
-        temperature: provider.temperature,
-        maxOutputTokens: resolveGeminiMaxTokens(provider.max_tokens),
-      },
+      generationConfig: buildGeminiGenerationConfig(provider),
       safetySettings: [
         { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
         { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
@@ -448,10 +464,7 @@ async function callCustom(provider: AiProvider, prompt: string, timeoutMs: numbe
   if (format === 'gemini') {
     body = {
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      generationConfig: {
-        temperature: provider.temperature,
-        maxOutputTokens: resolveGeminiMaxTokens(provider.max_tokens),
-      },
+      generationConfig: buildGeminiGenerationConfig(provider),
       safetySettings: [
         { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
         { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
