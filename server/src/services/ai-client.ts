@@ -31,6 +31,38 @@ function appendApiKey(url: string, apiKey: string): string {
   return `${url}${separator}key=${encodeURIComponent(apiKey)}`;
 }
 
+// Modern Gemini "thinking" models (2.5+, 3.x) consume budget on thoughtsTokenCount BEFORE
+// emitting any output. With a small maxOutputTokens the response gets truncated to 0 parts and
+// finishReason=MAX_TOKENS. Use a generous floor so small DB defaults like 4096 do not silently fail.
+const GEMINI_MIN_OUTPUT_TOKENS = 16384;
+
+function resolveGeminiMaxTokens(providerMaxTokens: number): number {
+  const base = Number.isFinite(providerMaxTokens) && providerMaxTokens > 0 ? providerMaxTokens : 0;
+  return Math.max(base, GEMINI_MIN_OUTPUT_TOKENS);
+}
+
+function extractGeminiText(data: any): string {
+  const candidate = data?.candidates?.[0];
+  const parts = candidate?.content?.parts;
+  const finishReason = candidate?.finishReason;
+  const text = Array.isArray(parts)
+    ? parts.map((p: any) => (typeof p?.text === 'string' ? p.text : '')).join('')
+    : '';
+
+  if (!text) {
+    if (finishReason === 'MAX_TOKENS') {
+      const usage = data?.usageMetadata || {};
+      throw new Error(
+        `Gemini truncated to empty output (finishReason=MAX_TOKENS, thoughtsTokenCount=${usage.thoughtsTokenCount ?? '?'}, candidatesTokenCount=${usage.candidatesTokenCount ?? '?'}). Increase max_tokens for thinking models.`
+      );
+    }
+    if (finishReason && finishReason !== 'STOP') {
+      throw new Error(`Gemini returned no text (finishReason=${finishReason}).`);
+    }
+  }
+  return text;
+}
+
 function resolveOpenAiCompatibleEndpoint(rawEndpoint: string | null | undefined, fallback = ''): string {
   const endpoint = (rawEndpoint || fallback || '').trim();
   if (!endpoint) return '';
@@ -227,7 +259,7 @@ async function callVertexAiKey(provider: AiProvider, prompt: string, timeoutMs: 
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
       generationConfig: {
         temperature: provider.temperature,
-        maxOutputTokens: provider.max_tokens,
+        maxOutputTokens: resolveGeminiMaxTokens(provider.max_tokens),
       },
       safetySettings: [
         { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
@@ -245,7 +277,7 @@ async function callVertexAiKey(provider: AiProvider, prompt: string, timeoutMs: 
   }
 
   const data = await response.json();
-  return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  return extractGeminiText(data);
 }
 
 // ==========================================
@@ -264,7 +296,7 @@ async function callGeminiStudio(provider: AiProvider, prompt: string, timeoutMs:
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
       generationConfig: {
         temperature: provider.temperature,
-        maxOutputTokens: provider.max_tokens,
+        maxOutputTokens: resolveGeminiMaxTokens(provider.max_tokens),
       },
       safetySettings: [
         { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
@@ -282,7 +314,7 @@ async function callGeminiStudio(provider: AiProvider, prompt: string, timeoutMs:
   }
 
   const data = await response.json();
-  return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  return extractGeminiText(data);
 }
 
 // ==========================================
@@ -418,7 +450,7 @@ async function callCustom(provider: AiProvider, prompt: string, timeoutMs: numbe
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
       generationConfig: {
         temperature: provider.temperature,
-        maxOutputTokens: provider.max_tokens,
+        maxOutputTokens: resolveGeminiMaxTokens(provider.max_tokens),
       },
       safetySettings: [
         { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
@@ -451,7 +483,7 @@ async function callCustom(provider: AiProvider, prompt: string, timeoutMs: numbe
 
   if (format === 'gemini') {
     const data = await response.json();
-    return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    return extractGeminiText(data);
   }
   return parseOpenAiResponse(response);
 }
