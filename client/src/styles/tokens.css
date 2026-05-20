@@ -16,9 +16,9 @@
   --color-text: #1a1d21;
   --color-text-secondary: #3d4148;
   --color-text-muted: #6b7078;
-  --color-accent: #2563eb;
-  --color-accent-hover: #1d4ed8;
-  --color-accent-soft: #3b82f6;
+  --color-accent: #1a2b3c;
+  --color-accent-hover: #101d2a;
+  --color-accent-soft: #3a5b7d;
   --color-success: #16a34a;
   --color-warning: #d97706;
   --color-error: #ba1a1a;
@@ -27,8 +27,8 @@
   --color-shadow: rgba(20, 24, 28, 0.06);
   --color-surface-container: #efecea;
   --color-surface-container-low: #f5f3f0;
-  --color-primary-container: #2563eb;
-  --color-on-primary-container: #93b4f4;
+  --color-primary-container: #1a2b3c;
+  --color-on-primary-container: #d2e4fb;
 
   /* Source brand colors */
   --source-vnexpress: #1565c0;

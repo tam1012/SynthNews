@@ -44,49 +44,7 @@ export function useFetchRaw<T>(fetcher: () => Promise<T>, deps: any[] = []) {
   return { data, loading, error, reload: load };
 }
 
-const FONT_OPTIONS = [
-  {
-    key: 'noto-sans',
-    label: 'Noto Sans',
-    stack: "'Noto Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-  },
-  {
-    key: 'inter',
-    label: 'Inter',
-    stack: "'Inter', 'Noto Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-  },
-  {
-    key: 'open-sans',
-    label: 'Open Sans',
-    stack: "'Open Sans', 'Noto Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-  },
-  {
-    key: 'roboto',
-    label: 'Roboto',
-    stack: "'Roboto', 'Noto Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-  },
-  {
-    key: 'source-sans-3',
-    label: 'Source Sans 3',
-    stack: "'Source Sans 3', 'Noto Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-  },
-  {
-    key: 'google-sans',
-    label: 'Google Sans',
-    stack: "'Google Sans', 'Product Sans', 'Noto Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-  },
-  {
-    key: 'system',
-    label: 'System',
-    stack: "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', sans-serif",
-  },
-] as const;
 
-type FontFamilyKey = typeof FONT_OPTIONS[number]['key'];
-
-function getFontOption(key: string | null) {
-  return FONT_OPTIONS.find((option) => option.key === key) || FONT_OPTIONS[0];
-}
 
 export function useSettings() {
   const FONT_SIZES = [12, 14, 16, 18, 20] as const;
@@ -104,17 +62,7 @@ export function useSettings() {
     if (saved === 'dark' || saved === 'light') return saved;
     return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
   });
-  const [fontFamily, setFontFamilyState] = useState<FontFamilyKey>(() =>
-    getFontOption(localStorage.getItem('font_family')).key
-  );
 
-  const updateFontFamily = (key: FontFamilyKey) => {
-    const option = getFontOption(key);
-    setFontFamilyState(option.key);
-    localStorage.setItem('font_family', option.key);
-    document.documentElement.style.setProperty('--font-body', option.stack);
-    document.documentElement.style.setProperty('--font-heading', option.stack);
-  };
 
   const updateFontSize = (size: number) => {
     setFontSize(size);
@@ -152,7 +100,6 @@ export function useSettings() {
     document.documentElement.style.setProperty('--font-size', `${fontSize}px`);
     document.documentElement.style.fontSize = `${fontSize}px`;
     document.documentElement.setAttribute('data-theme', theme);
-    updateFontFamily(fontFamily);
   }, []);
 
   return {
@@ -161,8 +108,5 @@ export function useSettings() {
     cycleFontSize,
     theme,
     toggleTheme,
-    fontFamily,
-    fontOptions: FONT_OPTIONS,
-    setFontFamily: updateFontFamily,
   };
 }

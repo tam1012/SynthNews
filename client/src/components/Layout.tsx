@@ -9,7 +9,7 @@ import { SearchModal } from './SearchModal';
 const ADMIN_TOKEN_STORAGE_KEY = 'admin_token';
 
 export function Layout() {
-  const { fontSize, cycleFontSize, theme, toggleTheme, fontFamily, fontOptions, setFontFamily } = useSettings();
+  const { fontSize, cycleFontSize, theme, toggleTheme } = useSettings();
   const location = useLocation();
   const [showSettingsSheet, setShowSettingsSheet] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
@@ -64,7 +64,7 @@ export function Layout() {
       <div className="app-shell">
         <Sidebar onOpenSearch={() => setShowSearch(true)} />
         <div className="app-main">
-          <MobileTopNav />
+          <MobileTopNav onOpenSettings={() => setShowSettingsSheet(true)} />
           <main className="app-content">
             <Outlet />
           </main>
@@ -104,22 +104,6 @@ export function Layout() {
               </button>
             </div>
 
-            <div className="settings-sheet-section">
-              <div className="settings-sheet-label">Font chữ</div>
-              <div className="settings-sheet-fonts">
-                {fontOptions.map((option) => (
-                  <button
-                    key={option.key}
-                    className={`settings-sheet-font ${fontFamily === option.key ? 'active' : ''}`}
-                    onClick={() => {
-                      setFontFamily(option.key);
-                    }}
-                  >
-                    {option.label}
-                  </button>
-                ))}
-              </div>
-            </div>
 
             <button
               className="settings-sheet-close"
