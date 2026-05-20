@@ -2,9 +2,19 @@ import { NavLink, useLocation } from 'react-router-dom';
 
 interface SidebarProps {
   onOpenSearch?: () => void;
+  theme?: string;
+  toggleTheme?: () => void;
+  fontSize?: number;
+  cycleFontSize?: () => void;
 }
 
-export function Sidebar({ onOpenSearch }: SidebarProps) {
+export function Sidebar({
+  onOpenSearch,
+  theme,
+  toggleTheme,
+  fontSize,
+  cycleFontSize,
+}: SidebarProps) {
   const location = useLocation();
   const path = location.pathname;
 
@@ -73,6 +83,24 @@ export function Sidebar({ onOpenSearch }: SidebarProps) {
           <kbd className="sidebar-search-kbd">Ctrl+K</kbd>
         </button>
 
+        {toggleTheme && cycleFontSize && (
+          <div className="sidebar-quick-settings">
+            <button
+              className="sidebar-theme-toggle"
+              onClick={toggleTheme}
+              title={theme === 'light' ? 'Chế độ tối' : 'Chế độ sáng'}
+            >
+              {theme === 'light' ? '☀' : '☾'}
+            </button>
+            <button
+              className="sidebar-font-cycle"
+              onClick={cycleFontSize}
+              title="Thay đổi cỡ chữ"
+            >
+              Cỡ chữ: {fontSize}px
+            </button>
+          </div>
+        )}
       </div>
     </aside>
   );

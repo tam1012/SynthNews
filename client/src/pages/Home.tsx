@@ -454,142 +454,110 @@ export function Home() {
     <>
       <div className="home-split-layout">
         <div className={`split-left ${tab === 'digest' ? 'digest-mode' : ''}`} ref={splitLeftRef}>
-          {/* Tab bar — Row 1 */}
+          {/* Tab bar — Unified compact row */}
           <div className={`split-feed-toolbar ${toolbarHidden ? 'toolbar-hidden' : ''}`}>
-            <div className="toolbar-tabs-row">
-              <div className="feed-tabs">
-                {(['all', 'news', 'tech', 'voz', 'reddit'] as const).map(t => (
-                  <button
-                    key={t}
-                    className={`feed-tab ${tab === t ? 'active' : ''}`}
-                    onClick={() => {
-                      if (tab === t) scrollFeedToTop();
-                      navigateTab(t);
-                      setSelected(null);
-                      setFilterTag('');
-                    }}
-                  >
-                    {t === 'all' ? 'Tất cả' : t === 'news' ? 'News' : t === 'tech' ? 'Tech' : t === 'voz' ? 'VOZ' : 'Reddit'}
-                  </button>
-                ))}
-                <button
-                  className={`feed-tab ${tab === 'digest' ? 'active' : ''}`}
-                  onClick={() => navigateTab('digest')}
-                >
-                  Bản tin
-                </button>
-              </div>
-              <div className="toolbar-settings-group">
-                <button
-                  className="compact-sort-btn toolbar-theme-btn"
-                  onClick={toggleTheme}
-                  title={theme === 'light' ? 'Chế độ tối' : 'Chế độ sáng'}
-                >
-                  {theme === 'light' ? '☀' : '☾'}
-                </button>
-                <button
-                  className="compact-sort-btn toolbar-font-btn"
-                  onClick={cycleFontSize}
-                  title="Thay đổi cỡ chữ"
-                >
-                  {fontSize}px
-                </button>
-              </div>
+            <div className="toolbar-compact-row">
+              {tab !== 'digest' ? (
+                <>
+                  {availableDates.length > 0 && selectedDate && (
+                    <div className="compact-date-nav">
+                      <button
+                        className="compact-date-btn"
+                        onClick={handlePrevDate}
+                        disabled={availableDates.findIndex(d => d.date === selectedDate) === availableDates.length - 1}
+                      >
+                        ‹
+                      </button>
+                      <span className="compact-date-label">
+                        {(() => { const d = new Date(selectedDate); return `${d.getDate()}/${d.getMonth() + 1}`; })()}
+                      </span>
+                      <button
+                        className="compact-date-btn"
+                        onClick={handleNextDate}
+                        disabled={availableDates.findIndex(d => d.date === selectedDate) === 0}
+                      >
+                        ›
+                      </button>
+                    </div>
+                  )}
+                  <div className="feed-filter-control" ref={filterControlRef}>
+                    <button
+                      className={`compact-sort-btn ${filterSource !== 'all' ? 'active' : ''}`}
+                      onClick={() => setShowFilter(!showFilter)}
+                      type="button"
+                      aria-expanded={showFilter}
+                      aria-haspopup="listbox"
+                      aria-label="Lọc theo nguồn tin"
+                    >
+                      {filterSource === 'all' ? 'Nguồn ▾' : (sources.find((s: any) => s.id === filterSource)?.name.replace(/ - .*$/, '').replace(/ RSS.*$/, '') + ' ✕')}
+                    </button>
+                    {showFilter && (
+                      <div className="filter-dropdown">
+                        <button
+                          className={`filter-option ${filterSource === 'all' ? 'active' : ''}`}
+                          onClick={() => { setFilterSource('all'); setShowFilter(false); }}
+                        >
+                          Tất cả nguồn
+                        </button>
+                        {sources.map((s: any) => (
+                          <button
+                            key={s.id}
+                            className={`filter-option ${filterSource === s.id ? 'active' : ''}`}
+                            onClick={() => { setFilterSource(s.id); setShowFilter(false); }}
+                          >
+                            {s.name.replace(/ - .*$/, '').replace(/ RSS.*$/, '')}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  {popularTags.length > 0 && (
+                    <div className="compact-sort-control" ref={tagMenuRef}>
+                      <button
+                        className={`compact-sort-btn ${filterTag ? 'active' : ''} ${showTagMenu ? 'open' : ''}`}
+                        onClick={() => setShowTagMenu(prev => !prev)}
+                        type="button"
+                      >
+                        {filterTag || 'Chủ đề'} ▾
+                      </button>
+                      {showTagMenu && (
+                        <div className="compact-sort-dropdown">
+                          <button
+                            className={`filter-option ${!filterTag ? 'active' : ''}`}
+                            onClick={() => { setFilterTag(''); setShowTagMenu(false); }}
+                          >
+                            Tất cả chủ đề
+                          </button>
+                          {popularTags.slice(0, 12).map(t => (
+                            <button
+                              key={t.tag}
+                              className={`filter-option ${filterTag === t.tag ? 'active' : ''}`}
+                              onClick={() => { setFilterTag(filterTag === t.tag ? '' : t.tag); setShowTagMenu(false); }}
+                            >
+                              {t.tag} ({t.count})
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <span className="digest-title-indicator" style={{ fontFamily: 'var(--font-heading)', fontSize: '0.92rem', fontWeight: 700, color: 'var(--color-text-secondary)' }}>
+                  Bản tin hàng ngày
+                </span>
+              )}
+
               <button
-                className="icon-btn"
+                className="icon-btn toolbar-refresh-btn"
                 onClick={() => void handleManualRefresh()}
                 disabled={isRefreshing || loading}
                 title="Làm mới"
-                style={{ width: 32, height: 32, fontSize: '0.85rem' }}
+                style={{ marginLeft: 'auto', width: 32, height: 32, fontSize: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
               >
                 ↻
               </button>
             </div>
-            {/* Row 2 — always visible on feed tabs: date + source + topic chips */}
-            {tab !== 'digest' && <div className="toolbar-compact-row">
-              {availableDates.length > 0 && selectedDate && (
-                <div className="compact-date-nav">
-                  <button
-                    className="compact-date-btn"
-                    onClick={handlePrevDate}
-                    disabled={availableDates.findIndex(d => d.date === selectedDate) === availableDates.length - 1}
-                  >
-                    ‹
-                  </button>
-                  <span className="compact-date-label">
-                    {(() => { const d = new Date(selectedDate); return `${d.getDate()}/${d.getMonth() + 1}`; })()}
-                  </span>
-                  <button
-                    className="compact-date-btn"
-                    onClick={handleNextDate}
-                    disabled={availableDates.findIndex(d => d.date === selectedDate) === 0}
-                  >
-                    ›
-                  </button>
-                </div>
-              )}
-              <div className="feed-filter-control" ref={filterControlRef}>
-                <button
-                  className={`compact-sort-btn ${filterSource !== 'all' ? 'active' : ''}`}
-                  onClick={() => setShowFilter(!showFilter)}
-                  type="button"
-                  aria-expanded={showFilter}
-                  aria-haspopup="listbox"
-                  aria-label="Lọc theo nguồn tin"
-                >
-                  {filterSource === 'all' ? 'Nguồn ▾' : (sources.find((s: any) => s.id === filterSource)?.name.replace(/ - .*$/, '').replace(/ RSS.*$/, '') + ' ✕')}
-                </button>
-                {showFilter && (
-                  <div className="filter-dropdown">
-                    <button
-                      className={`filter-option ${filterSource === 'all' ? 'active' : ''}`}
-                      onClick={() => { setFilterSource('all'); setShowFilter(false); }}
-                    >
-                      Tất cả nguồn
-                    </button>
-                    {sources.map((s: any) => (
-                      <button
-                        key={s.id}
-                        className={`filter-option ${filterSource === s.id ? 'active' : ''}`}
-                        onClick={() => { setFilterSource(s.id); setShowFilter(false); }}
-                      >
-                        {s.name.replace(/ - .*$/, '').replace(/ RSS.*$/, '')}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-              {popularTags.length > 0 && (
-                <div className="compact-sort-control" ref={tagMenuRef}>
-                  <button
-                    className={`compact-sort-btn ${filterTag ? 'active' : ''} ${showTagMenu ? 'open' : ''}`}
-                    onClick={() => setShowTagMenu(prev => !prev)}
-                    type="button"
-                  >
-                    {filterTag || 'Chủ đề'} ▾
-                  </button>
-                  {showTagMenu && (
-                    <div className="compact-sort-dropdown">
-                      <button
-                        className={`filter-option ${!filterTag ? 'active' : ''}`}
-                        onClick={() => { setFilterTag(''); setShowTagMenu(false); }}
-                      >
-                        Tất cả chủ đề
-                      </button>
-                      {popularTags.slice(0, 12).map(t => (
-                        <button
-                          key={t.tag}
-                          className={`filter-option ${filterTag === t.tag ? 'active' : ''}`}
-                          onClick={() => { setFilterTag(filterTag === t.tag ? '' : t.tag); setShowTagMenu(false); }}
-                        >
-                          {t.tag} ({t.count})
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>}
           </div>
 
           {/* Active filter indicator */}

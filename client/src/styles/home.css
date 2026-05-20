@@ -1299,46 +1299,25 @@
   }
 }
 
-/* On desktop, hide feed tabs and merge Row 1 + Row 2 into a single clean line */
+/* On desktop, hide feed tabs and style the unified single-row toolbar */
 @media (min-width: 1100px) {
-  .split-feed-toolbar .toolbar-tabs-row .feed-tabs {
-    display: none;
-  }
   .split-feed-toolbar {
-    flex-direction: row !important;
-    align-items: center !important;
-    justify-content: space-between !important;
-    padding: 8px 16px !important;
-    height: 48px;
-  }
-  .split-feed-toolbar .toolbar-tabs-row {
-    order: 2;
-    flex-shrink: 0;
-    margin-left: auto;
-    width: auto;
+    padding: 4px 16px !important;
   }
   .split-feed-toolbar .toolbar-compact-row {
-    order: 1;
-    padding: 0 !important;
-    margin: 0 !important;
-    max-height: none !important;
-  }
-  .split-feed-toolbar .toolbar-settings-group {
-    margin-left: 0 !important;
+    padding: 4px 0 !important;
   }
 }
 
-/* On mobile, hide feed tabs and handle auto-hide collapse for the entire toolbar */
+/* On mobile, handle auto-hide collapse for the entire toolbar */
 @media (max-width: 1099px) {
-  .split-feed-toolbar .toolbar-tabs-row .feed-tabs {
-    display: none;
-  }
-  .split-feed-toolbar .toolbar-tabs-row {
-    justify-content: flex-end;
-  }
   .split-feed-toolbar {
+    padding: 4px 14px !important;
     transition: transform 0.2s ease, opacity 0.2s ease, max-height 0.2s ease, padding 0.2s ease, border-color 0.2s ease;
-    max-height: 120px;
+    max-height: 80px;
+  }
+  .split-feed-toolbar .toolbar-compact-row {
+    padding: 4px 0 !important;
   }
   .split-feed-toolbar.toolbar-hidden {
     max-height: 0 !important;

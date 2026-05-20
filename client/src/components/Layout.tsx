@@ -62,7 +62,13 @@ export function Layout() {
   return (
     <>
       <div className="app-shell">
-        <Sidebar onOpenSearch={() => setShowSearch(true)} />
+        <Sidebar
+          onOpenSearch={() => setShowSearch(true)}
+          theme={theme}
+          toggleTheme={toggleTheme}
+          fontSize={fontSize}
+          cycleFontSize={cycleFontSize}
+        />
         <div className="app-main">
           <MobileTopNav onOpenSettings={() => setShowSettingsSheet(true)} />
           <main className="app-content">
