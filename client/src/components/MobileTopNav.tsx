@@ -8,7 +8,16 @@ interface MobileTopNavProps {
 export function MobileTopNav({ onOpenSettings }: MobileTopNavProps) {
   return (
     <header className="mobile-top-nav">
-      <NavLink to="/" className="mobile-top-logo">
+      <NavLink
+        to="/"
+        className="mobile-top-logo"
+        onClick={(e) => {
+          if (window.location.pathname === '/') {
+            e.preventDefault();
+            window.location.reload();
+          }
+        }}
+      >
         SynthNews
       </NavLink>
       <div className="mobile-top-actions">

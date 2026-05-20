@@ -30,7 +30,18 @@ export function Sidebar({ onOpenSearch }: SidebarProps) {
   return (
     <aside className="sidebar">
       <div className="sidebar-brand">
-        <NavLink to="/" className="sidebar-logo">SynthNews</NavLink>
+        <NavLink
+          to="/"
+          className="sidebar-logo"
+          onClick={(e) => {
+            if (window.location.pathname === '/') {
+              e.preventDefault();
+              window.location.reload();
+            }
+          }}
+        >
+          SynthNews
+        </NavLink>
         <span className="sidebar-subtitle">Curated for you</span>
       </div>
 

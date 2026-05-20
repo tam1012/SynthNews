@@ -305,13 +305,14 @@ export function Home() {
     document.body.classList.add('split-view-active');
     return () => { document.body.classList.remove('split-view-active'); };
   }, []);
-
   useEffect(() => {
-    const isMobile = () => window.matchMedia('(max-width: 899px)').matches;
+    const isMobile = () => window.matchMedia('(max-width: 1099px)').matches;
+    const appContent = document.querySelector('.app-content');
 
     const updateScrollTopState = () => {
       const paneScrollY = splitLeftRef.current?.scrollTop || 0;
-      const currentY = Math.max(window.scrollY, paneScrollY);
+      const appContentScrollY = appContent?.scrollTop || 0;
+      const currentY = Math.max(window.scrollY, paneScrollY, appContentScrollY);
       setShowScrollTop(shouldShowScrollTopButton(currentY, detailPaneVisible));
 
       // Auto-hide toolbar compact row on mobile (skip digest — no compact row)
@@ -332,9 +333,11 @@ export function Home() {
     window.addEventListener('scroll', updateScrollTopState, { passive: true });
     const splitLeft = splitLeftRef.current;
     splitLeft?.addEventListener('scroll', updateScrollTopState, { passive: true });
+    appContent?.addEventListener('scroll', updateScrollTopState, { passive: true });
     return () => {
       window.removeEventListener('scroll', updateScrollTopState);
       splitLeft?.removeEventListener('scroll', updateScrollTopState);
+      appContent?.removeEventListener('scroll', updateScrollTopState);
     };
   }, [detailPaneVisible, tab]);
 
