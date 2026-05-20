@@ -12,6 +12,7 @@ import {
   selectForumComments,
   shouldInsertForumArticle,
 } from './forum-utils.js';
+import { normalizeDate, getDefaultTimezoneForLanguage } from '../../lib/dateUtils.js';
 
 export { BROWSER_UA, browserFetch, curlFetch } from './http-utils.js';
 export {
@@ -552,7 +553,7 @@ export async function scrapeRedditSource(source: SourceRow): Promise<ScrapeResul
       }
 
       const id = generateId('art');
-      const publishedAt = item.pubDate ? new Date(item.pubDate).toISOString() : null;
+      const publishedAt = normalizeDate(item.pubDate || null, { defaultTimezone: getDefaultTimezoneForLanguage(source.language) });
 
       const insertResult = await query(
         `INSERT INTO articles (id, source_id, external_id, url, title, author, published_at,
@@ -688,7 +689,7 @@ export async function scrapeVozSource(source: SourceRow): Promise<ScrapeResult> 
       }
 
       const id = generateId('art');
-      const publishedAt = item.pubDate ? new Date(item.pubDate).toISOString() : null;
+      const publishedAt = normalizeDate(item.pubDate || null, { defaultTimezone: getDefaultTimezoneForLanguage(source.language) });
 
       if (!imageUrl) {
         const rawHtmlContent = item.content || '';

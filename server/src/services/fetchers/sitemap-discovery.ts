@@ -14,6 +14,7 @@ export interface SitemapArticleEntry {
 export interface SitemapParseOptions {
   maxAgeHours?: number;
   now?: Date;
+  defaultTimezone?: string;
 }
 
 export interface SitemapFetchResponse {
@@ -44,12 +45,17 @@ const SITEMAP_CACHE_TTL_MS = (() => {
 
 const sitemapXmlCache = new Map<string, { xml: string; ts: number }>();
 
-function normalizeDate(value: string | null): string | null {
+function normalizeDate(value: string | null, defaultTimezone: string = 'Z'): string | null {
   if (!value) return null;
   let normalized = value.trim();
-  // If datetime looks like ISO but has no timezone suffix, assume UTC
-  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/.test(normalized)) {
-    normalized += 'Z';
+  if (!normalized) return null;
+  // If datetime looks like ISO but has no timezone suffix, assume defaultTimezone
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(normalized)) {
+    normalized += defaultTimezone;
+  } else if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}(:\d{2})?$/.test(normalized)) {
+    normalized = normalized.replace(' ', 'T') + defaultTimezone;
+  } else if (/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+    normalized += `T00:00:00${defaultTimezone}`;
   }
   const date = new Date(normalized);
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
@@ -123,8 +129,8 @@ export function parseSitemapUrls(xml: string, baseUrl: string, options: SitemapP
       if (!normalized || seen.has(normalized)) return;
 
       const newsTitle = getText($url, 'news\\:title') || getText($url, 'title');
-      const newsPublishedAt = normalizeDate(getText($url, 'news\\:publication_date'));
-      const lastModifiedAt = normalizeDate(getText($url, 'lastmod'));
+      const newsPublishedAt = normalizeDate(getText($url, 'news\\:publication_date'), options.defaultTimezone);
+      const lastModifiedAt = normalizeDate(getText($url, 'lastmod'), options.defaultTimezone);
       const publishedAt = newsPublishedAt || lastModifiedAt;
       if (!isRecentEnough(publishedAt, options)) return;
 
@@ -141,7 +147,7 @@ export function parseSitemapUrls(xml: string, baseUrl: string, options: SitemapP
 }
 
 export async function discoverSitemapArticles(
-  source: Pick<SourceRow, 'id' | 'url'>,
+  source: Pick<SourceRow, 'id' | 'url'> & { language?: string },
   fetcher: SitemapFetch = fetch,
   options: SitemapParseOptions & { limit?: number; candidates?: string[] } = {},
 ): Promise<DiscoveredArticle[]> {
@@ -151,6 +157,11 @@ export async function discoverSitemapArticles(
   const seenArticles = new Set<string>();
   const articles: DiscoveredArticle[] = [];
   const limit = Math.max(1, options.limit || 20);
+  // Inherit language-based default timezone if caller didn't supply one
+  const effectiveOptions: SitemapParseOptions & { limit?: number; candidates?: string[] } =
+    options.defaultTimezone
+      ? options
+      : { ...options, defaultTimezone: source.language === 'vi' ? '+07:00' : 'Z' };
 
   for (let index = 0; index < sitemapUrls.length && articles.length < limit; index++) {
     const sitemapUrl = sitemapUrls[index];
@@ -180,7 +191,7 @@ export async function discoverSitemapArticles(
         }
       }
 
-      for (const entry of parseSitemapUrls(xml, sitemapUrl, options)) {
+      for (const entry of parseSitemapUrls(xml, sitemapUrl, effectiveOptions)) {
         if (seenArticles.has(entry.url)) continue;
         seenArticles.add(entry.url);
         articles.push({

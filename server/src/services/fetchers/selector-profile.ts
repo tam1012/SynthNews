@@ -178,12 +178,17 @@ function getMetaContent($: cheerio.CheerioAPI, selector: string): string {
   return $(selector).first().attr('content')?.trim() || '';
 }
 
-function normalizeDate(value: string | null): string | null {
+function normalizeDate(value: string | null, defaultTimezone: string = 'Z'): string | null {
   if (!value) return null;
   let normalized = value.trim();
-  // If datetime looks like ISO but has no timezone suffix, assume UTC
-  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/.test(normalized)) {
-    normalized += 'Z';
+  if (!normalized) return null;
+  // If datetime looks like ISO but has no timezone suffix, assume defaultTimezone
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(normalized)) {
+    normalized += defaultTimezone;
+  } else if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}(:\d{2})?$/.test(normalized)) {
+    normalized = normalized.replace(' ', 'T') + defaultTimezone;
+  } else if (/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+    normalized += `T00:00:00${defaultTimezone}`;
   }
   const date = new Date(normalized);
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
@@ -224,7 +229,7 @@ export function isExtractionUsable(content: string, minLength = 500): boolean {
   return sentenceChunks >= 2 || text.length >= minLength * 2;
 }
 
-export function extractWithSelectorProfile(html: string, pageUrl: string, profile: NormalizedSelectorProfile): SelectorExtractionResult {
+export function extractWithSelectorProfile(html: string, pageUrl: string, profile: NormalizedSelectorProfile, defaultTimezone: string = 'Z'): SelectorExtractionResult {
   const $ = cheerio.load(html);
   $(DEFAULT_REMOVE_SELECTORS).remove();
   for (const selector of profile.removeSelectors) $(selector).remove();
@@ -264,7 +269,8 @@ export function extractWithSelectorProfile(html: string, pageUrl: string, profil
     $('[itemprop="datePublished"]').first().attr('content') ||
     $('[itemprop="datePublished"]').first().attr('datetime') ||
     extractJsonLdDate($) ||
-    null
+    null,
+    defaultTimezone
   );
 
   return { title, content, imageUrl, publishedAt, matchedSelector };

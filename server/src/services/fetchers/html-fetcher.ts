@@ -18,6 +18,7 @@ import {
   rowToSelectorProfile,
   saveSourceProfile,
 } from './selector-profile.js';
+import { getDefaultTimezoneForLanguage } from '../../lib/dateUtils.js';
 
 function parsePositiveInt(value: string | undefined, fallback: number): number {
   const parsed = parseInt(value || '', 10);
@@ -90,7 +91,7 @@ function getMetaContent($: cheerio.CheerioAPI, selector: string): string {
   return $(selector).first().attr('content')?.trim() || '';
 }
 
-async function extractWithAiSelector(html: string, pageUrl: string) {
+async function extractWithAiSelector(html: string, pageUrl: string, defaultTimezone: string = 'Z') {
   const domain = getDomainFromUrl(pageUrl);
   if (!domain) return null;
 
@@ -98,7 +99,7 @@ async function extractWithAiSelector(html: string, pageUrl: string) {
   if (cached) {
     try {
       const profile = rowToSelectorProfile(cached);
-      const extraction = extractWithSelectorProfile(html, pageUrl, profile);
+      const extraction = extractWithSelectorProfile(html, pageUrl, profile, defaultTimezone);
       if (isExtractionUsable(extraction.content, profile.minTextLength)) {
         await recordProfileSuccess(cached.id);
         return { extraction, matchedSelector: extraction.matchedSelector, sourceProfileId: cached.id };
@@ -114,7 +115,8 @@ async function extractWithAiSelector(html: string, pageUrl: string) {
     if (!learned) return null;
     const saved = await saveSourceProfile(domain, learned.profile);
     await recordProfileSuccess(saved.id);
-    return { extraction: learned.extraction, matchedSelector: learned.extraction.matchedSelector, sourceProfileId: saved.id };
+    const extraction = extractWithSelectorProfile(html, pageUrl, learned.profile, defaultTimezone);
+    return { extraction, matchedSelector: extraction.matchedSelector, sourceProfileId: saved.id };
   } catch (err: any) {
     console.warn(`Failed to learn selector profile for ${domain}: ${err.message}`);
     return null;
@@ -278,7 +280,7 @@ export const htmlFetcher: SourceFetcher = {
       }
     }
 
-    const aiExtraction = await extractWithAiSelector(articleHtml, job.url);
+    const aiExtraction = await extractWithAiSelector(articleHtml, job.url, getDefaultTimezoneForLanguage(source.language));
     if (aiExtraction) {
       const { extraction, matchedSelector, sourceProfileId } = aiExtraction;
       const title = extraction.title || job.title;

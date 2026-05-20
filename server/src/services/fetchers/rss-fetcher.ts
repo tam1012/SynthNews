@@ -22,6 +22,7 @@ import {
 } from './selector-profile.js';
 import { discoverSitemapArticles } from './sitemap-discovery.js';
 import { getBlocklistMatch, recordBlocklistHit } from './blocklist.js';
+import { normalizeDate as normalizeDateWithTz, getDefaultTimezoneForLanguage } from '../../lib/dateUtils.js';
 
 const rssParser = new RssParser({
   timeout: 15000,
@@ -228,15 +229,8 @@ function extractWithReadability(html: string, url: string): string {
   }
 }
 
-function normalizeDate(value: string | null): string | null {
-  if (!value) return null;
-  let normalized = value.trim();
-  // If datetime looks like ISO but has no timezone suffix, assume UTC
-  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/.test(normalized)) {
-    normalized += 'Z';
-  }
-  const date = new Date(normalized);
-  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+function normalizeDate(value: string | null, defaultTimezone = 'Z'): string | null {
+  return normalizeDateWithTz(value, { defaultTimezone });
 }
 
 function extractJsonLdDate($: cheerio.CheerioAPI): string | null {
@@ -256,8 +250,8 @@ function extractJsonLdDate($: cheerio.CheerioAPI): string | null {
   return null;
 }
 
-async function extractArticleFromHtml(html: string, jobUrl: string, extractor: string): Promise<{ title: string; content: string; imageUrl: string | null; publishedAt: string | null; metadata?: any }> {
-  const aiExtraction = await extractWithAiSelector(html, jobUrl);
+async function extractArticleFromHtml(html: string, jobUrl: string, extractor: string, defaultTimezone: string = 'Z'): Promise<{ title: string; content: string; imageUrl: string | null; publishedAt: string | null; metadata?: any }> {
+  const aiExtraction = await extractWithAiSelector(html, jobUrl, defaultTimezone);
   if (aiExtraction) {
     const { extraction, sourceProfileId } = aiExtraction;
     return {
@@ -299,12 +293,12 @@ async function extractArticleFromHtml(html: string, jobUrl: string, extractor: s
     title,
     content,
     imageUrl: imageUrl ? normalizePublicHttpUrl(new URL(imageUrl, jobUrl).toString()) : null,
-    publishedAt: normalizeDate(publishedAt),
+    publishedAt: normalizeDate(publishedAt, defaultTimezone),
     metadata: { extractor: content.length >= MIN_ARTICLE_TEXT_LENGTH && selectorContentLength < MIN_ARTICLE_TEXT_LENGTH ? `${extractor}:readability` : `${extractor}:selectors` },
   };
 }
 
-async function extractWithAiSelector(html: string, pageUrl: string) {
+async function extractWithAiSelector(html: string, pageUrl: string, defaultTimezone: string = 'Z') {
   const domain = getDomainFromUrl(pageUrl);
   if (!domain) return null;
 
@@ -312,7 +306,7 @@ async function extractWithAiSelector(html: string, pageUrl: string) {
   if (cached) {
     try {
       const profile = rowToSelectorProfile(cached);
-      const extraction = extractWithSelectorProfile(html, pageUrl, profile);
+      const extraction = extractWithSelectorProfile(html, pageUrl, profile, defaultTimezone);
       if (isExtractionUsable(extraction.content, profile.minTextLength)) {
         await recordProfileSuccess(cached.id);
         return { extraction, sourceProfileId: cached.id };
@@ -328,14 +322,16 @@ async function extractWithAiSelector(html: string, pageUrl: string) {
     if (!learned) return null;
     const saved = await saveSourceProfile(domain, learned.profile);
     await recordProfileSuccess(saved.id);
-    return { extraction: learned.extraction, sourceProfileId: saved.id };
+    // Re-extract with the correct timezone since learnSelectorProfileFromHtml extracts with default UTC
+    const extraction = extractWithSelectorProfile(html, pageUrl, learned.profile, defaultTimezone);
+    return { extraction, sourceProfileId: saved.id };
   } catch (err: any) {
     console.warn(`Failed to learn selector profile for ${domain}: ${err.message}`);
     return null;
   }
 }
 
-async function fetchFullArticle(jobUrl: string, policy = getRssDomainPolicy(jobUrl)): Promise<{ title: string; content: string; imageUrl: string | null; publishedAt: string | null; metadata?: any }> {
+async function fetchFullArticle(jobUrl: string, policy = getRssDomainPolicy(jobUrl), defaultTimezone: string = 'Z'): Promise<{ title: string; content: string; imageUrl: string | null; publishedAt: string | null; metadata?: any }> {
   let fetchError: Error | null = null;
   let browserError: Error | null = null;
 
@@ -350,7 +346,7 @@ async function fetchFullArticle(jobUrl: string, policy = getRssDomainPolicy(jobU
 
     const html = await response.text();
     if (isBlockedHtml(html)) throw new Error('blocked HTML');
-    const article = await extractArticleFromHtml(html, jobUrl, 'fetch');
+    const article = await extractArticleFromHtml(html, jobUrl, 'fetch', defaultTimezone);
     if (article.content.length >= MIN_ARTICLE_TEXT_LENGTH) return article;
     fetchError = new Error(`fetch extraction too short (${article.content.length} characters)`);
   } catch (err: any) {
@@ -368,7 +364,7 @@ async function fetchFullArticle(jobUrl: string, policy = getRssDomainPolicy(jobU
 
     const html = await response.text();
     if (isBlockedHtml(html)) throw new Error('blocked HTML');
-    const article = await extractArticleFromHtml(html, jobUrl, 'fetch:googlebot');
+    const article = await extractArticleFromHtml(html, jobUrl, 'fetch:googlebot', defaultTimezone);
     if (article.content.length >= MIN_ARTICLE_TEXT_LENGTH) return article;
     fetchError = new Error(`googlebot extraction too short (${article.content.length} characters)`);
   } catch (err: any) {
@@ -381,7 +377,7 @@ async function fetchFullArticle(jobUrl: string, policy = getRssDomainPolicy(jobU
       console.warn(`Retrying RSS article via Worker proxy ${jobUrl}`);
       const result = await workerProxyFetch(jobUrl, { timeoutMs: 25000 });
       if (!result.ok) throw new Error(`worker proxy upstream ${result.upstreamStatus}`);
-      const article = await extractArticleFromHtml(result.body, jobUrl, 'worker-proxy');
+      const article = await extractArticleFromHtml(result.body, jobUrl, 'worker-proxy', defaultTimezone);
       if (article.content.length >= MIN_ARTICLE_TEXT_LENGTH) return article;
       fetchError = new Error(`worker proxy extraction too short (${article.content.length} characters)`);
     } catch (err: any) {
@@ -407,7 +403,7 @@ async function fetchFullArticle(jobUrl: string, policy = getRssDomainPolicy(jobU
       settleMs: 1000,
     });
     if (isBlockedHtml(html)) throw new Error('blocked HTML');
-    const article = await extractArticleFromHtml(html, jobUrl, 'scrapling-stealth');
+    const article = await extractArticleFromHtml(html, jobUrl, 'scrapling-stealth', defaultTimezone);
     if (article.content.length >= MIN_ARTICLE_TEXT_LENGTH) return article;
     browserError = new Error(`scrapling extraction too short (${article.content.length} characters)`);
   } catch (err: any) {
@@ -559,7 +555,7 @@ export const rssFetcher: SourceFetcher = {
         url,
         title: decodeText(item.title),
         externalId: item.guid || null,
-        publishedAt: item.pubDate ? new Date(item.pubDate).toISOString() : null,
+        publishedAt: normalizeDate(item.pubDate || null, getDefaultTimezoneForLanguage(source.language)),
         payload: {
           discovery: googleNewsUrl ? 'google-news-rss' : 'rss',
           author: item.creator || rawItem.author || null,
@@ -614,7 +610,7 @@ export const rssFetcher: SourceFetcher = {
     const policy = getRssDomainPolicy(articleUrl);
     let fullArticleError: string | null = null;
     try {
-      fullArticle = await fetchFullArticle(articleUrl, policy);
+      fullArticle = await fetchFullArticle(articleUrl, policy, getDefaultTimezoneForLanguage(source.language));
     } catch (err: any) {
       fullArticleError = err.message;
       console.warn(`Failed to fetch full RSS article ${articleUrl}: ${err.message}`);
