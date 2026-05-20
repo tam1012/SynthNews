@@ -1299,23 +1299,57 @@
   }
 }
 
-/* On desktop, hide feed tabs in toolbar (sidebar handles navigation) */
+/* On desktop, hide feed tabs and merge Row 1 + Row 2 into a single clean line */
 @media (min-width: 1100px) {
   .split-feed-toolbar .toolbar-tabs-row .feed-tabs {
     display: none;
   }
+  .split-feed-toolbar {
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    padding: 8px 16px !important;
+    height: 48px;
+  }
   .split-feed-toolbar .toolbar-tabs-row {
-    justify-content: flex-end;
+    order: 2;
+    flex-shrink: 0;
+    margin-left: auto;
+    width: auto;
+  }
+  .split-feed-toolbar .toolbar-compact-row {
+    order: 1;
+    padding: 0 !important;
+    margin: 0 !important;
+    max-height: none !important;
+  }
+  .split-feed-toolbar .toolbar-settings-group {
+    margin-left: 0 !important;
   }
 }
 
-/* On mobile, hide feed tabs in toolbar (bottom nav handles navigation) */
+/* On mobile, hide feed tabs and handle auto-hide collapse for the entire toolbar */
 @media (max-width: 1099px) {
   .split-feed-toolbar .toolbar-tabs-row .feed-tabs {
     display: none;
   }
   .split-feed-toolbar .toolbar-tabs-row {
     justify-content: flex-end;
+  }
+  .split-feed-toolbar {
+    transition: transform 0.2s ease, opacity 0.2s ease, max-height 0.2s ease, padding 0.2s ease, border-color 0.2s ease;
+    max-height: 120px;
+  }
+  .split-feed-toolbar.toolbar-hidden {
+    max-height: 0 !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+    opacity: 0 !important;
+    pointer-events: none;
+    border-bottom-color: transparent !important;
+    overflow: hidden;
   }
 }
 
