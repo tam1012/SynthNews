@@ -1,12 +1,58 @@
 /* ===== Sources list ===== */
-.source-item {
-  display: flex; align-items: center;
-  justify-content: space-between; gap: 12px; flex-wrap: wrap;
+.sources-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  margin-bottom: 24px;
 }
-.source-info { flex: 1; min-width: 200px; }
-.source-name { font-weight: 600; }
-.source-url { font-size: 0.8rem; color: var(--color-text-muted); word-break: break-all; }
-.source-actions { display: flex; gap: 6px; flex-shrink: 0; }
+
+@media (min-width: 768px) {
+  .sources-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.source-item {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 16px;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.source-item:hover {
+  transform: translateY(-2px);
+  border-color: var(--color-accent-soft);
+  box-shadow: 0 6px 16px var(--color-shadow);
+}
+
+.source-info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.source-name {
+  font-weight: 600;
+  font-size: 1.05rem;
+}
+
+.source-url {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  word-break: break-all;
+}
+
+.source-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+  border-top: 1px solid var(--color-border-light);
+  padding-top: 12px;
+  margin-top: auto;
+}
 
 /* ===== Toast ===== */
 .source-toast {
@@ -30,4 +76,43 @@
 @keyframes toast-in {
   from { opacity: 0; transform: translateY(-8px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+/* ===== Sources Container & Responsive Inputs ===== */
+.sources-page-container {
+  padding: 0 16px 24px;
+  width: 100%;
+}
+
+.detect-input-group {
+  display: flex;
+  gap: 8px;
+}
+
+.detect-input {
+  flex: 1;
+  padding: 10px 14px;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-size: 0.95rem;
+  min-width: 0;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.detect-input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 12%, transparent);
+}
+
+@media (max-width: 480px) {
+  .detect-input-group {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .detect-input-group button {
+    width: 100%;
+  }
 }

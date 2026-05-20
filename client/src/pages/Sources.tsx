@@ -1,4 +1,4 @@
-﻿import { useState, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { api } from '../services/api';
 import { useFetch } from '../hooks/useApi';
 
@@ -184,7 +184,7 @@ export function Sources() {
   if (error) return <div className="loading" style={{ color: 'var(--color-error)' }}>Lỗi: {error}</div>;
 
   return (
-    <div style={{ overflow: 'auto', height: '100%', padding: '0 16px' }}>
+    <div className="sources-page-container">
       {toast && (
         <div className={`source-toast ${toast.isError ? 'source-toast-error' : ''}`}>
           {toast.message}
@@ -199,18 +199,14 @@ export function Sources() {
         <p style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', marginBottom: 12 }}>
           Dán link trang web, RSS feed, Reddit hoặc VOZ, hệ thống sẽ tự động phân tích.
         </p>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div className="detect-input-group">
           <input
             type="url"
             value={detectUrl}
             onChange={(e) => setDetectUrl(e.target.value)}
             onKeyDown={handleDetectKeyDown}
-            placeholder="Dán link vào đây... VD: https://vnexpress.net hoặc https://vnexpress.net/rss/tin-moi-nhat.rss"
-            style={{
-              flex: 1, padding: '10px 14px',
-              border: '1px solid var(--color-border)', borderRadius: 'var(--radius)',
-              background: 'var(--color-bg)', color: 'var(--color-text)', fontSize: '0.95rem',
-            }}
+            placeholder="Dán link vào đây..."
+            className="detect-input"
           />
           <button className="btn btn-primary" onClick={handleDetect} disabled={detecting || !detectUrl.trim()}>
             {detecting ? 'Đang phân tích...' : 'Phân tích'}
@@ -357,7 +353,7 @@ export function Sources() {
         </form>
       )}
 
-      <div className="article-list">
+      <div className="sources-grid">
         {sourceList.length === 0 ? (
           <div className="empty-state">Chưa có nguồn tin nào. Dán link vào ô trên để bắt đầu.</div>
         ) : (
