@@ -41,6 +41,11 @@
   display: flex; align-items: center; gap: 4px;
   margin-left: auto;
 }
+@media (max-width: 1099px) {
+  .toolbar-settings-group {
+    display: none !important;
+  }
+}
 .toolbar-theme-btn, .toolbar-font-btn {
   font-size: 0.78rem;
   padding: 4px 8px;
