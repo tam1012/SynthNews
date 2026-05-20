@@ -6,3 +6,28 @@
 .admin-clickable-row:hover {
   background: var(--color-bg-hover);
 }
+
+.admin-container {
+  padding: 0 16px 24px;
+  width: 100%;
+}
+
+.admin-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 16px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 4px;
+}
+.admin-tabs::-webkit-scrollbar {
+  display: none;
+}
+.admin-tabs > button {
+  flex-shrink: 0;
+  white-space: nowrap;
+  min-height: 36px; /* Tăng touch target */
+}
+
+

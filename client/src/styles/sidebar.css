@@ -36,7 +36,7 @@
   border: 1px solid var(--color-border-light);
   border-radius: var(--radius);
   box-shadow: 0 1px 3px var(--color-shadow);
-  font-size: 16px;
+  font-size: 1rem;
 }
 
 .sidebar-brand {
@@ -299,7 +299,7 @@
   scroll-snap-type: x proximity;
   scroll-padding-inline: 12px;
   overscroll-behavior-x: contain;
-  font-size: 16px;
+  font-size: 1rem;
 }
 .mobile-bottom-nav::-webkit-scrollbar { display: none; }
 .mobile-bottom-item {
@@ -337,7 +337,7 @@
 }
 
 /* ===== Responsive ===== */
-@media (max-width: 899px) {
+@media (max-width: 1099px) {
   .app-shell {
     background: var(--color-bg);
     gap: 0;
@@ -360,7 +360,7 @@
   }
 }
 
-@media (min-width: 900px) {
+@media (min-width: 1100px) {
   .mobile-top-nav {
     display: none;
   }

@@ -42,12 +42,12 @@ export function Admin() {
   };
 
   return (
-    <div style={{ overflow: 'auto', height: '100%', padding: '0 16px' }}>
+    <div className="admin-container">
       <div className="page-header">
         <h1 className="page-title">Quản trị hệ thống</h1>
       </div>
 
-      <div style={{ display: 'flex', gap: 4, marginBottom: 16, flexWrap: 'wrap' }}>
+      <div className="admin-tabs">
         {[
           { key: 'overview', label: 'Tổng quan' },
           { key: 'queue', label: 'Hàng đợi tóm tắt' },
