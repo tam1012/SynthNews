@@ -24,6 +24,7 @@ export function Router() {
           <Route path="/article/:articleId" element={<Home />} />
           <Route path="/sources" element={<Suspense fallback={<PageLoader />}><Sources /></Suspense>} />
           <Route path="/admin" element={<Suspense fallback={<PageLoader />}><Admin /></Suspense>} />
+          <Route path="/admin/:tab" element={<Suspense fallback={<PageLoader />}><Admin /></Suspense>} />
         </Route>
       </Routes>
     </BrowserRouter>

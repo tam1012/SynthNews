@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { api } from '../../services/api';
 import { cleanTitle, estimateReadingTime, extractSourceLabel, hideBrokenImage, hideTinyImage, proxyImgUrl } from './homeHelpers';
 
 const ReactMarkdown = lazy(() => import('react-markdown'));
@@ -34,6 +35,9 @@ export function ArticleDetail({
   const [readingProgress, setReadingProgress] = useState(0);
   // TL;DR collapsible state
   const [tldrCollapsed, setTldrCollapsed] = useState(false);
+  // Manual rescrape + summarize state
+  const [rescrapeState, setRescrapeState] = useState<'idle' | 'loading' | 'done' | 'error'>('idle');
+  const [rescrapeMessage, setRescrapeMessage] = useState<string>('');
 
   // Swipe-to-navigate refs
   const swipeStartXRef = useRef(0);
@@ -50,6 +54,8 @@ export function ArticleDetail({
     if (contentRef.current) contentRef.current.scrollTop = 0;
     setReadingProgress(0);
     setSwipeDeltaX(0);
+    setRescrapeState('idle');
+    setRescrapeMessage('');
   }, [article.id]);
 
   // Track reading progress on scroll
@@ -149,6 +155,26 @@ export function ArticleDetail({
     }
   }, [article.id, title]);
 
+  // Manual rescrape + summarize handler
+  const handleRescrape = useCallback(async () => {
+    if (rescrapeState === 'loading') return;
+    setRescrapeState('loading');
+    setRescrapeMessage('Đang lấy lại bài và xếp lịch tóm tắt...');
+    try {
+      const res: any = await api.rescrapeArticle(article.id);
+      if (res?.success) {
+        setRescrapeState('done');
+        setRescrapeMessage(res.message || 'Đã yêu cầu fetch + tóm tắt lại. Tải lại bài sau khoảng 30-60s để xem kết quả.');
+      } else {
+        setRescrapeState('error');
+        setRescrapeMessage(res?.message || 'Không cập nhật được nội dung bài.');
+      }
+    } catch (err: any) {
+      setRescrapeState('error');
+      setRescrapeMessage(err?.message || 'Lỗi khi gọi API rescrape.');
+    }
+  }, [article.id, rescrapeState]);
+
   // Backdrop click
   const handleBackdropClick = (e: React.MouseEvent) => {
     if (e.target === overlayRef.current) onClose();
@@ -232,10 +258,31 @@ export function ArticleDetail({
                 </span>
               )}
               <span className="detail-reading-time">{estimateReadingTime(article)}</span>
+              <button
+                type="button"
+                className={`detail-rescrape-btn ${rescrapeState === 'loading' ? 'is-loading' : ''} ${rescrapeState === 'done' ? 'is-done' : ''} ${rescrapeState === 'error' ? 'is-error' : ''}`}
+                onClick={handleRescrape}
+                disabled={rescrapeState === 'loading'}
+                title={rescrapeMessage || 'Fetch lại nội dung gốc và tóm tắt lại bằng AI'}
+                aria-label="Fetch và tóm tắt lại bài"
+              >
+                <span className="detail-rescrape-icon" aria-hidden="true">
+                  {rescrapeState === 'loading' ? '⟳' : rescrapeState === 'done' ? '✓' : rescrapeState === 'error' ? '!' : '↻'}
+                </span>
+                <span className="detail-rescrape-label">
+                  {rescrapeState === 'loading' ? 'Đang xử lý' : rescrapeState === 'done' ? 'Đã yêu cầu' : 'Fetch + tóm tắt lại'}
+                </span>
+              </button>
             </div>
           </div>
 
           <h1 className="detail-title-editorial">{title}</h1>
+
+          {rescrapeState !== 'idle' && rescrapeMessage && (
+            <div className={`detail-rescrape-banner rescrape-${rescrapeState}`} role="status" aria-live="polite">
+              {rescrapeMessage}
+            </div>
+          )}
 
           {summaryParts.tldr && (
             <div className={`ai-tldr-box ${tldrCollapsed ? 'collapsed' : ''}`}>

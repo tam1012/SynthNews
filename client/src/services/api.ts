@@ -45,7 +45,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     }
 
     if (!data.success) {
-      throw new Error(data.error?.message || 'API request failed');
+      throw new Error(data.error?.message || data.message || 'API request failed');
     }
 
     if (cachePolicy.cacheable) {

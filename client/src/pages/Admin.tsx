@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../services/api';
 import { useFetch } from '../hooks/useApi';
 import { AiProvidersTab } from './admin/AiProvidersTab';
@@ -10,23 +11,59 @@ import { SummaryQueueTab } from './admin/SummaryQueueTab';
 import { BlocklistTab } from './admin/BlocklistTab';
 import { AdminTab, FetchJobStatus, SummaryQueueStatus } from './admin/adminHelpers';
 
+const TAB_SLUGS: { tab: AdminTab; slug: string; label: string }[] = [
+  { tab: 'overview', slug: 'overview', label: 'Tổng quan' },
+  { tab: 'queue', slug: 'queue', label: 'Hàng đợi tóm tắt' },
+  { tab: 'quality', slug: 'quality', label: 'Kiểm tra chất lượng' },
+  { tab: 'fetchJobs', slug: 'fetch-jobs', label: 'Hàng đợi lấy bài' },
+  { tab: 'ai', slug: 'ai', label: 'Nhà cung cấp AI' },
+  { tab: 'prompt', slug: 'prompt', label: 'Cấu hình prompt' },
+  { tab: 'blocklist', slug: 'blocklist', label: 'Danh sách chặn' },
+];
+
+function slugToTab(slug?: string): AdminTab {
+  if (!slug) return 'overview';
+  const found = TAB_SLUGS.find(t => t.slug === slug);
+  return found ? found.tab : 'overview';
+}
+
+function tabToSlug(tab: AdminTab): string {
+  return TAB_SLUGS.find(t => t.tab === tab)?.slug || 'overview';
+}
+
 export function Admin() {
-  const [tab, setTab] = useState<AdminTab>('overview');
+  const navigate = useNavigate();
+  const { tab: tabParam } = useParams<{ tab?: string }>();
+  const initialTab = slugToTab(tabParam);
+
+  const [tab, setTab] = useState<AdminTab>(initialTab);
   const { data: health, loading, error, reload } = useFetch<any>(() => api.getHealth());
   const [actionLoading, setActionLoading] = useState('');
   const [queueFilter, setQueueFilter] = useState<SummaryQueueStatus>('failed');
   const [fetchFilter, setFetchFilter] = useState<FetchJobStatus>('failed');
 
+  // Keep state in sync with URL (sidebar navigation, back/forward)
+  useEffect(() => {
+    const next = slugToTab(tabParam);
+    setTab(next);
+  }, [tabParam]);
+
+  const navigateToTab = useCallback((next: AdminTab) => {
+    const slug = tabToSlug(next);
+    const path = slug === 'overview' ? '/admin' : `/admin/${slug}`;
+    navigate(path);
+  }, [navigate]);
+
   const goToQueue = (status: SummaryQueueStatus) => {
     setQueueFilter(status);
-    setTab('queue');
+    navigateToTab('queue');
   };
   const goToFetch = (status: FetchJobStatus) => {
     setFetchFilter(status);
-    setTab('fetchJobs');
+    navigateToTab('fetchJobs');
   };
   const goToQuality = () => {
-    setTab('quality');
+    navigateToTab('quality');
   };
 
   const trigger = async (action: string, fn: () => Promise<any>) => {
@@ -48,19 +85,11 @@ export function Admin() {
       </div>
 
       <div className="admin-tabs">
-        {[
-          { key: 'overview', label: 'Tổng quan' },
-          { key: 'queue', label: 'Hàng đợi tóm tắt' },
-          { key: 'quality', label: 'Kiểm tra chất lượng' },
-          { key: 'fetchJobs', label: 'Hàng đợi lấy bài' },
-          { key: 'ai', label: 'Nhà cung cấp AI' },
-          { key: 'prompt', label: 'Cấu hình prompt' },
-          { key: 'blocklist', label: 'Danh sách chặn' },
-        ].map(t => (
+        {TAB_SLUGS.map(t => (
           <button
-            key={t.key}
-            className={`btn btn-sm ${tab === t.key ? 'btn-primary' : ''}`}
-            onClick={() => setTab(t.key as AdminTab)}
+            key={t.tab}
+            className={`btn btn-sm ${tab === t.tab ? 'btn-primary' : ''}`}
+            onClick={() => navigateToTab(t.tab)}
           >
             {t.label}
           </button>
@@ -90,4 +119,3 @@ export function Admin() {
     </div>
   );
 }
-

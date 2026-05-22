@@ -19,6 +19,7 @@ export function MobileBottomNav() {
 
   const isActive = (href: string) => {
     if (href === '/') return path === '/' || path.startsWith('/article');
+    if (href === '/admin') return path === '/admin' || path.startsWith('/admin/');
     return path === href;
   };
 

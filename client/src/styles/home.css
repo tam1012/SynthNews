@@ -859,6 +859,85 @@
   opacity: 0.5;
 }
 
+/* Manual fetch + summarize button in detail header */
+.detail-rescrape-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 8px;
+  padding: 4px 10px 4px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-bg-card);
+  color: var(--color-text-secondary);
+  font-size: 0.7rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  line-height: 1;
+}
+.detail-rescrape-btn:hover:not(:disabled) {
+  background: var(--color-bg-hover);
+  color: var(--color-text);
+  border-color: color-mix(in srgb, var(--color-accent) 30%, var(--color-border));
+}
+.detail-rescrape-btn:disabled {
+  cursor: progress;
+  opacity: 0.7;
+}
+.detail-rescrape-btn.is-loading .detail-rescrape-icon {
+  display: inline-block;
+  animation: detail-rescrape-spin 0.9s linear infinite;
+}
+.detail-rescrape-btn.is-done {
+  border-color: color-mix(in srgb, var(--color-success, #16a34a) 35%, var(--color-border));
+  color: var(--color-success, #16a34a);
+}
+.detail-rescrape-btn.is-error {
+  border-color: color-mix(in srgb, var(--color-error, #dc2626) 35%, var(--color-border));
+  color: var(--color-error, #dc2626);
+}
+.detail-rescrape-icon {
+  font-size: 0.85rem;
+  line-height: 1;
+}
+@keyframes detail-rescrape-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+@media (max-width: 640px) {
+  .detail-rescrape-btn {
+    padding: 5px 12px 5px 10px;
+    font-size: 0.72rem;
+  }
+}
+
+/* Banner shown after triggering rescrape */
+.detail-rescrape-banner {
+  margin: 0 0 18px;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  font-size: 0.85rem;
+  line-height: 1.45;
+  border: 1px solid var(--color-border-light);
+  background: var(--color-bg-card);
+  color: var(--color-text-secondary);
+}
+.detail-rescrape-banner.rescrape-loading {
+  border-color: color-mix(in srgb, var(--color-accent) 25%, var(--color-border));
+  background: color-mix(in srgb, var(--color-accent) 5%, var(--color-bg-card));
+}
+.detail-rescrape-banner.rescrape-done {
+  border-color: color-mix(in srgb, var(--color-success, #16a34a) 30%, var(--color-border));
+  background: color-mix(in srgb, var(--color-success, #16a34a) 6%, var(--color-bg-card));
+  color: var(--color-text);
+}
+.detail-rescrape-banner.rescrape-error {
+  border-color: color-mix(in srgb, var(--color-error, #dc2626) 30%, var(--color-border));
+  background: color-mix(in srgb, var(--color-error, #dc2626) 6%, var(--color-bg-card));
+  color: var(--color-text);
+}
+
 .ai-tldr-box {
   margin: 0 0 28px;
   padding: 0;

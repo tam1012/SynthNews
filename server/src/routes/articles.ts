@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { getMany, getOne, query } from '../db/index.js';
 import { LOCAL_DATE_SQL, LOCAL_DATE_TEXT_SQL, buildArticleListFilters, buildArticleListOrderBy } from '../lib/articleFilters.js';
 import { decodeArticleRows, decodeArticleTextFields } from '../lib/htmlEntities.js';
+import { generateId } from '../lib/utils.js';
 
 const articles = new Hono();
 
@@ -296,20 +297,69 @@ articles.get('/:id', async (c) => {
   return c.json({ success: true, data: decodeArticleTextFields(row) });
 });
 
-// Manual Rescrape (for Admin)
+// Manual Rescrape (for Admin / per-article button)
+// - Forum (VOZ/Reddit): refetch comments via rescrape service
+// - Non-forum (RSS/HTML/GitHub Trending): enqueue a fetch job with rescueArticleId so the fetcher overwrites raw_content + resets summary state
 articles.post('/:id/rescrape', async (c) => {
   const { id } = c.req.param();
-  const { rescrapeArticle } = await import('../services/rescrape.js');
-  const { runSummarizeJob } = await import('../jobs/scheduler.js');
-  
-  const updated = await rescrapeArticle(id, true); // force rescrape
-  if (updated) {
-    // Fire and forget summarizing
-    runSummarizeJob().catch(console.error);
-    return c.json({ success: true, message: 'Article content updated and re-summarizing triggered.' });
-  } else {
-    return c.json({ success: false, message: 'Article content was not updated (either fetch failed, not a forum source, or no new content found).' });
+  const article = await getOne<any>(
+    `SELECT a.id, a.url, a.source_id, s.name as source_name, s.type as source_type
+     FROM articles a LEFT JOIN sources s ON s.id = a.source_id
+     WHERE a.id = $1`,
+    [id]
+  );
+  if (!article) {
+    return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Article not found' } }, 404);
   }
+
+  const { rescrapeArticle } = await import('../services/rescrape.js');
+  const { runSummarizeJob, runArticleFetchJob } = await import('../jobs/scheduler.js');
+
+  const isForum = /voz|reddit/i.test(article.source_name || article.url || '');
+
+  if (isForum) {
+    const updated = await rescrapeArticle(id, true);
+    if (updated) {
+      runSummarizeJob().catch(console.error);
+      return c.json({ success: true, message: 'Đã lấy lại nội dung forum và xếp lịch tóm tắt.' });
+    }
+    return c.json({
+      success: false,
+      error: { code: 'RESCRAPE_NO_UPDATE', message: 'Không lấy được nội dung mới (fetch lỗi hoặc nội dung không đổi).' },
+    });
+  }
+
+  // Non-forum: enqueue a rescue fetch job. The article-fetch job runner will call
+  // updateRescuedArticle which overwrites raw_content + clears summary state.
+  const jobId = generateId('afj');
+  await query(
+    `INSERT INTO article_fetch_jobs (id, source_id, url, title, external_id, published_at, payload_json, status, retry_count, last_error)
+     SELECT $1, a.source_id, a.url, a.title, NULL, a.published_at,
+            jsonb_build_object('rescueArticleId', a.id),
+            'discovered', 0, NULL
+       FROM articles a
+      WHERE a.id = $2
+      ON CONFLICT (source_id, url) DO UPDATE
+        SET status = 'discovered', retry_count = 0, last_error = NULL,
+            payload_json = EXCLUDED.payload_json`,
+    [jobId, id]
+  );
+
+  // Also pre-reset summary state so the UI immediately reflects "pending"
+  await query(
+    `UPDATE articles
+       SET summary_status = 'pending', retry_count = 0, last_summary_error = NULL
+     WHERE id = $1`,
+    [id]
+  );
+
+  // Kick off the fetch job + summarize asynchronously
+  if (typeof runArticleFetchJob === 'function') {
+    runArticleFetchJob().catch(console.error);
+  }
+  runSummarizeJob().catch(console.error);
+
+  return c.json({ success: true, message: 'Đã xếp lịch fetch lại nội dung gốc và tóm tắt lại bằng AI.' });
 });
 
 export { articles };
