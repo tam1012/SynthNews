@@ -27,6 +27,15 @@ function loadTsModule(relativePath, stubs = {}, globals = {}) {
     process: { env: {} },
     URL,
     require: (name) => {
+      if (name === './scrapling-fetch.js') {
+        return {
+          scraplingFetch: async () => { throw new Error('Scrapling unavailable'); },
+          scraplingFetchWithFallback: async (url, scraplingOpts, playwrightOpts) => {
+            const httpUtils = stubs['./http-utils.js'];
+            return httpUtils.playwrightFetch(url, playwrightOpts);
+          },
+        };
+      }
       if (stubs[name]) return stubs[name];
       throw new Error(`Unexpected require ${name}`);
     },
@@ -62,6 +71,10 @@ const baseStubs = {
     saveSourceProfile: async () => null,
   },
   './sitemap-discovery.js': { discoverSitemapArticles: async () => [] },
+  '../../lib/dateUtils.js': {
+    getDefaultTimezoneForLanguage: () => 'Z',
+    normalizeDate: (v) => v,
+  },
 };
 
 test('HTML discover uses heuristic article links when configured selector finds none', async () => {

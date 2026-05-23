@@ -300,18 +300,11 @@ export const htmlFetcher: SourceFetcher = {
 
     const $article = cheerio.load(articleHtml);
 
-    if (config.removeSelectors) {
-      for (const sel of config.removeSelectors) $article(sel).remove();
-    }
-
     const title = $article(config.titleSelector || 'h1').first().text().trim() ||
       getMetaContent($article, 'meta[property="og:title"]') ||
       $article('title').first().text().trim() ||
       job.title;
     if (!title) return null;
-
-    const content = $article(config.contentSelector || 'article').text().replace(/\s+/g, ' ').trim();
-    const excerpt = truncate(content, 500);
 
     let imageUrl: string | null = null;
     const imgSrc = $article(config.imageSelector || 'article img, .article img, .content img').first().attr('src') ||
@@ -348,6 +341,13 @@ export const htmlFetcher: SourceFetcher = {
         } catch {}
       }
     }
+
+    if (config.removeSelectors) {
+      for (const sel of config.removeSelectors) $article(sel).remove();
+    }
+
+    const content = $article(config.contentSelector || 'article').text().replace(/\s+/g, ' ').trim();
+    const excerpt = truncate(content, 500);
 
     return {
       source,

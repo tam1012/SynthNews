@@ -231,18 +231,6 @@ export function isExtractionUsable(content: string, minLength = 500): boolean {
 
 export function extractWithSelectorProfile(html: string, pageUrl: string, profile: NormalizedSelectorProfile, defaultTimezone: string = 'Z'): SelectorExtractionResult {
   const $ = cheerio.load(html);
-  $(DEFAULT_REMOVE_SELECTORS).remove();
-  for (const selector of profile.removeSelectors) $(selector).remove();
-
-  let content = '';
-  let matchedSelector: string | null = null;
-  for (const selector of profile.contentSelectors) {
-    const text = cleanText($(selector).first().text());
-    if (text.length > content.length) {
-      content = text;
-      matchedSelector = selector;
-    }
-  }
 
   const title = cleanText(
     (profile.titleSelector ? $(profile.titleSelector).first().text() : '') ||
@@ -272,6 +260,19 @@ export function extractWithSelectorProfile(html: string, pageUrl: string, profil
     null,
     defaultTimezone
   );
+
+  $(DEFAULT_REMOVE_SELECTORS).remove();
+  for (const selector of profile.removeSelectors) $(selector).remove();
+
+  let content = '';
+  let matchedSelector: string | null = null;
+  for (const selector of profile.contentSelectors) {
+    const text = cleanText($(selector).first().text());
+    if (text.length > content.length) {
+      content = text;
+      matchedSelector = selector;
+    }
+  }
 
   return { title, content, imageUrl, publishedAt, matchedSelector };
 }

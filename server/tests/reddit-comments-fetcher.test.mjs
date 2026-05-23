@@ -63,6 +63,18 @@ function loadForumFetchers({ env = {}, rssItems = [], curlFetch, browserFetch, g
         };
       }
       if (name === './forum-utils.js') return forumUtilsStub;
+      if (name === './scrapling-fetch.js') {
+        return {
+          scraplingFetch: async () => '',
+          scraplingFetchWithFallback: async () => '',
+        };
+      }
+      if (name === '../../lib/dateUtils.js') {
+        return {
+          getDefaultTimezoneForLanguage: () => 'Z',
+          normalizeDate: (v) => v,
+        };
+      }
       throw new Error(`Unexpected require ${name}`);
     },
     ...globals,

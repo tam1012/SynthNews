@@ -56,6 +56,7 @@ test('discover GitHub Trending repositories with metadata payload', async () => 
       truncate: (value, max) => String(value).slice(0, max),
     },
     './http-utils.js': { BROWSER_UA: 'test-agent', isBlockedHtml: () => false, playwrightFetch: async () => trendingHtml, randomUA: () => 'test-agent' },
+    './scrapling-fetch.js': { scraplingFetch: async () => '', scraplingFetchWithFallback: async () => '' },
   }, {
     fetch: async (url) => {
       fetchCalls.push(url);
@@ -94,6 +95,7 @@ test('fetch GitHub Trending article prefers raw README and preserves trending me
       truncate: (value, max) => String(value).slice(0, max),
     },
     './http-utils.js': { BROWSER_UA: 'test-agent', isBlockedHtml: () => false, playwrightFetch: async () => trendingHtml, randomUA: () => 'test-agent' },
+    './scrapling-fetch.js': { scraplingFetch: async () => '', scraplingFetchWithFallback: async () => '' },
   }, {
     fetch: async (url) => {
       fetchCalls.push(url);

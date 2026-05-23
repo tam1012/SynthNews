@@ -11,7 +11,10 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const requireFromTest = createRequire(import.meta.url);
 const cheerio = requireFromTest('cheerio');
 
+let currentVmProcess = null;
+
 function loadTsModule(relativePath, stubs = {}, globals = {}) {
+  currentVmProcess = globals.process || { env: {} };
   const source = readFileSync(resolve(__dirname, relativePath), 'utf8');
   const { outputText } = ts.transpileModule(source, {
     compilerOptions: {
@@ -27,6 +30,15 @@ function loadTsModule(relativePath, stubs = {}, globals = {}) {
     process: { env: {} },
     URL,
     require: (name) => {
+      if (name === './scrapling-fetch.js') {
+        return {
+          scraplingFetch: async () => { throw new Error('Scrapling unavailable'); },
+          scraplingFetchWithFallback: async (url, scraplingOpts, playwrightOpts) => {
+            const httpUtils = stubs['./http-utils.js'];
+            return httpUtils.playwrightFetch(url, playwrightOpts);
+          },
+        };
+      }
       if (stubs[name]) return stubs[name];
       throw new Error(`Unexpected require ${name}`);
     },
@@ -49,6 +61,9 @@ const baseStubs = {
     randomUA: () => 'random-agent',
     playwrightFetch: async () => '',
     isBlockedHtml: () => false,
+    isWorkerProxyConfigured: () => false,
+    shouldSkipWorkerProxy: () => false,
+    workerProxyFetch: async () => ({ ok: false }),
   },
   './article-writer.js': { insertArticleIfNew: async () => true, MIN_ARTICLE_TEXT_LENGTH: 500 },
   '../../lib/promoFilter.js': { matchPromoKeyword: () => null },
@@ -63,6 +78,24 @@ const baseStubs = {
     recordProfileSuccess: async () => {},
     rowToSelectorProfile: () => null,
     saveSourceProfile: async () => null,
+  },
+  './blocklist.js': {
+    isBlockedUrl: async (url) => {
+      const env = currentVmProcess?.env || {};
+      const domains = (env.BLOCKED_GOOGLE_NEWS_PUBLISHER_DOMAINS || '').split(',');
+      return domains.some(d => d && url.includes(d));
+    },
+    getBlocklistMatch: async (url) => {
+      const env = currentVmProcess?.env || {};
+      const domains = (env.BLOCKED_GOOGLE_NEWS_PUBLISHER_DOMAINS || '').split(',');
+      const matched = domains.find(d => d && url.includes(d));
+      return matched ? { id: 'test_blk', pattern: matched, type: 'domain', reason: 'env override', is_enabled: true } : null;
+    },
+    recordBlocklistHit: async () => {},
+  },
+  '../../lib/dateUtils.js': {
+    getDefaultTimezoneForLanguage: () => 'Z',
+    normalizeDate: (v) => v,
   },
 };
 
@@ -221,27 +254,26 @@ test('RSS fetchArticle rejects queued blocked Google News publisher domains', as
     process: { env: { BLOCKED_GOOGLE_NEWS_PUBLISHER_DOMAINS: 'nytimes.com' } },
   });
 
-  await assert.rejects(
-    () => rssFetcher.fetchArticle({
-      id: 'job_blocked',
-      source_id: 'src_google',
-      url: 'https://www.nytimes.com/2026/05/09/business/example.html',
-      title: 'Blocked story',
-      external_id: 'google/blocked',
-      published_at: null,
-      payload_json: { googleNewsUrl: 'https://news.google.com/rss/articles/CBMi-test?oc=5' },
-    }, {
-      id: 'src_google',
-      type: 'rss',
-      name: 'Google News',
-      url: 'https://news.google.com/rss/search?q=test',
-      language: 'en',
-      category: null,
-      fetch_interval_minutes: 60,
-      parser_config: null,
-    }),
-    /Google News publisher blocked by domain policy: nytimes.com/
-  );
+  const result = await rssFetcher.fetchArticle({
+    id: 'job_blocked',
+    source_id: 'src_google',
+    url: 'https://www.nytimes.com/2026/05/09/business/example.html',
+    title: 'Blocked story',
+    external_id: 'google/blocked',
+    published_at: null,
+    payload_json: { googleNewsUrl: 'https://news.google.com/rss/articles/CBMi-test?oc=5' },
+  }, {
+    id: 'src_google',
+    type: 'rss',
+    name: 'Google News',
+    url: 'https://news.google.com/rss/search?q=test',
+    language: 'en',
+    category: null,
+    fetch_interval_minutes: 60,
+    parser_config: null,
+  });
+
+  assert.equal(result, null);
 });
 
 test('RSS fetchArticle uses RSS snippet fallback when full article fetch fails', async () => {
@@ -293,6 +325,9 @@ test('RSS fetchArticle passes lightweight browser options for anti-bot-light dom
         return '<html><body><article>' + 'Full browser article '.repeat(40) + '</article></body></html>';
       },
       isBlockedHtml: () => false,
+      isWorkerProxyConfigured: () => false,
+      shouldSkipWorkerProxy: () => false,
+      workerProxyFetch: async () => ({ ok: false }),
     },
   }, {
     fetch: async () => ({ ok: true, text: async () => '<html><body>short</body></html>' }),
@@ -320,7 +355,7 @@ test('RSS fetchArticle passes lightweight browser options for anti-bot-light dom
 
   assert.equal(browserOptions.waitUntil, 'domcontentloaded');
   assert.equal(browserOptions.blockHeavyResources, true);
-  assert.equal(article.metadata.extractor, 'playwright-stealth:selectors');
+  assert.equal(article.metadata.extractor, 'scrapling-stealth:selectors');
 });
 
 test('RSS discover skips Google News items when decode fails', async () => {
