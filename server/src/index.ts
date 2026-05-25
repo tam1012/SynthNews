@@ -72,7 +72,7 @@ if (existsSync(publicDir)) {
 
     try {
       const article = await getOne(
-        `SELECT id, title, tldr, summary_text, raw_excerpt, image_url
+        `SELECT id, title, translated_title, tldr, summary_text, raw_excerpt, image_url
          FROM articles
          WHERE id = $1`,
         [decodeURIComponent(articleId)]

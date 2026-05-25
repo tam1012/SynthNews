@@ -65,7 +65,7 @@ export function FeedItem({
   isHero?: boolean;
 }) {
   const sourceLabel = extractSourceLabel(article);
-  const title = cleanTitle(article.title);
+  const title = cleanTitle(article.translated_title || article.title);
   const time = article.published_at ? formatTime(article.published_at) : '';
   const readingTime = useMemo(() => estimateReadingTime(article), [article]);
 

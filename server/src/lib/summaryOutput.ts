@@ -6,6 +6,7 @@ export interface ParsedSummaryOutput {
   editorialMarkdown: string;
   usedStructuredOutput: boolean;
   isUsable: boolean;
+  translatedTitle?: string | null; // Added
 }
 
 interface StructuredSummaryOutput {
@@ -18,6 +19,8 @@ interface StructuredSummaryOutput {
   editorial_markdown?: unknown;
   editorialMarkdown?: unknown;
   editorialmarkdown?: unknown;
+  translated_title?: unknown;      // Added
+  translatedTitle?: unknown;       // Added
 }
 
 function cleanText(value: unknown): string {
@@ -111,6 +114,7 @@ export function parseAiSummaryOutput(raw: string, allowedTags: string[]): Parsed
       editorialMarkdown,
       usedStructuredOutput: true,
       isUsable: Boolean(tldr) && hasEnoughSummaryText(editorialMarkdown),
+      translatedTitle: firstCleanText(parsed.translated_title, parsed.translatedTitle) || null, // Added
     };
   }
 
@@ -124,5 +128,6 @@ export function parseAiSummaryOutput(raw: string, allowedTags: string[]): Parsed
     editorialMarkdown: legacyMarkdown,
     usedStructuredOutput: false,
     isUsable: Boolean(legacyTldr) && hasEnoughSummaryText(legacyMarkdown),
+    translatedTitle: null, // Added
   };
 }

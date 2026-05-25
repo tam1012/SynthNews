@@ -47,7 +47,8 @@ export function ArticleDetail({
   const isSwipingRef = useRef(false);
 
   const sourceLabel = extractSourceLabel(article);
-  const title = cleanTitle(article.title);
+  const title = cleanTitle(article.translated_title || article.title);
+  const originalTitle = article.translated_title ? cleanTitle(article.title) : null;
 
   // Auto-scroll detail panel to top when article changes
   useEffect(() => {
@@ -277,6 +278,22 @@ export function ArticleDetail({
           </div>
 
           <h1 className="detail-title-editorial">{title}</h1>
+
+          {originalTitle && (
+            <div 
+              className="detail-original-title" 
+              style={{ 
+                fontSize: '0.9rem', 
+                color: 'var(--color-text-secondary)', 
+                fontStyle: 'italic', 
+                marginTop: '-0.5rem', 
+                marginBottom: '1rem',
+                opacity: 0.8
+              }}
+            >
+              Tiêu đề gốc: {originalTitle}
+            </div>
+          )}
 
           {rescrapeState !== 'idle' && rescrapeMessage && (
             <div className={`detail-rescrape-banner rescrape-${rescrapeState}`} role="status" aria-live="polite">

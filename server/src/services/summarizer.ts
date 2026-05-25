@@ -219,6 +219,7 @@ function buildSummaryRepairPrompt(rawOutput: string, config: PromptConfig): stri
 
 Required JSON shape:
 {
+  "translated_title": "translated title in Vietnamese, max 120 characters",
   "tldr": "1-2 natural sentences, max 200 characters",
   "summary_short": "1 short paragraph, max 300 characters",
   "hot_score": 1,
@@ -258,6 +259,7 @@ function buildStructuredOutputContract(config: PromptConfig): string {
   return `Return ONLY one valid JSON object. Do not wrap it in markdown fences.
 JSON schema:
 {
+  "translated_title": "translated title in Vietnamese, max 120 characters, matching natural and standard Vietnamese language style. If the original title is already in Vietnamese, copy it exactly.",
   "tldr": "1-2 natural sentences, max 200 characters",
   "summary_short": "1 short paragraph for article cards, max 300 characters",
   "hot_score": 1,
@@ -266,7 +268,8 @@ JSON schema:
 }
 
 Rules for JSON fields:
-- Write all human-readable fields in ${config.output_language}.
+- Write all human-readable fields (translated_title, tldr, summary_short, editorial_markdown) in ${config.output_language}.
+- For translated_title, write a concise, compelling title in ${config.output_language} that captures the main point. If the original title is already in ${config.output_language}, copy it exactly.
 - If source text or quotes are in a foreign language, translate or paraphrase them into ${config.output_language}; do not copy full foreign-language sentences verbatim unless they are product names, proper nouns, code, metrics, hashtags, or specialist terms.
 - Preserve titles, source names, company names, product names, awards, personal names, and brand names exactly as written. Do not translate names such as Vietnam Game Awards, VNGGames, Funtap Games, Reddit, VOZ, YouTube, GitHub Trending.
 - Translate common descriptive place/entity terms into natural Vietnamese when they are not part of a formal title: "Tumbler Ridge secondary school" -> "Trường trung học Tumbler Ridge"; "Strait of Hormuz" -> "Eo biển Hormuz".
@@ -429,9 +432,10 @@ export async function summarizePendingArticles(): Promise<{ processed: number; s
              summary_short = $4,
              hot_score = $5,
              tags = $6,
+             translated_title = $7,
              last_summary_error = NULL
-         WHERE id = $7`,
-        [cleanedSummary, 'done', tldr || null, parsed.summaryShort, parsed.hotScore, parsed.tags, article.id]
+         WHERE id = $8`,
+        [cleanedSummary, 'done', tldr || null, parsed.summaryShort, parsed.hotScore, parsed.tags, parsed.translatedTitle || null, article.id]
       );
       succeeded++;
     } catch (err: any) {
@@ -521,7 +525,7 @@ export async function generateDigest(): Promise<string | null> {
   const articleLimit = parseDigestArticleLimit();
 
   const articlesForDigest = await getMany(
-    `SELECT a.id, a.title, a.summary_text, a.summary_short, a.hot_score, a.tags, a.url, a.published_at,
+    `SELECT a.id, a.title, a.translated_title, a.summary_text, a.summary_short, a.hot_score, a.tags, a.url, a.published_at,
             s.name as source_name, s.category
      FROM articles a
      LEFT JOIN sources s ON s.id = a.source_id
@@ -542,7 +546,8 @@ export async function generateDigest(): Promise<string | null> {
     .map((a, i) => {
       const score = a.hot_score ? ` | score ${a.hot_score}` : '';
       const tags = Array.isArray(a.tags) && a.tags.length > 0 ? ` | tags: ${a.tags.join(', ')}` : '';
-      return `${i + 1}. [${a.source_name}${score}${tags}] ${a.title}\n   ${a.summary_short || a.summary_text || 'Chưa có tóm tắt'}`;
+      const title = a.translated_title || a.title;
+      return `${i + 1}. [${a.source_name}${score}${tags}] ${title}\n   ${a.summary_short || a.summary_text || 'Chưa có tóm tắt'}`;
     })
     .join('\n\n');
 

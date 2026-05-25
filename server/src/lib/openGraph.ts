@@ -1,6 +1,7 @@
 type ArticleMetaInput = {
   id: string;
   title?: string | null;
+  translated_title?: string | null; // Added
   tldr?: string | null;
   summary_text?: string | null;
   raw_excerpt?: string | null;
@@ -59,7 +60,8 @@ export function buildArticleMeta({
   article: ArticleMetaInput;
   articleUrl: string;
 }): string {
-  const title = stripPreviewMarkup(article.title || 'SynthNews');
+  const articleTitle = article.translated_title || article.title || 'SynthNews';
+  const title = stripPreviewMarkup(articleTitle);
   const description = pickDescription(article);
   const rawImageUrl = normalizeImageUrl(article.image_url, articleUrl);
   // Route through image proxy for optimized WebP delivery

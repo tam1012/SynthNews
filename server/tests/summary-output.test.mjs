@@ -102,3 +102,18 @@ test('parse legacy structured keys from older AI outputs', () => {
   assert.deepEqual(Array.from(parsed.tags), ['Tech']);
   assert.match(parsed.editorialMarkdown, /repair metadata/);
 });
+
+test('parse structured JSON summary with translated title', () => {
+  const { parseAiSummaryOutput } = loadTsModule('../src/lib/summaryOutput.ts');
+  const parsed = parseAiSummaryOutput(JSON.stringify({
+    translated_title: 'Tiêu đề tiếng Việt',
+    tldr: 'Tin chính trong một câu.',
+    summary_short: 'Bản tóm tắt ngắn.',
+    hot_score: 8,
+    tags: ['AI'],
+    editorial_markdown: '## Heading\n\nNội dung phân tích rất dài và chi tiết để đảm bảo bài viết khả dụng cho người đọc xem tóm tắt thông tin từ AI. Chúng ta cần viết dài hơn một chút để vượt qua 120 ký tự bắt buộc trong logic kiểm tra.',
+  }), ['AI']);
+
+  assert.equal(parsed.translatedTitle, 'Tiêu đề tiếng Việt');
+  assert.equal(parsed.isUsable, true);
+});

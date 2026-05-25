@@ -25,6 +25,7 @@ articles.get('/search', async (c) => {
   const rows = await getMany(
     `SELECT a.id, a.source_id, a.url, a.title, a.author, a.published_at,
             a.summary_short, a.tldr, a.hot_score, a.tags, a.image_url, a.created_at,
+            a.translated_title,
             s.name as source_name, s.type as source_type,
             CASE WHEN a.title ILIKE $1 THEN 2 ELSE 0 END +
             CASE WHEN a.summary_short ILIKE $1 THEN 1 ELSE 0 END AS relevance
@@ -146,6 +147,7 @@ articles.get('/', async (c) => {
             a.content_type, a.language, a.raw_excerpt, a.summary_text, a.tldr,
             a.summary_short, a.hot_score, a.tags,
             a.summary_status, a.retry_count, a.last_summary_error, a.image_url, a.created_at,
+            a.translated_title,
             s.name as source_name, s.type as source_type,
             ${LOCAL_DATE_TEXT_SQL} as local_date
      FROM articles a
@@ -285,6 +287,7 @@ articles.get('/:id', async (c) => {
             a.content_type, a.language, a.raw_excerpt, a.summary_text, a.tldr,
             a.summary_short, a.hot_score, a.tags,
             a.summary_status, a.retry_count, a.last_summary_error, a.image_url, a.created_at, a.updated_at,
+            a.translated_title,
             s.name as source_name, s.type as source_type
      FROM articles a
      LEFT JOIN sources s ON s.id = a.source_id
