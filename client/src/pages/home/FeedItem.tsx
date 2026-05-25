@@ -56,13 +56,11 @@ export function FeedItem({
   isActive,
   isRead,
   onClick,
-  isHero,
 }: {
   article: any;
   isActive?: boolean;
   isRead?: boolean;
   onClick: () => void;
-  isHero?: boolean;
 }) {
   const sourceLabel = extractSourceLabel(article);
   const title = cleanTitle(article.translated_title || article.title);
@@ -75,7 +73,7 @@ export function FeedItem({
 
   return (
     <article
-      className={`feed-item ${isActive ? 'active' : ''} ${isRead ? 'is-read' : ''} ${isHero ? 'feed-item-hero' : ''}`}
+      className={`feed-item ${isActive ? 'active' : ''} ${isRead ? 'is-read' : ''}`}
       onClick={onClick}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } }}
       onMouseEnter={preloadMarkdown}

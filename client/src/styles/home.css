@@ -638,27 +638,6 @@
 }
 .feed-item.is-read .feed-item-source { opacity: 0.5; }
 
-/* Hero article — first item in feed */
-.feed-item-hero {
-  padding: 24px 0;
-}
-.feed-item-hero .feed-item-title {
-  font-size: 1.15rem;
-  line-height: 1.32;
-  letter-spacing: -0.03em;
-}
-.feed-item-hero .feed-item-preview {
-  display: -webkit-box;
-  -webkit-line-clamp: 4;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-@media (min-width: 1100px) {
-  .feed-item-hero .feed-item-title {
-    font-size: 1.22rem;
-  }
-}
-
 /* Copy toast */
 .copy-toast {
   position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
