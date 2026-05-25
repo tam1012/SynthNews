@@ -76,6 +76,7 @@ Project này được thiết kế cho nhu cầu tự host cá nhân: ít thao t
 - Forum rescrape cho Reddit/VOZ trong vài giờ đầu để cập nhật comment mới.
 - AI tóm tắt theo prompt riêng cho tin báo và forum, prompt config quản lý qua admin.
 - TLDR được trích từ structured JSON output hoặc tag `<tldr>` legacy.
+- Dịch tiêu đề bài viết nước ngoài sang tiếng Việt bằng AI trong bước tóm tắt bài viết, hỗ trợ hiển thị song song tiêu đề dịch và tiêu đề gốc ở trang chi tiết.
 - Digest định kỳ gom các bài đã tóm tắt trong 24 giờ gần nhất.
 - Source auto-detect: nhập URL, backend tự nhận diện loại source (RSS, Reddit, VOZ, GitHub, web).
 
@@ -178,7 +179,7 @@ DevOps:
 │   │   ├── db/
 │   │   │   ├── index.ts            # PostgreSQL connection
 │   │   │   ├── migrate.ts          # Migration runner
-│   │   │   └── migrations/         # 12 SQL migration files
+│   │   │   └── migrations/         # 15 SQL migration files
 │   │   ├── jobs/scheduler.ts       # Cron scheduler + job lock
 │   │   ├── lib/
 │   │   │   ├── auth.ts             # Auth middleware + rate limit
@@ -410,6 +411,7 @@ Migrations hiện có (14 file):
 - `012_source_profiles.sql` — source_profiles cho AI-learned selectors
 - `013_blocklist.sql` — blocklist URL/domain patterns
 - `014_source_feed_category.sql` — feed_category (news/tech) cho sources
+- `015_add_translated_title.sql` — cột translated_title cho articles để lưu tiêu đề đã dịch
 
 Bảng chính:
 
@@ -850,7 +852,7 @@ Nếu dùng domain riêng (không phải domain mẫu trong repo), cập nhật 
 - Nếu sửa frontend layout đọc tin, kiểm tra hard refresh các route `/`, `/voz`, `/reddit`, `/digest`, `/article/:id`.
 - Nếu sửa Open Graph hoặc deep link, kiểm tra production build vì server chỉ inject meta khi có `server/public/index.html`.
 - Nếu sửa ảnh bài viết, kiểm tra ảnh lỗi/placeholder để không còn khung ảnh trống lớn trong article detail.
-- Nếu sửa prompt tóm tắt, kiểm tra giữ tên riêng như `Vietnam Game Awards`, `VNGGames`, `Funtap Games` và dịch cụm mô tả phổ biến như `Strait of Hormuz` → `Eo biển Hormuz`.
+- Nếu sửa prompt tóm tắt, kiểm tra giữ tên riêng như `Vietnam Game Awards`, `VNGGames`, `Funtap Games` và dịch cụm mô tả phổ biến như `Strait of Hormuz` → `Eo biển Hormuz`. Đồng thời, đảm bảo prompt yêu cầu AI trả về trường JSON `translated_title` để hệ thống lưu được tiêu đề dịch.
 - Nếu dùng cache assets 1 năm, file build phải có hash như Vite mặc định. Không cache immutable cho HTML.
 - Nếu AI provider trả summary không có `<tldr>`, bài vẫn có summary nhưng list preview sẽ fallback sang excerpt/summary.
 - Nếu source Reddit/VOZ thiếu comment lúc mới scrape, forum rescrape và retry job sẽ có cơ hội cập nhật lại trong vài giờ đầu.
