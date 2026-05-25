@@ -48,6 +48,11 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
       throw new Error(data.error?.message || data.message || 'API request failed');
     }
 
+    if (!cachePolicy.cacheable) {
+      responseCache.clear();
+      inFlightRequests.clear();
+    }
+
     if (cachePolicy.cacheable) {
       responseCache.set(cacheKey, {
         data,

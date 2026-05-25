@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { api } from '../services/api';
 import { useFetch } from '../hooks/useApi';
 
@@ -13,7 +13,8 @@ function formatNextRun(nextRunAt: string | null | undefined): string {
 
 export function Sources() {
   const { data: sources, loading, error, reload } = useFetch(() => api.getSources());
-  const sourceList = Array.isArray(sources) ? sources : [];
+  const [localSources, setLocalSources] = useState<any[]>([]);
+  const sourceList = localSources;
   const [showForm, setShowForm] = useState(false);
   const [detectUrl, setDetectUrl] = useState('');
   const [detecting, setDetecting] = useState(false);
@@ -33,6 +34,23 @@ export function Sources() {
   const [scrapingId, setScrapingId] = useState<string | null>(null);
   const [formError, setFormError] = useState('');
   const [toast, setToast] = useState<{ message: string; isError?: boolean } | null>(null);
+
+  const sortSources = useCallback((items: any[]) => (
+    [...items].sort((a, b) => {
+      if (a.is_enabled !== b.is_enabled) return a.is_enabled ? -1 : 1;
+      return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+    })
+  ), []);
+
+  useEffect(() => {
+    if (Array.isArray(sources)) {
+      setLocalSources(sortSources(sources));
+    }
+  }, [sources, sortSources]);
+
+  const upsertSource = useCallback((source: any) => {
+    setLocalSources((current) => sortSources(current.map((item) => (item.id === source.id ? source : item))));
+  }, [sortSources]);
 
   const showToast = useCallback((message: string, isError = false) => {
     setToast({ message, isError });
@@ -91,16 +109,17 @@ export function Sources() {
     setFormError('');
     try {
       if (editingId) {
-        await api.updateSource(editingId, formData);
+        const result = await api.updateSource(editingId, formData);
+        upsertSource(result.data);
       } else {
-        await api.createSource(formData);
+        const result = await api.createSource(formData);
+        setLocalSources((current) => sortSources([result.data, ...current]));
       }
       setFormData({ type: 'rss', name: '', url: '', language: 'vi', category: '', fetch_interval_minutes: 60, parser_config: undefined, feed_category: 'news' });
       setEditingId(null);
       setShowForm(false);
       setDetectUrl('');
       setDetectResult(null);
-      reload();
     } catch (err: any) {
       setFormError(err.message);
     } finally {
@@ -131,7 +150,7 @@ export function Sources() {
     if (!confirm(`Xóa nguồn "${name}"?`)) return;
     try {
       await api.deleteSource(id);
-      reload();
+      setLocalSources((current) => current.filter((source) => source.id !== id));
     } catch (err: any) {
       alert('Lỗi: ' + err.message);
     }
@@ -139,8 +158,8 @@ export function Sources() {
 
   const handleToggle = async (id: string) => {
     try {
-      await api.toggleSource(id);
-      reload();
+      const result = await api.toggleSource(id);
+      upsertSource(result.data);
     } catch (err: any) {
       alert('Lỗi: ' + err.message);
     }
@@ -167,8 +186,8 @@ export function Sources() {
 
   const handleChangeCategory = async (id: string, feed_category: 'news' | 'tech') => {
     try {
-      await api.updateSource(id, { feed_category });
-      reload();
+      const result = await api.updateSource(id, { feed_category });
+      upsertSource(result.data);
     } catch (err: any) {
       alert('Lỗi: ' + err.message);
     }
