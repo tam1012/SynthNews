@@ -1,6 +1,14 @@
-import { getOne, query } from '../../db/index.js';
+import { getOne, getMany, query } from '../../db/index.js';
 import { decodeHtmlEntities } from '../../lib/htmlEntities.js';
 import { createContentHash, generateId, truncate } from '../../lib/utils.js';
+import {
+  CLUSTER_WINDOW_HOURS,
+  NOVELTY_THRESHOLD,
+  SIMILARITY_THRESHOLD,
+  buildClusterSignature,
+  computeNovelty,
+  computeSimilarity,
+} from '../../lib/similarity.js';
 
 interface ArticleWriterSource {
   id: string;
@@ -62,9 +70,11 @@ export interface ArticleInsertRow {
   content_hash: string;
   image_url: string | null;
   metadata: any;
-  summary_status: 'pending';
+  summary_status: 'pending' | 'skipped';
   retry_count: 0;
-  last_summary_error: null;
+  last_summary_error: string | null;
+  parent_article_id: string | null;
+  cluster_signature: string | null;
 }
 
 export function buildArticleInsertRow(input: ArticleInsertInput): ArticleInsertRow {
@@ -93,7 +103,84 @@ export function buildArticleInsertRow(input: ArticleInsertInput): ArticleInsertR
     summary_status: 'pending',
     retry_count: 0,
     last_summary_error: null,
+    parent_article_id: null,
+    cluster_signature: buildClusterSignature(title, fullRawExcerpt || fullRawContent || ''),
   };
+}
+
+interface ClusterCandidateRow {
+  id: string;
+  title: string;
+  raw_excerpt: string;
+  image_url: string | null;
+  parent_article_id: string | null;
+  summary_text: string | null;
+}
+
+interface ClusterDecision {
+  parentId: string | null;
+  reason: string;
+  score?: number;
+  novelty?: number;
+}
+
+/**
+ * Look for a near-duplicate leader within the recent clustering window. If found and the
+ * candidate adds little new info, returns the leader id so the new article is filed as a
+ * follower (and skipped from AI summarization). Otherwise returns null and the article is
+ * inserted as an independent leader.
+ */
+async function findClusterParent(row: ArticleInsertRow): Promise<ClusterDecision> {
+  // Skip clustering for forum content (Reddit/VOZ) — different OPs are intentionally separate.
+  if (/voz|reddit/i.test(row.url) || row.title.startsWith('[r/')) {
+    return { parentId: null, reason: 'forum-skip' };
+  }
+
+  const candidates = await getMany<ClusterCandidateRow>(
+    `SELECT id, title, raw_excerpt, image_url, parent_article_id, summary_text
+     FROM articles
+     WHERE created_at >= NOW() - INTERVAL '${CLUSTER_WINDOW_HOURS} hours'
+       AND id <> $1
+     ORDER BY created_at DESC
+     LIMIT 200`,
+    [row.id]
+  );
+
+  if (candidates.length === 0) return { parentId: null, reason: 'no-candidates' };
+
+  const candidateForCmp = {
+    id: row.id,
+    title: row.title,
+    excerpt: row.raw_excerpt,
+    imageUrl: row.image_url,
+  };
+
+  let best: { row: ClusterCandidateRow; score: number } | null = null;
+  for (const cand of candidates) {
+    const sim = computeSimilarity(candidateForCmp, {
+      id: cand.id,
+      title: cand.title,
+      excerpt: cand.raw_excerpt || '',
+      imageUrl: cand.image_url,
+    });
+    if (sim.score >= SIMILARITY_THRESHOLD && (!best || sim.score > best.score)) {
+      best = { row: cand, score: sim.score };
+    }
+  }
+
+  if (!best) return { parentId: null, reason: 'no-similar' };
+
+  const leaderId = best.row.parent_article_id || best.row.id;
+  // Compare candidate's full content against leader's content to detect follow-up updates.
+  const leaderContent = `${best.row.title} ${best.row.summary_text || best.row.raw_excerpt || ''}`;
+  const candidateContent = `${row.title} ${row.raw_content || row.raw_excerpt}`;
+  const novelty = computeNovelty(candidateContent, leaderContent);
+
+  if (novelty >= NOVELTY_THRESHOLD) {
+    return { parentId: null, reason: 'novel-update', score: best.score, novelty };
+  }
+
+  return { parentId: leaderId, reason: 'duplicate', score: best.score, novelty };
 }
 
 export async function insertArticleIfNew(input: ArticleInsertInput): Promise<boolean> {
@@ -106,11 +193,22 @@ export async function insertArticleIfNew(input: ArticleInsertInput): Promise<boo
   const hashExists = await getOne('SELECT id FROM articles WHERE content_hash = $1', [row.content_hash]);
   if (hashExists) return false;
 
+  const cluster = await findClusterParent(row);
+  if (cluster.parentId) {
+    row.parent_article_id = cluster.parentId;
+    row.summary_status = 'skipped';
+    const scorePart = cluster.score !== undefined ? ` score=${cluster.score.toFixed(2)}` : '';
+    const novPart = cluster.novelty !== undefined ? ` novelty=${cluster.novelty.toFixed(2)}` : '';
+    row.last_summary_error = `Đã gom cụm vào bài ${cluster.parentId}${scorePart}${novPart}`;
+    console.log(`[cluster] ${row.id} -> follower of ${cluster.parentId}${scorePart}${novPart}`);
+  }
+
   const insertResult = await query(
     `INSERT INTO articles (id, source_id, external_id, url, title, author, published_at,
                            content_type, language, raw_excerpt, raw_content, content_hash,
-                           image_url, metadata, summary_status, retry_count, last_summary_error)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'pending', 0, NULL)
+                           image_url, metadata, summary_status, retry_count, last_summary_error,
+                           parent_article_id, cluster_signature)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 0, $16, $17, $18)
      ON CONFLICT (url) DO NOTHING
      RETURNING id`,
     [
@@ -128,6 +226,10 @@ export async function insertArticleIfNew(input: ArticleInsertInput): Promise<boo
       row.content_hash,
       row.image_url,
       row.metadata ? JSON.stringify(row.metadata) : null,
+      row.summary_status,
+      row.last_summary_error,
+      row.parent_article_id,
+      row.cluster_signature,
     ]
   );
 

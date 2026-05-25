@@ -404,6 +404,23 @@ export function Home() {
     if (tab === 'digest') setTab('all');
   }, [selectArticle, tab]);
 
+  // Open a cluster sibling by id. The sibling row in the cluster list only carries
+  // a thin payload; load the full article via API before swapping it into the detail panel.
+  const handleSelectArticleById = useCallback((id: string) => {
+    if (!id) return;
+    (async () => {
+      try {
+        const res: any = await api.getArticle(id);
+        if (res?.data) {
+          selectArticle(res.data);
+          if (tab === 'digest') setTab('all');
+        }
+      } catch {
+        // ignore — keep current article visible
+      }
+    })();
+  }, [selectArticle, tab]);
+
   const selectedArticleIndex = selected ? articles.findIndex(article => article.id === selected.id) : -1;
   const hasPrevArticle = selectedArticleIndex > 0;
   const hasNextArticle = selectedArticleIndex >= 0 && selectedArticleIndex < articles.length - 1;
@@ -674,6 +691,7 @@ export function Home() {
               hasNextArticle={hasNextArticle}
               navIndex={selectedArticleIndex + 1}
               navTotal={articles.length}
+              onSelectArticle={handleSelectArticleById}
             />
           ) : hasArticleDeepLink && deepLinkLoading ? (
             <ArticleDetailSkeleton />

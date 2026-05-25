@@ -11,6 +11,19 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const requireFromTest = createRequire(import.meta.url);
 const { decodeHTML } = requireFromTest('entities');
 
+// Default similarity stub: assume no clusters and no novelty pressure so the writer behaves
+// like it did before clustering was introduced. Tests that need cluster behavior can supply
+// their own stub via the `stubs` argument.
+const defaultSimilarityStub = {
+  CLUSTER_WINDOW_HOURS: 6,
+  SIMILARITY_THRESHOLD: 0.6,
+  NOVELTY_THRESHOLD: 0.3,
+  IMAGE_MATCH_BONUS: 0.15,
+  buildClusterSignature: () => 'sig',
+  computeNovelty: () => 1,
+  computeSimilarity: () => ({ score: 0, titleScore: 0, excerptScore: 0, imageMatch: false }),
+};
+
 function loadTsModule(relativePath, stubs = {}) {
   const source = readFileSync(resolve(__dirname, relativePath), 'utf8');
   const { outputText } = ts.transpileModule(source, {
@@ -20,11 +33,15 @@ function loadTsModule(relativePath, stubs = {}) {
     },
   });
   const moduleContext = { exports: {} };
+  const mergedStubs = {
+    '../../lib/similarity.js': defaultSimilarityStub,
+    ...stubs,
+  };
   vm.runInNewContext(outputText, {
     exports: moduleContext.exports,
     module: moduleContext,
     require: (name) => {
-      if (stubs[name]) return stubs[name];
+      if (mergedStubs[name]) return mergedStubs[name];
       throw new Error(`Unexpected require ${name}`);
     },
   });
@@ -133,6 +150,7 @@ test('insert article skips duplicate URL before hashing', async () => {
         if (/WHERE url =/.test(sql)) return { id: 'existing' };
         return null;
       },
+      getMany: async () => [],
       query: async () => {
         throw new Error('insert should not be called');
       },
@@ -161,6 +179,7 @@ test('insert article rejects short article content before insert', async () => {
   const { insertArticleIfNew } = loadTsModule('../src/services/fetchers/article-writer.ts', {
     '../../db/index.js': {
       getOne: async () => null,
+      getMany: async () => [],
       query: async () => {
         throw new Error('insert should not be called');
       },
@@ -190,6 +209,7 @@ test('insert article allows short video content', async () => {
   const { insertArticleIfNew } = loadTsModule('../src/services/fetchers/article-writer.ts', {
     '../../db/index.js': {
       getOne: async () => null,
+      getMany: async () => [],
       query: async () => {
         inserted = true;
         return { rowCount: 1 };

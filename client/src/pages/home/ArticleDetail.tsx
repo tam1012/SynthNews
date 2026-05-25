@@ -13,6 +13,7 @@ export function ArticleDetail({
   hasNextArticle,
   navIndex,
   navTotal,
+  onSelectArticle,
 }: {
   article: any;
   onClose: () => void;
@@ -22,6 +23,7 @@ export function ArticleDetail({
   hasNextArticle: boolean;
   navIndex: number;
   navTotal: number;
+  onSelectArticle?: (id: string) => void;
 }) {
   const overlayRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -175,6 +177,37 @@ export function ArticleDetail({
       setRescrapeMessage(err?.message || 'Lỗi khi gọi API rescrape.');
     }
   }, [article.id, rescrapeState]);
+
+  // Cluster siblings: each sibling can be opened directly
+  const siblings: any[] = Array.isArray(article.cluster_siblings) ? article.cluster_siblings : [];
+  const isFollower = Boolean(article.parent_article_id);
+  const [unclusterState, setUnclusterState] = useState<'idle' | 'loading' | 'done' | 'error'>('idle');
+  const [unclusterMessage, setUnclusterMessage] = useState('');
+
+  useEffect(() => {
+    setUnclusterState('idle');
+    setUnclusterMessage('');
+  }, [article.id]);
+
+  const handleUncluster = useCallback(async () => {
+    if (unclusterState === 'loading') return;
+    if (!confirm('Tách bài này khỏi cụm và xếp lịch tóm tắt lại?')) return;
+    setUnclusterState('loading');
+    setUnclusterMessage('Đang tách khỏi cụm...');
+    try {
+      const res: any = await api.unclusterArticle(article.id);
+      if (res?.success) {
+        setUnclusterState('done');
+        setUnclusterMessage(res.message || 'Đã tách. Tải lại sau khoảng 30-60s.');
+      } else {
+        setUnclusterState('error');
+        setUnclusterMessage(res?.message || res?.error?.message || 'Không tách được.');
+      }
+    } catch (err: any) {
+      setUnclusterState('error');
+      setUnclusterMessage(err?.message || 'Lỗi khi gọi API uncluster.');
+    }
+  }, [article.id, unclusterState]);
 
   // Backdrop click
   const handleBackdropClick = (e: React.MouseEvent) => {
@@ -353,6 +386,65 @@ export function ArticleDetail({
               <p>{article.raw_excerpt || 'Chưa có tóm tắt.'}</p>
             )}
           </div>
+
+          {(siblings.length > 0 || isFollower) && (
+            <div className="detail-cluster-section" aria-label="Các nguồn khác đưa tin">
+              <h3 className="detail-cluster-title">
+                Các nguồn khác cùng đưa tin
+                <span className="detail-cluster-count">
+                  {isFollower
+                    ? `Bài này thuộc cụm có ${siblings.length + 1} bài`
+                    : `${siblings.length} bài liên quan`}
+                </span>
+              </h3>
+              <ul className="detail-cluster-list">
+                {siblings.map((s) => {
+                  const sLabel = extractSourceLabel(s);
+                  const sTitle = cleanTitle(s.translated_title || s.title);
+                  const sTime = s.published_at ? new Date(s.published_at).toLocaleString('vi-VN', {
+                    day: 'numeric', month: 'numeric',
+                    hour: '2-digit', minute: '2-digit',
+                  }) : '';
+                  const isLeader = !s.parent_article_id;
+                  return (
+                    <li key={s.id} className="detail-cluster-item">
+                      <button
+                        type="button"
+                        className="detail-cluster-link"
+                        onClick={() => onSelectArticle?.(s.id)}
+                        title={isLeader ? 'Bài đại diện của cụm' : sTitle}
+                      >
+                        <span className={`feed-item-source source-${sLabel.toLowerCase().replace(/[^a-z0-9]/g, '')}`}>
+                          {sLabel}
+                          {isLeader && <span className="detail-cluster-leader-mark"> ★</span>}
+                        </span>
+                        <span className="detail-cluster-link-title">{sTitle}</span>
+                        {sTime && <span className="detail-cluster-link-time">{sTime}</span>}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+              {isFollower && (
+                <div className="detail-cluster-admin">
+                  <button
+                    type="button"
+                    className={`detail-cluster-uncluster-btn ${unclusterState === 'loading' ? 'is-loading' : ''}`}
+                    onClick={handleUncluster}
+                    disabled={unclusterState === 'loading'}
+                    title="Admin: tách bài này khỏi cụm và yêu cầu AI tóm tắt lại"
+                  >
+                    {unclusterState === 'loading' ? 'Đang tách...' : 'Tách khỏi cụm'}
+                  </button>
+                  {unclusterState !== 'idle' && unclusterMessage && (
+                    <span className={`detail-cluster-uncluster-msg uncluster-${unclusterState}`}>
+                      {unclusterMessage}
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="detail-reading-nav" aria-label="Chuyển bài">

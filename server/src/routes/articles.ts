@@ -123,11 +123,12 @@ articles.get('/', async (c) => {
   const feedTab = c.req.query('feedTab');
   const sort = c.req.query('sort');
   const qualityIssue = c.req.query('qualityIssue');
+  const includeFollowers = c.req.query('includeFollowers') === '1';
   const offset = (page - 1) * limit;
 
   let filters;
   try {
-    filters = buildArticleListFilters({ sourceId, status, date, tag, minScore, feedTab, sort, qualityIssue });
+    filters = buildArticleListFilters({ sourceId, status, date, tag, minScore, feedTab, sort, qualityIssue, includeFollowers });
   } catch (err: any) {
     return c.json({ success: false, error: { code: 'VALIDATION', message: err.message } }, 400);
   }
@@ -147,7 +148,8 @@ articles.get('/', async (c) => {
             a.content_type, a.language, a.raw_excerpt, a.summary_text, a.tldr,
             a.summary_short, a.hot_score, a.tags,
             a.summary_status, a.retry_count, a.last_summary_error, a.image_url, a.created_at,
-            a.translated_title,
+            a.translated_title, a.parent_article_id,
+            (SELECT COUNT(*)::int FROM articles f WHERE f.parent_article_id = a.id) AS cluster_count,
             s.name as source_name, s.type as source_type,
             ${LOCAL_DATE_TEXT_SQL} as local_date
      FROM articles a
@@ -279,15 +281,90 @@ articles.delete('/:id', async (c) => {
   return c.json({ success: true, data: { deleted: true } });
 });
 
+// Detach an article from its cluster (admin: when clustering was wrong).
+// Promotes the article back to leader status and clears its skipped marker so it can be
+// re-summarized by the AI pipeline.
+articles.post('/:id/uncluster', async (c) => {
+  const { id } = c.req.param();
+  const article = await getOne<any>(
+    'SELECT id, parent_article_id, summary_status FROM articles WHERE id = $1',
+    [id]
+  );
+  if (!article) {
+    return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Article not found' } }, 404);
+  }
+  if (!article.parent_article_id) {
+    return c.json({ success: false, error: { code: 'NOT_A_FOLLOWER', message: 'Bài này không phải follower của cụm nào.' } }, 400);
+  }
+
+  // Reset to pending so the summarizer picks it up on the next run.
+  await query(
+    `UPDATE articles
+     SET parent_article_id = NULL,
+         summary_status = CASE WHEN summary_status = 'skipped' THEN 'pending' ELSE summary_status END,
+         last_summary_error = NULL
+     WHERE id = $1`,
+    [id]
+  );
+
+  import('../jobs/scheduler.js').then(m => m.runSummarizeJob()).catch(console.error);
+
+  return c.json({ success: true, message: 'Đã tách khỏi cụm và xếp lịch tóm tắt lại.' });
+});
+
+// Force-attach an article into another cluster (admin: when auto-clustering missed it).
+// The target leader must itself be a leader (parent_article_id IS NULL).
+articles.post('/:id/cluster', async (c) => {
+  const { id } = c.req.param();
+  const body = await c.req.json().catch(() => ({}));
+  const targetId = typeof body?.parent_article_id === 'string' ? body.parent_article_id.trim() : '';
+
+  if (!targetId) {
+    return c.json({ success: false, error: { code: 'VALIDATION', message: 'parent_article_id is required' } }, 400);
+  }
+  if (targetId === id) {
+    return c.json({ success: false, error: { code: 'VALIDATION', message: 'Cannot cluster an article into itself' } }, 400);
+  }
+
+  const article = await getOne<any>('SELECT id FROM articles WHERE id = $1', [id]);
+  if (!article) {
+    return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Article not found' } }, 404);
+  }
+  const target = await getOne<any>('SELECT id, parent_article_id FROM articles WHERE id = $1', [targetId]);
+  if (!target) {
+    return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Target leader not found' } }, 404);
+  }
+  if (target.parent_article_id) {
+    return c.json({ success: false, error: { code: 'TARGET_NOT_LEADER', message: 'Bài đích đã là follower trong cụm khác.' } }, 400);
+  }
+
+  await query(
+    `UPDATE articles
+     SET parent_article_id = $1,
+         summary_status = 'skipped',
+         last_summary_error = $2
+     WHERE id = $3`,
+    [targetId, `Đã gom cụm thủ công vào bài ${targetId}`, id]
+  );
+
+  // Re-parent any followers that pointed at the now-demoted article so the cluster stays flat.
+  await query(
+    `UPDATE articles SET parent_article_id = $1 WHERE parent_article_id = $2`,
+    [targetId, id]
+  );
+
+  return c.json({ success: true, message: `Đã gom bài vào cụm ${targetId}.` });
+});
+
 // Chi tiet article
 articles.get('/:id', async (c) => {
   const { id } = c.req.param();
-  const row = await getOne(
+  const row = await getOne<any>(
     `SELECT a.id, a.source_id, a.url, a.title, a.author, a.published_at,
             a.content_type, a.language, a.raw_excerpt, a.summary_text, a.tldr,
             a.summary_short, a.hot_score, a.tags,
             a.summary_status, a.retry_count, a.last_summary_error, a.image_url, a.created_at, a.updated_at,
-            a.translated_title,
+            a.translated_title, a.parent_article_id,
             s.name as source_name, s.type as source_type
      FROM articles a
      LEFT JOIN sources s ON s.id = a.source_id
@@ -297,7 +374,32 @@ articles.get('/:id', async (c) => {
   if (!row) {
     return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Article not found' } }, 404);
   }
-  return c.json({ success: true, data: decodeArticleTextFields(row) });
+
+  // Find sibling articles in the same cluster.
+  // - If this article is a leader (parent_article_id IS NULL), siblings are all followers.
+  // - If this article is a follower, siblings are: leader + other followers (excluding self).
+  const leaderId = row.parent_article_id || row.id;
+  const siblings = await getMany<any>(
+    `SELECT a.id, a.url, a.title, a.translated_title, a.published_at, a.image_url,
+            a.parent_article_id,
+            s.name as source_name, s.type as source_type
+     FROM articles a
+     LEFT JOIN sources s ON s.id = a.source_id
+     WHERE (a.id = $1 OR a.parent_article_id = $1)
+       AND a.id <> $2
+     ORDER BY a.published_at ASC NULLS LAST, a.created_at ASC`,
+    [leaderId, id]
+  );
+
+  const decoded = decodeArticleTextFields(row);
+  return c.json({
+    success: true,
+    data: {
+      ...decoded,
+      cluster_leader_id: leaderId,
+      cluster_siblings: decodeArticleRows(siblings),
+    },
+  });
 });
 
 // Manual Rescrape (for Admin / per-article button)

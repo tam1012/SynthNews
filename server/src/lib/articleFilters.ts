@@ -18,6 +18,7 @@ export interface ArticleListFilterInput {
   feedTab?: string;
   sort?: string;
   qualityIssue?: string;
+  includeFollowers?: boolean;
 }
 
 export interface ArticleListFilters {
@@ -110,6 +111,15 @@ export function buildArticleListFilters(input: ArticleListFilterInput): ArticleL
     } else if (input.qualityIssue === 'short_summary') {
       clauses.push(`length(btrim(COALESCE(a.summary_text, ''))) < 200`);
     }
+  }
+
+  // Hide clustered followers from public feed by default. Admin views (status filter,
+  // qualityIssue filter, includeFollowers) bypass this so operators can still inspect them.
+  const showAllRows = Boolean(
+    input.includeFollowers || input.status || input.qualityIssue
+  );
+  if (!showAllRows) {
+    clauses.push('a.parent_article_id IS NULL');
   }
 
   return {

@@ -115,6 +115,11 @@ export const api = {
   getArticle: (id: string) => request<any>(`/articles/${id}`),
   resetArticleSummary: (id: string) => request<any>(`/articles/${id}/reset-summary`, { method: 'POST' }),
   rescrapeArticle: (id: string) => request<any>(`/articles/${id}/rescrape`, { method: 'POST' }),
+  unclusterArticle: (id: string) => request<any>(`/articles/${id}/uncluster`, { method: 'POST' }),
+  clusterArticle: (id: string, parentArticleId: string) => request<any>(`/articles/${id}/cluster`, {
+    method: 'POST',
+    body: JSON.stringify({ parent_article_id: parentArticleId }),
+  }),
   deleteArticle: (id: string) => request<any>(`/articles/${id}`, { method: 'DELETE' }),
   getArticleFetchJobs: (params?: { page?: number; limit?: number; status?: string }) => {
     const qs = new URLSearchParams();

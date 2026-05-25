@@ -89,6 +89,11 @@ export function FeedItem({
         </span>
         {time && <span className="feed-item-time">{time}</span>}
         <span className="feed-item-reading-time">{readingTime}</span>
+        {article.cluster_count > 0 && (
+          <span className="feed-item-cluster-badge" title={`${article.cluster_count + 1} nguồn cùng đưa tin về sự kiện này`}>
+            +{article.cluster_count} nguồn
+          </span>
+        )}
       </div>
       <div className="feed-item-body">
         <div className="feed-item-text">
