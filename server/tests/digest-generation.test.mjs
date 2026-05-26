@@ -54,6 +54,9 @@ function loadSummarizer(env = {}) {
     },
     './ai-client.js': {},
     './prompt-settings.js': {},
+    './post-summarize-cluster.js': {
+      maybeClusterAfterSummarize: async () => ({ attached: false, reason: 'stub' }),
+    },
     '../lib/promptConfig.js': {},
     '../lib/promoFilter.js': {
       isPromoTitle: () => false,
@@ -146,6 +149,9 @@ test('generate digest does not insert an empty AI response', async () => {
         custom_context: '',
       }),
     },
+    './post-summarize-cluster.js': {
+      maybeClusterAfterSummarize: async () => ({ attached: false, reason: 'stub' }),
+    },
     '../lib/promptConfig.js': {},
     '../lib/promoFilter.js': {
       isPromoTitle: () => false,
@@ -185,6 +191,9 @@ test('forum summary prompt requires translating foreign-language comments into V
       },
     },
     './prompt-settings.js': {},
+    './post-summarize-cluster.js': {
+      maybeClusterAfterSummarize: async () => ({ attached: false, reason: 'stub' }),
+    },
     '../lib/promptConfig.js': {},
     '../lib/promoFilter.js': {
       isPromoTitle: () => false,

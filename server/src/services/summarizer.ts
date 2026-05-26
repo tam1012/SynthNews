@@ -7,6 +7,7 @@ import { ParsedSummaryOutput, parseAiSummaryOutput } from '../lib/summaryOutput.
 import { isPromoTitle, buildPromoClassifyPrompt, isPromoClassification, shouldRunPromoClassification } from '../lib/promoFilter.js';
 import { callAi } from './ai-client.js';
 import { getPromptConfig } from './prompt-settings.js';
+import { maybeClusterAfterSummarize } from './post-summarize-cluster.js';
 
 interface ArticleForSummary {
   id: string;
@@ -441,6 +442,16 @@ export async function summarizePendingArticles(): Promise<{ processed: number; s
         [cleanedSummary, 'done', tldr || null, parsed.summaryShort, parsed.hotScore, parsed.tags, parsed.translatedTitle || null, article.id]
       );
       succeeded++;
+
+      // Cross-language clustering: now that translated_title and summary_short exist in
+      // a single normalized language (Vietnamese), retry clustering against other recent
+      // leaders. Catches duplicates the fetch-time pass missed because of script
+      // mismatch (e.g. zh-script source vs en-script source covering the same event).
+      try {
+        await maybeClusterAfterSummarize(article.id);
+      } catch (clusterErr) {
+        console.error(`[post-cluster] failed for ${article.id}:`, clusterErr);
+      }
     } catch (err: any) {
       if (err instanceof SummarySkippedError || isAiSafetyRejection(err)) {
         await query(
