@@ -5,6 +5,7 @@ import {
   CLUSTER_WINDOW_HOURS,
   NOVELTY_THRESHOLD,
   SIMILARITY_THRESHOLD,
+  TITLE_LOCK_THRESHOLD,
   buildClusterSignature,
   computeNovelty,
   computeSimilarity,
@@ -114,7 +115,6 @@ interface ClusterCandidateRow {
   raw_excerpt: string;
   image_url: string | null;
   parent_article_id: string | null;
-  summary_text: string | null;
 }
 
 interface ClusterDecision {
@@ -137,7 +137,7 @@ async function findClusterParent(row: ArticleInsertRow): Promise<ClusterDecision
   }
 
   const candidates = await getMany<ClusterCandidateRow>(
-    `SELECT id, title, raw_excerpt, image_url, parent_article_id, summary_text
+    `SELECT id, title, raw_excerpt, image_url, parent_article_id
      FROM articles
      WHERE created_at >= NOW() - INTERVAL '${CLUSTER_WINDOW_HOURS} hours'
        AND id <> $1
@@ -155,7 +155,7 @@ async function findClusterParent(row: ArticleInsertRow): Promise<ClusterDecision
     imageUrl: row.image_url,
   };
 
-  let best: { row: ClusterCandidateRow; score: number } | null = null;
+  let best: { row: ClusterCandidateRow; sim: ReturnType<typeof computeSimilarity> } | null = null;
   for (const cand of candidates) {
     const sim = computeSimilarity(candidateForCmp, {
       id: cand.id,
@@ -163,24 +163,33 @@ async function findClusterParent(row: ArticleInsertRow): Promise<ClusterDecision
       excerpt: cand.raw_excerpt || '',
       imageUrl: cand.image_url,
     });
-    if (sim.score >= SIMILARITY_THRESHOLD && (!best || sim.score > best.score)) {
-      best = { row: cand, score: sim.score };
+    if (sim.score >= SIMILARITY_THRESHOLD && (!best || sim.score > best.sim.score)) {
+      best = { row: cand, sim };
     }
   }
 
   if (!best) return { parentId: null, reason: 'no-similar' };
 
   const leaderId = best.row.parent_article_id || best.row.id;
-  // Compare candidate's full content against leader's content to detect follow-up updates.
-  const leaderContent = `${best.row.title} ${best.row.summary_text || best.row.raw_excerpt || ''}`;
-  const candidateContent = `${row.title} ${row.raw_content || row.raw_excerpt}`;
-  const novelty = computeNovelty(candidateContent, leaderContent);
 
-  if (novelty >= NOVELTY_THRESHOLD) {
-    return { parentId: null, reason: 'novel-update', score: best.score, novelty };
+  // Near-identical titles are a strong same-story signal across rewordings; skip the novelty
+  // gate so we don't reject duplicates whose leads happen to be phrased differently.
+  if (best.sim.titleScore >= TITLE_LOCK_THRESHOLD) {
+    return { parentId: leaderId, reason: 'duplicate-title-lock', score: best.sim.score, novelty: 0 };
   }
 
-  return { parentId: leaderId, reason: 'duplicate', score: best.score, novelty };
+  // Symmetric novelty on the same field on both sides (raw_excerpt). Comparing candidate's
+  // raw_content against the leader's summary_text would mix scripts/languages once the
+  // leader is summarized into Vietnamese, producing a false "novel-update" verdict.
+  const leaderText = `${best.row.title} ${best.row.raw_excerpt || ''}`;
+  const candidateText = `${row.title} ${row.raw_excerpt || ''}`;
+  const novelty = computeNovelty(candidateText, leaderText);
+
+  if (novelty >= NOVELTY_THRESHOLD) {
+    return { parentId: null, reason: 'novel-update', score: best.sim.score, novelty };
+  }
+
+  return { parentId: leaderId, reason: 'duplicate', score: best.sim.score, novelty };
 }
 
 export async function insertArticleIfNew(input: ArticleInsertInput): Promise<boolean> {

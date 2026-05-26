@@ -14,6 +14,9 @@ export const SIMILARITY_THRESHOLD = 0.60;
 export const NOVELTY_THRESHOLD = 0.30;
 export const IMAGE_MATCH_BONUS = 0.15;
 export const CLUSTER_WINDOW_HOURS = 6;
+// When titles match this closely, treat as same story regardless of excerpt novelty —
+// AP/Reuters/Yahoo wire republishes share titles verbatim while having distinct leads.
+export const TITLE_LOCK_THRESHOLD = 0.85;
 // Minimum token count for word-Jaccard to be meaningful (CJK falls back to bigrams).
 const MIN_TOKENS_FOR_WORD_JACCARD = 4;
 

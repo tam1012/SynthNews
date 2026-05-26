@@ -19,6 +19,7 @@ const defaultSimilarityStub = {
   SIMILARITY_THRESHOLD: 0.6,
   NOVELTY_THRESHOLD: 0.3,
   IMAGE_MATCH_BONUS: 0.15,
+  TITLE_LOCK_THRESHOLD: 0.85,
   buildClusterSignature: () => 'sig',
   computeNovelty: () => 1,
   computeSimilarity: () => ({ score: 0, titleScore: 0, excerptScore: 0, imageMatch: false }),
@@ -234,4 +235,94 @@ test('insert article allows short video content', async () => {
 
   assert.equal(result, true);
   assert.equal(inserted, true);
+});
+
+test('cluster: title-lock attaches as follower even when excerpts diverge (wire republish)', async () => {
+  const insertParams = [];
+  const { insertArticleIfNew } = loadTsModule('../src/services/fetchers/article-writer.ts', {
+    '../../db/index.js': {
+      getOne: async () => null,
+      getMany: async () => [
+        {
+          id: 'art_leader',
+          title: 'Quad foreign ministers hold talks in New Delhi',
+          raw_excerpt: 'Different lead text from the AP version of the wire story.',
+          image_url: null,
+          parent_article_id: null,
+        },
+      ],
+      query: async (sql, params) => {
+        insertParams.push(params);
+        return { rowCount: 1 };
+      },
+    },
+    '../../lib/utils.js': {
+      createContentHash: () => 'hash',
+      generateId: () => 'art_new',
+      truncate: (value) => value,
+    },
+    '../../lib/htmlEntities.js': { decodeHtmlEntities: decodeHTML },
+    '../../lib/similarity.js': {
+      ...defaultSimilarityStub,
+      computeSimilarity: () => ({ score: 1, titleScore: 1, excerptScore: 0.7, imageMatch: false }),
+      computeNovelty: () => 0.96, // would normally trigger novel-update; title-lock should override
+    },
+  });
+
+  await insertArticleIfNew({
+    source: { id: 'src_yahoo', language: 'en' },
+    url: 'https://yahoo.com/article/quad',
+    title: 'Quad foreign ministers hold talks in New Delhi',
+    rawExcerpt: 'A'.repeat(600),
+    rawContent: 'B'.repeat(600),
+  });
+
+  assert.equal(insertParams.length, 1, 'one insert');
+  // The 17th positional param is parent_article_id (see INSERT signature in article-writer.ts).
+  assert.equal(insertParams[0][16], 'art_leader');
+});
+
+test('cluster: low title score + high novelty stays independent (genuine follow-up)', async () => {
+  const insertParams = [];
+  const { insertArticleIfNew } = loadTsModule('../src/services/fetchers/article-writer.ts', {
+    '../../db/index.js': {
+      getOne: async () => null,
+      getMany: async () => [
+        {
+          id: 'art_leader',
+          title: 'Plane crash kills 5 in Texas',
+          raw_excerpt: 'A small plane crashed in rural Texas killing five people.',
+          image_url: null,
+          parent_article_id: null,
+        },
+      ],
+      query: async (sql, params) => {
+        insertParams.push(params);
+        return { rowCount: 1 };
+      },
+    },
+    '../../lib/utils.js': {
+      createContentHash: () => 'hash',
+      generateId: () => 'art_new',
+      truncate: (value) => value,
+    },
+    '../../lib/htmlEntities.js': { decodeHtmlEntities: decodeHTML },
+    '../../lib/similarity.js': {
+      ...defaultSimilarityStub,
+      // Above similarity threshold, but title is only modestly similar (no lock).
+      computeSimilarity: () => ({ score: 0.65, titleScore: 0.5, excerptScore: 0.65, imageMatch: false }),
+      computeNovelty: () => 0.5,
+    },
+  });
+
+  await insertArticleIfNew({
+    source: { id: 'src_news', language: 'en' },
+    url: 'https://example.com/plane-update',
+    title: 'NTSB names pilot of Texas plane crash, recovers black box',
+    rawExcerpt: 'A'.repeat(600),
+    rawContent: 'B'.repeat(600),
+  });
+
+  assert.equal(insertParams.length, 1);
+  assert.equal(insertParams[0][16], null, 'follow-up should remain independent leader');
 });
