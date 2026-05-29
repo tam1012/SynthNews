@@ -7,9 +7,6 @@ services:
     # StealthyFetcher leaves behind on crash/timeout. Without an init as PID 1,
     # these accumulate into thousands of defunct PIDs and melt the host CPU.
     init: true
-    # Hard ceiling on processes: one runaway fetch can fork hundreds of browser
-    # children; cap it so a leak can never exhaust host PIDs again.
-    pids_limit: 512
     environment:
       TZ: Asia/Ho_Chi_Minh
       SCRAPLING_TIMEOUT_MS: ${SCRAPLING_TIMEOUT_MS:-60000}
@@ -26,6 +23,9 @@ services:
         limits:
           cpus: "2.0"
           memory: 2G
+          # Hard ceiling on processes: one runaway fetch can fork hundreds of
+          # browser children; cap it so a leak can never exhaust host PIDs again.
+          pids: 512
 
   db:
     image: postgres:16-alpine
