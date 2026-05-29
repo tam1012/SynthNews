@@ -46,6 +46,32 @@ test('summary queue filters articles by summary status and shows operational fie
   assert.match(source, /Chạy tóm tắt/);
 });
 
+test('summary queue exposes multi-select batch reset and delete actions', () => {
+  const source = readFileSync(resolve(__dirname, '../src/pages/admin/SummaryQueueTab.tsx'), 'utf8');
+
+  assert.match(source, /selectedIds/);
+  assert.match(source, /toggleSelectAll/);
+  assert.match(source, /batchResetArticleSummaries/);
+  assert.match(source, /batchDeleteArticles/);
+  assert.match(source, /Đã chọn/);
+  assert.match(source, /Tóm tắt lại đã chọn/);
+  assert.match(source, /Xóa đã chọn/);
+  assert.match(source, /aria-label=\{`Chọn bài/);
+});
+
+test('fetch jobs queue exposes multi-select batch retry and delete actions', () => {
+  const source = readFileSync(resolve(__dirname, '../src/pages/admin/FetchJobsTab.tsx'), 'utf8');
+
+  assert.match(source, /selectedIds/);
+  assert.match(source, /toggleSelectAll/);
+  assert.match(source, /batchRetryArticleFetchJobs/);
+  assert.match(source, /batchDeleteArticleFetchJobs/);
+  assert.match(source, /Đã chọn/);
+  assert.match(source, /Thử lại đã chọn/);
+  assert.match(source, /Xóa đã chọn/);
+  assert.match(source, /aria-label=\{`Chọn job/);
+});
+
 test('admin overview exposes forum observability labels', () => {
   const source = readFileSync(resolve(__dirname, '../src/pages/admin/OverviewTab.tsx'), 'utf8');
 

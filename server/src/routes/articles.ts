@@ -12,6 +12,28 @@ function parseBoundedInt(value: string | undefined, fallback: number, min: numbe
   return Math.min(Math.max(parsed, min), max);
 }
 
+async function parseBatchIds(c: any): Promise<{ ids?: string[]; response?: Response }> {
+  const body = await c.req.json().catch(() => ({}));
+  const rawIds = Array.isArray(body?.ids) ? body.ids : [];
+  const cleanedIds: string[] = rawIds
+    .map((id: unknown) => (typeof id === 'string' ? id.trim() : ''))
+    .filter((id: string) => id.length > 0);
+  const ids = Array.from(new Set<string>(cleanedIds));
+
+  if (ids.length === 0) {
+    return {
+      response: c.json({ success: false, error: { code: 'VALIDATION', message: 'ids must contain at least one id' } }, 400),
+    };
+  }
+  if (ids.length > 100) {
+    return {
+      response: c.json({ success: false, error: { code: 'VALIDATION', message: 'Batch actions support at most 100 ids' } }, 400),
+    };
+  }
+
+  return { ids };
+}
+
 // Full-text search across articles
 articles.get('/search', async (c) => {
   const q = (c.req.query('q') || '').trim();
@@ -219,6 +241,35 @@ articles.get('/fetch-jobs', async (c) => {
   });
 });
 
+articles.post('/fetch-jobs/batch/retry', async (c) => {
+  const parsed = await parseBatchIds(c);
+  if (parsed.response) return parsed.response;
+  const ids = parsed.ids!;
+
+  const result = await query(
+    `UPDATE article_fetch_jobs
+     SET status = 'discovered', last_error = NULL, updated_at = NOW()
+     WHERE id = ANY($1::text[])`,
+    [ids]
+  );
+
+  if (result.rowCount) {
+    import('../jobs/scheduler.js').then(m => m.runArticleFetchJob()).catch(console.error);
+  }
+
+  return c.json({ success: true, data: { requested: ids.length, updated: result.rowCount || 0 } });
+});
+
+articles.post('/fetch-jobs/batch/delete', async (c) => {
+  const parsed = await parseBatchIds(c);
+  if (parsed.response) return parsed.response;
+  const ids = parsed.ids!;
+
+  const result = await query('DELETE FROM article_fetch_jobs WHERE id = ANY($1::text[])', [ids]);
+
+  return c.json({ success: true, data: { requested: ids.length, deleted: result.rowCount || 0 } });
+});
+
 articles.post('/fetch-jobs/:id/retry', async (c) => {
   const { id } = c.req.param();
   const existing = await getOne('SELECT id FROM article_fetch_jobs WHERE id = $1', [id]);
@@ -246,6 +297,37 @@ articles.delete('/fetch-jobs/:id', async (c) => {
   }
 
   return c.json({ success: true, data: { deleted: true } });
+});
+
+articles.post('/batch/reset-summary', async (c) => {
+  const parsed = await parseBatchIds(c);
+  if (parsed.response) return parsed.response;
+  const ids = parsed.ids!;
+
+  const result = await query(
+    `UPDATE articles
+     SET summary_text = NULL, tldr = NULL, summary_short = NULL, hot_score = NULL,
+         tags = '{}'::TEXT[], summary_status = 'pending', retry_count = 0, last_summary_error = NULL
+     WHERE id = ANY($1::text[])`,
+    [ids]
+  );
+
+  if (result.rowCount) {
+    import('../jobs/scheduler.js').then(m => m.runSummarizeJob()).catch(console.error);
+  }
+
+  return c.json({ success: true, data: { requested: ids.length, updated: result.rowCount || 0 } });
+});
+
+articles.post('/batch/delete', async (c) => {
+  const parsed = await parseBatchIds(c);
+  if (parsed.response) return parsed.response;
+  const ids = parsed.ids!;
+
+  await query('DELETE FROM digest_items WHERE article_id = ANY($1::text[])', [ids]);
+  const result = await query('DELETE FROM articles WHERE id = ANY($1::text[])', [ids]);
+
+  return c.json({ success: true, data: { requested: ids.length, deleted: result.rowCount || 0 } });
 });
 
 articles.post('/:id/reset-summary', async (c) => {

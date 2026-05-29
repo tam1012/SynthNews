@@ -66,6 +66,31 @@ test('admin API can trigger article fetch worker', async () => {
   assert.equal(calls[0].options.headers.Authorization, 'Bearer admin-token');
 });
 
+test('admin API can run article and fetch-job batch actions', async () => {
+  const calls = [];
+  const { api } = loadApiModule(async (url, options) => {
+    calls.push({ url, options });
+    return {
+      json: async () => ({ success: true, data: { updated: 2 } }),
+    };
+  });
+
+  await api.batchResetArticleSummaries(['art_1', 'art_2']);
+  await api.batchDeleteArticles(['art_3']);
+  await api.batchRetryArticleFetchJobs(['job_1', 'job_2']);
+  await api.batchDeleteArticleFetchJobs(['job_3']);
+
+  assert.deepEqual(calls.map(call => call.url), [
+    '/api/articles/batch/reset-summary',
+    '/api/articles/batch/delete',
+    '/api/articles/fetch-jobs/batch/retry',
+    '/api/articles/fetch-jobs/batch/delete',
+  ]);
+  assert.deepEqual(calls.map(call => call.options.method), ['POST', 'POST', 'POST', 'POST']);
+  assert.deepEqual(JSON.parse(calls[0].options.body), { ids: ['art_1', 'art_2'] });
+  assert.deepEqual(JSON.parse(calls[2].options.body), { ids: ['job_1', 'job_2'] });
+});
+
 test('article search API serializes date, source, and feed filters', async () => {
   const calls = [];
   const { api } = loadApiModule(async (url, options) => {

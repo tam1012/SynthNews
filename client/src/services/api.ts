@@ -135,6 +135,10 @@ export const api = {
   },
   getArticle: (id: string) => request<any>(`/articles/${id}`),
   resetArticleSummary: (id: string) => request<any>(`/articles/${id}/reset-summary`, { method: 'POST' }),
+  batchResetArticleSummaries: (ids: string[]) => request<any>('/articles/batch/reset-summary', {
+    method: 'POST',
+    body: JSON.stringify({ ids }),
+  }),
   rescrapeArticle: (id: string) => request<any>(`/articles/${id}/rescrape`, { method: 'POST' }),
   unclusterArticle: (id: string) => request<any>(`/articles/${id}/uncluster`, { method: 'POST' }),
   clusterArticle: (id: string, parentArticleId: string) => request<any>(`/articles/${id}/cluster`, {
@@ -142,6 +146,10 @@ export const api = {
     body: JSON.stringify({ parent_article_id: parentArticleId }),
   }),
   deleteArticle: (id: string) => request<any>(`/articles/${id}`, { method: 'DELETE' }),
+  batchDeleteArticles: (ids: string[]) => request<any>('/articles/batch/delete', {
+    method: 'POST',
+    body: JSON.stringify({ ids }),
+  }),
   getArticleFetchJobs: (params?: { page?: number; limit?: number; status?: string }) => {
     const qs = new URLSearchParams();
     if (params?.page) qs.set('page', String(params.page));
@@ -151,6 +159,14 @@ export const api = {
   },
   retryArticleFetchJob: (id: string) => request<any>(`/articles/fetch-jobs/${id}/retry`, { method: 'POST' }),
   deleteArticleFetchJob: (id: string) => request<any>(`/articles/fetch-jobs/${id}`, { method: 'DELETE' }),
+  batchRetryArticleFetchJobs: (ids: string[]) => request<any>('/articles/fetch-jobs/batch/retry', {
+    method: 'POST',
+    body: JSON.stringify({ ids }),
+  }),
+  batchDeleteArticleFetchJobs: (ids: string[]) => request<any>('/articles/fetch-jobs/batch/delete', {
+    method: 'POST',
+    body: JSON.stringify({ ids }),
+  }),
 
   // Digests
   getLatestDigest: (lang?: string) => request<any>(`/digests/latest?lang=${lang || 'vi'}`),

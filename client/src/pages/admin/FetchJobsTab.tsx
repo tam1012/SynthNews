@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '../../services/api';
 import { useFetchRaw } from '../../hooks/useApi';
 import { FETCH_JOB_STATUSES, FetchJobStatus, statusLabel } from './adminHelpers';
@@ -7,16 +7,23 @@ export function FetchJobsTab({ initialStatus }: { initialStatus?: FetchJobStatus
   const [status, setStatus] = useState<FetchJobStatus>(initialStatus || 'failed');
   const [page, setPage] = useState(1);
   const [actionLoading, setActionLoading] = useState('');
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const { data: raw, loading, error, reload } = useFetchRaw(
     () => api.getArticleFetchJobs({ page, limit: 50, status }), [page, status]
   );
   const jobs: any[] = raw?.data || [];
   const meta = raw?.meta || { page, total: 0, totalPages: 0 };
+  const allSelected = jobs.length > 0 && jobs.every((job: any) => selectedIds.includes(job.id));
+
+  useEffect(() => {
+    setSelectedIds([]);
+  }, [page, status]);
 
   const runAction = async (key: string, fn: () => Promise<any>) => {
     setActionLoading(key);
     try {
       await fn();
+      setSelectedIds([]);
       reload();
     } catch (err: any) {
       alert('Lỗi: ' + err.message);
@@ -41,6 +48,23 @@ export function FetchJobsTab({ initialStatus }: { initialStatus?: FetchJobStatus
 
   const handleTriggerFetch = async () => {
     await runAction('trigger-fetch', api.triggerFetchArticles);
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(current => current.includes(id) ? current.filter(item => item !== id) : [...current, id]);
+  };
+
+  const toggleSelectAll = () => {
+    setSelectedIds(allSelected ? [] : jobs.map((job: any) => job.id));
+  };
+
+  const handleBatchRetry = async () => {
+    await runAction('batch-retry', () => api.batchRetryArticleFetchJobs(selectedIds));
+  };
+
+  const handleBatchDelete = async () => {
+    if (!confirm(`Xóa ${selectedIds.length} mục lấy bài đã chọn?`)) return;
+    await runAction('batch-delete', () => api.batchDeleteArticleFetchJobs(selectedIds));
   };
 
   return (
@@ -85,9 +109,38 @@ export function FetchJobsTab({ initialStatus }: { initialStatus?: FetchJobStatus
             Hiển thị {jobs.length} / {meta.total || 0} mục · Trang {meta.page || page}/{meta.totalPages || 1}
           </div>
 
+          {jobs.length > 0 && (
+            <div className="card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', padding: 10 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.82rem', color: 'var(--color-text-muted)' }}>
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  onChange={toggleSelectAll}
+                  aria-label="Chọn tất cả job trên trang"
+                />
+                Đã chọn {selectedIds.length}/{jobs.length}
+              </label>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                <button className="btn btn-sm" onClick={handleBatchRetry} disabled={selectedIds.length === 0 || !!actionLoading}>
+                  {actionLoading === 'batch-retry' ? 'Đang chạy...' : 'Thử lại đã chọn'}
+                </button>
+                <button className="btn btn-sm btn-danger" onClick={handleBatchDelete} disabled={selectedIds.length === 0 || !!actionLoading}>
+                  {actionLoading === 'batch-delete' ? 'Đang xóa...' : 'Xóa đã chọn'}
+                </button>
+              </div>
+            </div>
+          )}
+
           {jobs.map((job: any) => (
             <div key={job.id} className="card" style={{ padding: 12 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'flex-start' }}>
+                <input
+                  type="checkbox"
+                  checked={selectedIds.includes(job.id)}
+                  onChange={() => toggleSelect(job.id)}
+                  aria-label={`Chọn job ${job.title || job.url || job.id}`}
+                  style={{ marginTop: 2 }}
+                />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 600, fontSize: '0.92rem', marginBottom: 6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {job.title || job.url}

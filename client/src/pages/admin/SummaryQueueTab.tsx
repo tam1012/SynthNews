@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '../../services/api';
 import { useFetchRaw } from '../../hooks/useApi';
 import { SUMMARY_QUEUE_STATUSES, SummaryQueueStatus, statusLabel } from './adminHelpers';
@@ -7,16 +7,23 @@ export function SummaryQueueTab({ initialStatus }: { initialStatus?: SummaryQueu
   const [status, setStatus] = useState<SummaryQueueStatus>(initialStatus || 'failed');
   const [page, setPage] = useState(1);
   const [actionLoading, setActionLoading] = useState('');
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const { data: raw, loading, error, reload } = useFetchRaw(
     () => api.getArticles({ page, limit: 50, status }), [page, status]
   );
   const articles: any[] = raw?.data || [];
   const meta = raw?.meta || { page, total: 0, totalPages: 0 };
+  const allSelected = articles.length > 0 && articles.every((a: any) => selectedIds.includes(a.id));
+
+  useEffect(() => {
+    setSelectedIds([]);
+  }, [page, status]);
 
   const runAction = async (key: string, fn: () => Promise<any>) => {
     setActionLoading(key);
     try {
       await fn();
+      setSelectedIds([]);
       reload();
     } catch (err: any) {
       alert('Lỗi: ' + err.message);
@@ -45,6 +52,23 @@ export function SummaryQueueTab({ initialStatus }: { initialStatus?: SummaryQueu
 
   const handleTriggerSummarize = async () => {
     await runAction('trigger-summarize', api.triggerSummarize);
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(current => current.includes(id) ? current.filter(item => item !== id) : [...current, id]);
+  };
+
+  const toggleSelectAll = () => {
+    setSelectedIds(allSelected ? [] : articles.map((a: any) => a.id));
+  };
+
+  const handleBatchReset = async () => {
+    await runAction('batch-reset', () => api.batchResetArticleSummaries(selectedIds));
+  };
+
+  const handleBatchDelete = async () => {
+    if (!confirm(`Xóa ${selectedIds.length} bài viết đã chọn?`)) return;
+    await runAction('batch-delete', () => api.batchDeleteArticles(selectedIds));
   };
 
   return (
@@ -89,9 +113,38 @@ export function SummaryQueueTab({ initialStatus }: { initialStatus?: SummaryQueu
             Hiển thị {articles.length} / {meta.total || 0} bài · Trang {meta.page || page}/{meta.totalPages || 1}
           </div>
 
+          {articles.length > 0 && (
+            <div className="card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', padding: 10 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.82rem', color: 'var(--color-text-muted)' }}>
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  onChange={toggleSelectAll}
+                  aria-label="Chọn tất cả bài trên trang"
+                />
+                Đã chọn {selectedIds.length}/{articles.length}
+              </label>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                <button className="btn btn-sm" onClick={handleBatchReset} disabled={selectedIds.length === 0 || !!actionLoading}>
+                  {actionLoading === 'batch-reset' ? 'Đang chạy...' : 'Tóm tắt lại đã chọn'}
+                </button>
+                <button className="btn btn-sm btn-danger" onClick={handleBatchDelete} disabled={selectedIds.length === 0 || !!actionLoading}>
+                  {actionLoading === 'batch-delete' ? 'Đang xóa...' : 'Xóa đã chọn'}
+                </button>
+              </div>
+            </div>
+          )}
+
           {articles.map((a: any) => (
             <div key={a.id} className="card" style={{ padding: 12 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'flex-start' }}>
+                <input
+                  type="checkbox"
+                  checked={selectedIds.includes(a.id)}
+                  onChange={() => toggleSelect(a.id)}
+                  aria-label={`Chọn bài ${a.title || a.id}`}
+                  style={{ marginTop: 2 }}
+                />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 600, fontSize: '0.92rem', marginBottom: 6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {a.title}
