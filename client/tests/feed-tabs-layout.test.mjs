@@ -123,7 +123,8 @@ test('feed uses server-side tab pagination and exposes load-more control', () =>
   const homeSource = readFileSync(resolve(__dirname, '../src/pages/Home.tsx'), 'utf8');
   const apiSource = readFileSync(resolve(__dirname, '../src/services/api.ts'), 'utf8');
 
-  assert.match(apiSource, /feedTab\?: 'all' \| 'news' \| 'tech' \| 'voz' \| 'reddit'/);
+  assert.match(apiSource, /type ArticleFeedTab = 'all' \| 'news' \| 'tech' \| 'voz' \| 'reddit'/);
+  assert.match(apiSource, /feedTab\?: ArticleFeedTab/);
   assert.match(homeSource, /feedTab: tab === 'digest' \? 'all' : tab/);
   assert.match(homeSource, /handleLoadMoreArticles/);
   assert.match(homeSource, /Tải thêm bài cũ/);
