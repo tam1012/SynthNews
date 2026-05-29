@@ -73,3 +73,18 @@ test('admin overview uses navigation callbacks owned by the shell', () => {
   assert.match(overviewSource, /onClick: goToQuality/);
   assert.doesNotMatch(overviewSource, /setTab\(/);
 });
+
+test('admin trigger actions expose immediate status feedback', () => {
+  const adminSource = readFileSync(resolve(__dirname, '../src/pages/Admin.tsx'), 'utf8');
+  const overviewSource = readFileSync(resolve(__dirname, '../src/pages/admin/OverviewTab.tsx'), 'utf8');
+
+  assert.match(adminSource, /const \[actionMessage, setActionMessage\] = useState/);
+  assert.match(adminSource, /ADMIN_ACTION_SUCCESS_MESSAGES/);
+  assert.match(adminSource, /summarize: 'Đã gửi lệnh tóm tắt bài/);
+  assert.match(adminSource, /setActionMessage\(\{ type: 'success'/);
+  assert.match(adminSource, /setActionMessage\(\{ type: 'error'/);
+  assert.match(adminSource, /actionMessage=\{actionMessage\}/);
+  assert.match(overviewSource, /actionMessage: AdminActionMessage \| null/);
+  assert.match(overviewSource, /admin-action-message/);
+  assert.match(overviewSource, /actionMessage\.message/);
+});

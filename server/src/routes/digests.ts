@@ -64,6 +64,48 @@ digests.get('/', async (c) => {
   });
 });
 
+// Search trong cac ban tin da tao
+digests.get('/search', async (c) => {
+  const q = (c.req.query('q') || '').trim();
+  if (!q || q.length < 2) {
+    return c.json({ success: true, data: [], meta: { query: q, total: 0 } });
+  }
+
+  const date = c.req.query('date');
+  if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return c.json({ success: false, error: { code: 'VALIDATION', message: 'date must be YYYY-MM-DD' } }, 400);
+  }
+
+  const limit = parseBoundedInt(c.req.query('limit'), 10, 1, 30);
+  const params: any[] = [`%${q}%`];
+  const clauses = [
+    `d.status = 'done'`,
+    `(d.title ILIKE $1 OR d.body_markdown ILIKE $1)`,
+  ];
+  let paramIndex = 2;
+
+  if (date) {
+    clauses.push(`d.digest_date = $${paramIndex++}::date`);
+    params.push(date);
+  }
+
+  params.push(limit);
+  const rows = await getMany(
+    `SELECT d.id, d.digest_date, d.title, d.article_count, d.language, d.status, d.created_at,
+            LEFT(COALESCE(d.body_markdown, ''), 220) as summary_short,
+            'digest' as result_type,
+            CASE WHEN d.title ILIKE $1 THEN 2 ELSE 0 END +
+            CASE WHEN d.body_markdown ILIKE $1 THEN 1 ELSE 0 END AS relevance
+     FROM digests d
+     WHERE ${clauses.join(' AND ')}
+     ORDER BY relevance DESC, d.digest_date DESC, d.created_at DESC
+     LIMIT $${paramIndex}`,
+    params
+  );
+
+  return c.json({ success: true, data: rows, meta: { query: q, total: rows.length } });
+});
+
 // Chi tiet digest
 digests.get('/:id', async (c) => {
   const { id } = c.req.param();

@@ -17,6 +17,7 @@ export function Home() {
   const { articleId: urlArticleId } = useParams<{ articleId?: string }>();
   const hasArticleDeepLink = Boolean(urlArticleId);
   const linkedDate = useMemo(() => parseDateDeepLinkPath(location.pathname), [location.pathname]);
+  const linkedDigestId = useMemo(() => new URLSearchParams(location.search).get('digestId'), [location.search]);
 
   // Derive initial tab from URL path
   const initialTab = useMemo(() => {
@@ -31,7 +32,7 @@ export function Home() {
 
   const [selected, setSelected] = useState<any | null>(null);
   const [tab, setTab] = useState<'all' | 'news' | 'tech' | 'voz' | 'reddit' | 'digest'>(initialTab);
-  const [selectedDigestId, setSelectedDigestId] = useState<string | null>(null);
+  const [selectedDigestId, setSelectedDigestId] = useState<string | null>(() => linkedDigestId);
   const [userSelectedDate, setUserSelectedDate] = useState<string | null>(() => linkedDate);
 
   // Sync tab when URL changes (e.g. sidebar navigation)
@@ -55,6 +56,9 @@ export function Home() {
       setFilterTag('');
     }
   }, [location.pathname]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (location.pathname === '/digest') setSelectedDigestId(linkedDigestId);
+  }, [linkedDigestId, location.pathname]);
   const [filterSource, setFilterSource] = useState<string>('all');
   const [filterTag, setFilterTag] = useState<string>('');
   const [showFilter, setShowFilter] = useState(false);
@@ -670,7 +674,10 @@ export function Home() {
                     <div
                       key={item.id}
                       className={`feed-item ${selectedDigestId === item.id || (!selectedDigestId && digestList[0]?.id === item.id) ? 'active' : ''}`}
-                      onClick={() => setSelectedDigestId(item.id)}
+                      onClick={() => {
+                        setSelectedDigestId(item.id);
+                        window.history.replaceState(null, '', `/digest?digestId=${encodeURIComponent(item.id)}`);
+                      }}
                     >
                       <div className="feed-item-text">
                         <h3 className="feed-item-title">{item.title || `Bản tin ${item.digest_date}`}</h3>

@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { buildFeedPreview, cleanTitle, estimateReadingTime, extractSourceLabel, formatTime } from './homeHelpers';
+import { buildFeedPreview, cleanTitle, estimateReadingTime, extractSourceLabel, formatTime, getVisibleArticleTags, isArticleFresh } from './homeHelpers';
 
 /* Preload react-markdown on first user interaction to avoid flash on article open */
 let markdownPreloaded = false;
@@ -66,6 +66,8 @@ export function FeedItem({
   const title = cleanTitle(article.translated_title || article.title);
   const time = article.published_at ? formatTime(article.published_at) : '';
   const readingTime = useMemo(() => estimateReadingTime(article), [article]);
+  const visibleTags = useMemo(() => getVisibleArticleTags(article), [article]);
+  const isFresh = useMemo(() => isArticleFresh(article), [article]);
 
   const preview = useMemo(() => {
     return buildFeedPreview(article);
@@ -85,6 +87,8 @@ export function FeedItem({
         <span className={`feed-item-source source-${sourceLabel.toLowerCase().replace(/[^a-z0-9]/g, '')}`}>
           {sourceLabel}
         </span>
+        {isFresh && !isRead && <span className="feed-item-state-badge is-new">Mới</span>}
+        {isRead && <span className="feed-item-state-badge is-read">Đã đọc</span>}
         {time && <span className="feed-item-time">{time}</span>}
         <span className="feed-item-reading-time">{readingTime}</span>
         {article.cluster_count > 0 && (
@@ -97,6 +101,13 @@ export function FeedItem({
         <div className="feed-item-text">
           <h3 className="feed-item-title">{title}</h3>
           <p className="feed-item-preview">{preview}</p>
+          {visibleTags.length > 0 && (
+            <div className="feed-item-tags" aria-label="Nhãn bài viết">
+              {visibleTags.map((tag) => (
+                <span key={tag} className="feed-item-tag">{tag}</span>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </article>

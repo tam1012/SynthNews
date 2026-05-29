@@ -196,8 +196,8 @@ body,
   to { opacity: 1; }
 }
 .search-modal {
-  width: min(560px, 92vw);
-  max-height: min(480px, 70vh);
+  width: min(720px, 94vw);
+  max-height: min(560px, 76vh);
   background: var(--color-bg-card);
   border: 1px solid var(--color-border-light);
   border-radius: var(--radius);
@@ -245,6 +245,50 @@ body,
   font-family: var(--font-heading);
   font-weight: 600;
   flex-shrink: 0;
+}
+.search-filters {
+  display: grid;
+  grid-template-columns: 1fr minmax(180px, 1.1fr) minmax(150px, 0.9fr);
+  gap: 10px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--color-border-light);
+  background: var(--color-surface-container-low);
+}
+.search-filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+.search-filter-label {
+  color: var(--color-text-muted);
+  font-family: var(--font-heading);
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1;
+  text-transform: uppercase;
+}
+.search-filter-control {
+  width: 100%;
+  min-width: 0;
+  height: 34px;
+  border: 1px solid var(--color-border-light);
+  border-radius: 6px;
+  background: var(--color-bg-card);
+  color: var(--color-text);
+  font-family: var(--font-body);
+  font-size: 0.84rem;
+  outline: none;
+  padding: 0 9px;
+}
+.search-filter-control:focus {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 18%, transparent);
+}
+.search-filter-control:disabled {
+  color: var(--color-text-muted);
+  background: var(--color-bg-hover);
+  cursor: not-allowed;
 }
 .search-results {
   overflow-y: auto;
@@ -308,4 +352,27 @@ body,
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+@media (max-width: 640px) {
+  .search-overlay {
+    padding-top: 64px;
+  }
+  .search-modal {
+    width: min(94vw, 460px);
+    max-height: calc(100dvh - 88px);
+  }
+  .search-input-wrapper {
+    padding: 12px 14px;
+  }
+  .search-kbd {
+    display: none;
+  }
+  .search-filters {
+    grid-template-columns: 1fr;
+    gap: 8px;
+    padding: 10px 14px;
+  }
+  .search-filter-control {
+    height: 36px;
+  }
 }

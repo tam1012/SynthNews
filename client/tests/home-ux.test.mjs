@@ -92,3 +92,16 @@ test('date deep links map ddmmyyyy paths to local ISO dates', () => {
   assert.equal(parseDateDeepLinkPath('/news'), null);
   assert.equal(formatDateDeepLink('2026-05-28'), '/28052026');
 });
+
+test('feed item helpers expose fresh and visible tag state', () => {
+  const { getVisibleArticleTags, isArticleFresh } = loadTsModule('../src/pages/home/homeHelpers.ts');
+  const now = Date.parse('2026-05-29T08:00:00.000Z');
+
+  assert.equal(isArticleFresh({ published_at: '2026-05-29T03:30:00.000Z' }, now), true);
+  assert.equal(isArticleFresh({ published_at: '2026-05-29T00:00:00.000Z' }, now), false);
+  assert.equal(isArticleFresh({ published_at: 'invalid' }, now), false);
+  assert.deepEqual(
+    Array.from(getVisibleArticleTags({ tags: ['AI', ' Kinh tế ', '', 'AI', 'Chính sách'] }, 3)),
+    ['AI', 'Kinh tế', 'Chính sách']
+  );
+});

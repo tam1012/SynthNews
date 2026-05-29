@@ -62,6 +62,33 @@ test('article filters add feed tab predicates before pagination', () => {
   assert.match(buildArticleListFilters({ feedTab: 'voz' }).where, /voz/);
 });
 
+test('article search filters combine query, date, source, and feed tab predicates', () => {
+  const { buildArticleSearchFilters } = loadTsModule('../src/lib/articleFilters.ts');
+
+  assert.equal(typeof buildArticleSearchFilters, 'function');
+  const result = buildArticleSearchFilters({
+    query: 'gemini',
+    date: '2026-05-29',
+    sourceId: 'src_1',
+    feedTab: 'tech',
+  });
+
+  assert.match(result.where, /a\.summary_status = 'done'/);
+  assert.match(result.where, /a\.title ILIKE \$1/);
+  assert.match(result.where, /DATE\(COALESCE\(a\.published_at, a\.created_at\)/);
+  assert.match(result.where, /a\.source_id = \$3/);
+  assert.match(result.where, /COALESCE\(s\.feed_category, 'news'\) = 'tech'/);
+  assert.deepEqual(Array.from(result.params), ['%gemini%', '2026-05-29', 'src_1']);
+  assert.equal(result.nextParamIndex, 4);
+});
+
+test('article search filters validate date and feed tab', () => {
+  const { buildArticleSearchFilters } = loadTsModule('../src/lib/articleFilters.ts');
+
+  assert.throws(() => buildArticleSearchFilters({ query: 'ai', date: '29-05-2026' }), /date must be YYYY-MM-DD/);
+  assert.throws(() => buildArticleSearchFilters({ query: 'ai', feedTab: 'digest' }), /Invalid feedTab/);
+});
+
 test('article filters expose latest and hot ordering modes', () => {
   const { buildArticleListFilters, buildArticleListOrderBy } = loadTsModule('../src/lib/articleFilters.ts');
 

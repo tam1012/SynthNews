@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { getMany, getOne, query } from '../db/index.js';
-import { LOCAL_DATE_SQL, LOCAL_DATE_TEXT_SQL, buildArticleListFilters, buildArticleListOrderBy } from '../lib/articleFilters.js';
+import { LOCAL_DATE_SQL, LOCAL_DATE_TEXT_SQL, buildArticleListFilters, buildArticleListOrderBy, buildArticleSearchFilters } from '../lib/articleFilters.js';
 import { decodeArticleRows, decodeArticleTextFields } from '../lib/htmlEntities.js';
 import { generateId } from '../lib/utils.js';
 
@@ -20,8 +20,18 @@ articles.get('/search', async (c) => {
   }
 
   const limit = parseBoundedInt(c.req.query('limit'), 20, 1, 50);
-  const pattern = `%${q}%`;
+  const date = c.req.query('date');
+  const sourceId = c.req.query('sourceId');
+  const feedTab = c.req.query('feedTab');
 
+  let filters;
+  try {
+    filters = buildArticleSearchFilters({ query: q, date, sourceId, feedTab });
+  } catch (err: any) {
+    return c.json({ success: false, error: { code: 'VALIDATION', message: err.message } }, 400);
+  }
+
+  const params = [...filters.params, limit];
   const rows = await getMany(
     `SELECT a.id, a.source_id, a.url, a.title, a.author, a.published_at,
             a.summary_short, a.tldr, a.hot_score, a.tags, a.image_url, a.created_at,
@@ -31,11 +41,10 @@ articles.get('/search', async (c) => {
             CASE WHEN a.summary_short ILIKE $1 THEN 1 ELSE 0 END AS relevance
      FROM articles a
      LEFT JOIN sources s ON s.id = a.source_id
-     WHERE a.summary_status = 'done'
-       AND (a.title ILIKE $1 OR a.summary_short ILIKE $1 OR a.tldr ILIKE $1)
+     ${filters.where}
      ORDER BY relevance DESC, COALESCE(a.published_at, a.created_at) DESC
-     LIMIT $2`,
-    [pattern, limit]
+     LIMIT $${filters.nextParamIndex}`,
+    params
   );
 
   return c.json({ success: true, data: decodeArticleRows(rows), meta: { query: q, total: rows.length } });

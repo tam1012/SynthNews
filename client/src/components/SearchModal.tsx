@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../services/api';
 import { formatTime } from '../pages/home/homeHelpers';
@@ -8,21 +8,70 @@ interface SearchModalProps {
   onClose: () => void;
 }
 
+type SearchContentType = 'all' | 'news' | 'tech' | 'voz' | 'reddit' | 'digest';
+type SearchResult = {
+  id: string;
+  title?: string;
+  source_name?: string;
+  published_at?: string;
+  created_at?: string;
+  summary_short?: string;
+  digest_date?: string;
+  article_count?: number;
+  result_type?: 'article' | 'digest';
+};
+
+const SEARCH_CONTENT_TYPES: { value: SearchContentType; label: string }[] = [
+  { value: 'all', label: 'Tất cả' },
+  { value: 'news', label: 'News' },
+  { value: 'tech', label: 'Tech' },
+  { value: 'voz', label: 'VOZ' },
+  { value: 'reddit', label: 'Reddit' },
+  { value: 'digest', label: 'Bản tin' },
+];
+
 export function SearchModal({ open, onClose }: SearchModalProps) {
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<any[]>([]);
+  const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
+  const [searchDate, setSearchDate] = useState('');
+  const [sourceId, setSourceId] = useState('all');
+  const [contentType, setContentType] = useState<SearchContentType>('all');
+  const [sources, setSources] = useState<any[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const requestIdRef = useRef(0);
+  const articleFeedTab = useMemo(() => {
+    return contentType === 'digest' || contentType === 'all' ? undefined : contentType;
+  }, [contentType]);
 
   // Focus input when modal opens
   useEffect(() => {
     if (open) {
       setQuery('');
       setResults([]);
+      setSearchDate('');
+      setSourceId('all');
+      setContentType('all');
+      setLoading(false);
+      requestIdRef.current += 1;
       setTimeout(() => inputRef.current?.focus(), 50);
     }
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    let active = true;
+    api.getSources()
+      .then((res) => {
+        if (!active) return;
+        setSources((res.data || []).filter((source: any) => source.is_enabled !== false));
+      })
+      .catch(() => {
+        if (active) setSources([]);
+      });
+    return () => { active = false; };
   }, [open]);
 
   // Close on Escape
@@ -55,26 +104,64 @@ export function SearchModal({ open, onClose }: SearchModalProps) {
       setResults([]);
       return;
     }
+    const requestId = ++requestIdRef.current;
     setLoading(true);
     try {
-      const res = await api.searchArticles(q);
-      setResults(res.data || []);
+      if (contentType === 'digest') {
+        const res = await api.searchDigests(q, {
+          limit: 20,
+          date: searchDate || undefined,
+        });
+        if (requestId === requestIdRef.current) {
+          setResults((res.data || []).map((item: SearchResult) => ({ ...item, result_type: 'digest' })));
+        }
+      } else {
+        const res = await api.searchArticles(q, {
+          limit: 20,
+          date: searchDate || undefined,
+          sourceId: sourceId === 'all' ? undefined : sourceId,
+          feedTab: articleFeedTab,
+        });
+        if (requestId === requestIdRef.current) {
+          setResults((res.data || []).map((item: SearchResult) => ({ ...item, result_type: 'article' })));
+        }
+      }
     } catch {
-      setResults([]);
+      if (requestId === requestIdRef.current) setResults([]);
     } finally {
-      setLoading(false);
+      if (requestId === requestIdRef.current) setLoading(false);
     }
-  }, []);
+  }, [articleFeedTab, contentType, searchDate, sourceId]);
+
+  useEffect(() => {
+    clearTimeout(debounceRef.current);
+    const q = query.trim();
+    if (!open) return;
+    if (q.length < 2) {
+      setResults([]);
+      setLoading(false);
+      return;
+    }
+    debounceRef.current = setTimeout(() => doSearch(q), 300);
+    return () => clearTimeout(debounceRef.current);
+  }, [doSearch, open, query]);
 
   const handleInputChange = (value: string) => {
     setQuery(value);
-    clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => doSearch(value), 300);
   };
 
-  const handleSelect = (article: any) => {
+  const handleContentTypeChange = (value: SearchContentType) => {
+    setContentType(value);
+    if (value === 'digest') setSourceId('all');
+  };
+
+  const handleSelect = (item: SearchResult) => {
     onClose();
-    navigate(`/article/${article.id}`);
+    if (item.result_type === 'digest') {
+      navigate(`/digest?digestId=${encodeURIComponent(item.id)}`);
+      return;
+    }
+    navigate(`/article/${item.id}`);
   };
 
   if (!open) return null;
@@ -90,11 +177,53 @@ export function SearchModal({ open, onClose }: SearchModalProps) {
             ref={inputRef}
             type="text"
             className="search-input"
-            placeholder="Tìm kiếm bài viết..."
+            placeholder="Tìm kiếm bài viết hoặc bản tin..."
             value={query}
             onChange={(e) => handleInputChange(e.target.value)}
           />
           <kbd className="search-kbd">Esc</kbd>
+        </div>
+
+        <div className="search-filters">
+          <label className="search-filter-field">
+            <span className="search-filter-label">Ngày</span>
+            <input
+              className="search-filter-control"
+              type="date"
+              value={searchDate}
+              onChange={(e) => setSearchDate(e.target.value)}
+            />
+          </label>
+          <label className="search-filter-field">
+            <span className="search-filter-label">Nguồn</span>
+            <select
+              className="search-filter-control"
+              value={sourceId}
+              onChange={(e) => setSourceId(e.target.value)}
+              disabled={contentType === 'digest'}
+            >
+              <option value="all">Tất cả nguồn</option>
+              {sources.map((source) => (
+                <option key={source.id} value={source.id}>
+                  {String(source.name || '').replace(/ - .*$/, '').replace(/ RSS.*$/, '')}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="search-filter-field">
+            <span className="search-filter-label">Loại tin</span>
+            <select
+              className="search-filter-control"
+              value={contentType}
+              onChange={(e) => handleContentTypeChange(e.target.value as SearchContentType)}
+            >
+              {SEARCH_CONTENT_TYPES.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
 
         <div className="search-results">
@@ -108,6 +237,7 @@ export function SearchModal({ open, onClose }: SearchModalProps) {
             <div className="search-status">Nhập ít nhất 2 ký tự</div>
           )}
           {results.map((article) => {
+            const isDigest = article.result_type === 'digest';
             return (
               <button
                 key={article.id}
@@ -117,12 +247,20 @@ export function SearchModal({ open, onClose }: SearchModalProps) {
                 <div className="search-result-title">{article.title}</div>
                 <div className="search-result-meta">
                   <span className="search-result-source">
-                    {article.source_name || 'Unknown'}
+                    {isDigest ? 'Bản tin' : (article.source_name || 'Unknown')}
                   </span>
-                  {article.published_at && (
+                  {isDigest && article.digest_date && (
+                    <span className="search-result-time">
+                      {article.digest_date}
+                    </span>
+                  )}
+                  {!isDigest && article.published_at && (
                     <span className="search-result-time">
                       {formatTime(article.published_at)}
                     </span>
+                  )}
+                  {isDigest && typeof article.article_count === 'number' && (
+                    <span className="search-result-time">{article.article_count} tin</span>
                   )}
                 </div>
                 {article.summary_short && (

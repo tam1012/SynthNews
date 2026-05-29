@@ -4,6 +4,18 @@ const API_BASE = '/api';
 const responseCache = new Map<string, { expiresAt: number; data: any }>();
 const inFlightRequests = new Map<string, Promise<any>>();
 
+type ArticleFeedTab = 'all' | 'news' | 'tech' | 'voz' | 'reddit';
+type ArticleSearchOptions = {
+  limit?: number;
+  date?: string;
+  sourceId?: string;
+  feedTab?: ArticleFeedTab;
+};
+type DigestSearchOptions = {
+  limit?: number;
+  date?: string;
+};
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   let token = localStorage.getItem('admin_token') || '';
   const cachePolicy = getCachePolicy(path, options);
@@ -87,7 +99,7 @@ export const api = {
   detectSource: (url: string) => request<any>('/sources/detect', { method: 'POST', body: JSON.stringify({ url }) }),
 
   // Articles
-  getArticles: (params?: { page?: number; limit?: number; sourceId?: string; status?: string; date?: string; tag?: string; minScore?: number; feedTab?: 'all' | 'news' | 'tech' | 'voz' | 'reddit'; sort?: 'latest' | 'hot'; qualityIssue?: string }) => {
+  getArticles: (params?: { page?: number; limit?: number; sourceId?: string; status?: string; date?: string; tag?: string; minScore?: number; feedTab?: ArticleFeedTab; sort?: 'latest' | 'hot'; qualityIssue?: string }) => {
     const qs = new URLSearchParams();
     if (params?.page) qs.set('page', String(params.page));
     if (params?.limit) qs.set('limit', String(params.limit));
@@ -112,9 +124,13 @@ export const api = {
     if (params?.date) qs.set('date', params.date);
     return request<any>(`/articles/tags?${qs}`);
   },
-  searchArticles: (q: string, limit?: number) => {
+  searchArticles: (q: string, options?: number | ArticleSearchOptions) => {
     const qs = new URLSearchParams({ q });
-    if (limit) qs.set('limit', String(limit));
+    const params = typeof options === 'number' ? { limit: options } : options;
+    if (params?.limit) qs.set('limit', String(params.limit));
+    if (params?.date) qs.set('date', params.date);
+    if (params?.sourceId) qs.set('sourceId', params.sourceId);
+    if (params?.feedTab) qs.set('feedTab', params.feedTab);
     return request<any>(`/articles/search?${qs}`);
   },
   getArticle: (id: string) => request<any>(`/articles/${id}`),
@@ -139,6 +155,12 @@ export const api = {
   // Digests
   getLatestDigest: (lang?: string) => request<any>(`/digests/latest?lang=${lang || 'vi'}`),
   getDigests: (page?: number) => request<any>(`/digests?page=${page || 1}`),
+  searchDigests: (q: string, options?: DigestSearchOptions) => {
+    const qs = new URLSearchParams({ q });
+    if (options?.limit) qs.set('limit', String(options.limit));
+    if (options?.date) qs.set('date', options.date);
+    return request<any>(`/digests/search?${qs}`);
+  },
   getDigest: (id: string) => request<any>(`/digests/${id}`),
   deleteDigest: (id: string) => request<any>(`/digests/${id}`, { method: 'DELETE' }),
 

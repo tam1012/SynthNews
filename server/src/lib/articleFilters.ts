@@ -28,6 +28,19 @@ export interface ArticleListFilters {
   sort: ArticleListSort;
 }
 
+export interface ArticleSearchFilterInput {
+  query: string;
+  sourceId?: string;
+  date?: string;
+  feedTab?: string;
+}
+
+export interface ArticleSearchFilters {
+  where: string;
+  params: any[];
+  nextParamIndex: number;
+}
+
 function parseMinScore(value?: string): number | null {
   if (!value) return null;
   const parsed = Number(value);
@@ -37,18 +50,42 @@ function parseMinScore(value?: string): number | null {
   return parsed;
 }
 
+function validateLocalDate(date?: string) {
+  if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    throw new Error('date must be YYYY-MM-DD');
+  }
+}
+
+function validateFeedTab(feedTab?: string) {
+  if (feedTab && !VALID_FEED_TABS.includes(feedTab)) {
+    throw new Error('Invalid feedTab');
+  }
+}
+
+function appendFeedTabClauses(clauses: string[], feedTab?: string) {
+  if (feedTab === 'reddit') {
+    clauses.push(`(s.name ILIKE '%reddit%' OR a.url ILIKE '%reddit.com%' OR a.title ILIKE '[r/%')`);
+  } else if (feedTab === 'voz') {
+    clauses.push(`(s.name ILIKE '%voz%' OR a.url ILIKE '%voz.vn%')`);
+  } else if (feedTab === 'all') {
+    clauses.push(`NOT (s.name ILIKE '%reddit%' OR a.url ILIKE '%reddit.com%' OR a.title ILIKE '[r/%' OR s.name ILIKE '%voz%' OR a.url ILIKE '%voz.vn%')`);
+  } else if (feedTab === 'news') {
+    clauses.push(`NOT (s.name ILIKE '%reddit%' OR a.url ILIKE '%reddit.com%' OR a.title ILIKE '[r/%' OR s.name ILIKE '%voz%' OR a.url ILIKE '%voz.vn%')`);
+    clauses.push(`COALESCE(s.feed_category, 'news') = 'news'`);
+  } else if (feedTab === 'tech') {
+    clauses.push(`NOT (s.name ILIKE '%reddit%' OR a.url ILIKE '%reddit.com%' OR a.title ILIKE '[r/%' OR s.name ILIKE '%voz%' OR a.url ILIKE '%voz.vn%')`);
+    clauses.push(`COALESCE(s.feed_category, 'news') = 'tech'`);
+  }
+}
+
 export function buildArticleListFilters(input: ArticleListFilterInput): ArticleListFilters {
   if (input.status && !VALID_SUMMARY_STATUSES.includes(input.status)) {
     throw new Error('Invalid status');
   }
 
-  if (input.date && !/^\d{4}-\d{2}-\d{2}$/.test(input.date)) {
-    throw new Error('date must be YYYY-MM-DD');
-  }
+  validateLocalDate(input.date);
 
-  if (input.feedTab && !VALID_FEED_TABS.includes(input.feedTab)) {
-    throw new Error('Invalid feedTab');
-  }
+  validateFeedTab(input.feedTab);
 
   if (input.sort && !VALID_ARTICLE_SORTS.includes(input.sort)) {
     throw new Error('Invalid sort');
@@ -84,19 +121,7 @@ export function buildArticleListFilters(input: ArticleListFilterInput): ArticleL
     clauses.push(`a.hot_score >= $${paramIndex++}`);
     params.push(minScore);
   }
-  if (input.feedTab === 'reddit') {
-    clauses.push(`(s.name ILIKE '%reddit%' OR a.url ILIKE '%reddit.com%' OR a.title ILIKE '[r/%')`);
-  } else if (input.feedTab === 'voz') {
-    clauses.push(`(s.name ILIKE '%voz%' OR a.url ILIKE '%voz.vn%')`);
-  } else if (input.feedTab === 'all') {
-    clauses.push(`NOT (s.name ILIKE '%reddit%' OR a.url ILIKE '%reddit.com%' OR a.title ILIKE '[r/%' OR s.name ILIKE '%voz%' OR a.url ILIKE '%voz.vn%')`);
-  } else if (input.feedTab === 'news') {
-    clauses.push(`NOT (s.name ILIKE '%reddit%' OR a.url ILIKE '%reddit.com%' OR a.title ILIKE '[r/%' OR s.name ILIKE '%voz%' OR a.url ILIKE '%voz.vn%')`);
-    clauses.push(`COALESCE(s.feed_category, 'news') = 'news'`);
-  } else if (input.feedTab === 'tech') {
-    clauses.push(`NOT (s.name ILIKE '%reddit%' OR a.url ILIKE '%reddit.com%' OR a.title ILIKE '[r/%' OR s.name ILIKE '%voz%' OR a.url ILIKE '%voz.vn%')`);
-    clauses.push(`COALESCE(s.feed_category, 'news') = 'tech'`);
-  }
+  appendFeedTabClauses(clauses, input.feedTab);
 
   if (input.qualityIssue) {
     clauses.push(`a.summary_status = 'done'`);
@@ -127,6 +152,36 @@ export function buildArticleListFilters(input: ArticleListFilterInput): ArticleL
     params,
     nextParamIndex: paramIndex,
     sort,
+  };
+}
+
+export function buildArticleSearchFilters(input: ArticleSearchFilterInput): ArticleSearchFilters {
+  validateLocalDate(input.date);
+  validateFeedTab(input.feedTab);
+
+  const params: any[] = [`%${input.query.trim()}%`];
+  const clauses = [
+    `a.summary_status = 'done'`,
+    `(a.title ILIKE $1 OR a.summary_short ILIKE $1 OR a.tldr ILIKE $1)`,
+  ];
+  let paramIndex = 2;
+
+  if (input.date) {
+    clauses.push(`${LOCAL_DATE_SQL} = $${paramIndex++}`);
+    params.push(input.date);
+  }
+
+  if (input.sourceId) {
+    clauses.push(`a.source_id = $${paramIndex++}`);
+    params.push(input.sourceId);
+  }
+
+  appendFeedTabClauses(clauses, input.feedTab);
+
+  return {
+    where: `WHERE ${clauses.join(' AND ')}`,
+    params,
+    nextParamIndex: paramIndex,
   };
 }
 
