@@ -72,6 +72,33 @@ export function buildFeedPreview(article: any): string {
   return '';
 }
 
+export function isArticleFresh(article: any, nowMs = Date.now(), maxAgeHours = 6): boolean {
+  const timestamp = article?.published_at || article?.created_at;
+  if (!timestamp) return false;
+
+  const articleMs = new Date(timestamp).getTime();
+  if (!Number.isFinite(articleMs)) return false;
+
+  const ageMs = nowMs - articleMs;
+  return ageMs >= 0 && ageMs <= maxAgeHours * 60 * 60 * 1000;
+}
+
+export function getVisibleArticleTags(article: any, limit = 2): string[] {
+  if (!Array.isArray(article?.tags)) return [];
+
+  const seen = new Set<string>();
+  const tags: string[] = [];
+  for (const rawTag of article.tags) {
+    if (typeof rawTag !== 'string') continue;
+    const tag = rawTag.trim();
+    if (!tag || seen.has(tag)) continue;
+    seen.add(tag);
+    tags.push(tag);
+    if (tags.length >= limit) break;
+  }
+  return tags;
+}
+
 /* ── image proxy helper ── */
 type ImgPreset = 'thumb' | 'detail' | 'og';
 export function proxyImgUrl(rawUrl: string | null | undefined, preset: ImgPreset = 'detail', baseUrl?: string | null): string {

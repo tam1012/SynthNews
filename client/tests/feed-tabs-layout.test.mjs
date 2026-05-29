@@ -95,6 +95,7 @@ test('mobile feed and detail styles prioritize clean reading', () => {
   const css = readCssBundle();
   const homeSource = readFileSync(resolve(__dirname, '../src/pages/Home.tsx'), 'utf8');
   const detailSource = readFileSync(resolve(__dirname, '../src/pages/home/ArticleDetail.tsx'), 'utf8');
+  const feedItemSource = readFileSync(resolve(__dirname, '../src/pages/home/FeedItem.tsx'), 'utf8');
 
   assert.match(css, /\.feed-item-body\s*\{[\s\S]*display:\s*block/);
   assert.match(css, /\.detail-source-link\s*\{/);
@@ -109,6 +110,10 @@ test('mobile feed and detail styles prioritize clean reading', () => {
   assert.match(detailSource, /startedOnPullBarRef/);
   assert.match(css, /--safe-bottom:\s*env\(safe-area-inset-bottom/);
   assert.match(homeSource, /Đang cập nhật tin mới/);
+  assert.match(feedItemSource, /feed-item-state-badge/);
+  assert.match(feedItemSource, /feed-item-tags/);
+  assert.match(css, /\.feed-item-state-badge\s*\{/);
+  assert.match(css, /\.feed-item-tags\s*\{/);
 });
 
 test('service worker unregisters legacy caches and reloads open clients', () => {
