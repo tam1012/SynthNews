@@ -4,7 +4,7 @@ import { api } from '../services/api';
 import { useFetch } from '../hooks/useApi';
 import { AiProvidersTab } from './admin/AiProvidersTab';
 import { FetchJobsTab } from './admin/FetchJobsTab';
-import { OverviewTab } from './admin/OverviewTab';
+import { OverviewTab, type AdminActionMessage } from './admin/OverviewTab';
 import { PromptConfigTab } from './admin/PromptConfigTab';
 import { QualityControlTab } from './admin/QualityControlTab';
 import { SummaryQueueTab } from './admin/SummaryQueueTab';
@@ -20,6 +20,13 @@ const TAB_SLUGS: { tab: AdminTab; slug: string; label: string }[] = [
   { tab: 'prompt', slug: 'prompt', label: 'Cấu hình prompt' },
   { tab: 'blocklist', slug: 'blocklist', label: 'Danh sách chặn' },
 ];
+
+const ADMIN_ACTION_SUCCESS_MESSAGES: Record<string, string> = {
+  scrape: 'Đã gửi lệnh cào nguồn đến hạn. Số liệu sẽ cập nhật sau ít giây.',
+  'fetch-articles': 'Đã gửi lệnh lấy nội dung bài. Số liệu sẽ cập nhật sau ít giây.',
+  summarize: 'Đã gửi lệnh tóm tắt bài. Số liệu sẽ cập nhật sau ít giây.',
+  digest: 'Đã gửi lệnh tạo bản tin. Số liệu sẽ cập nhật sau ít giây.',
+};
 
 function slugToTab(slug?: string): AdminTab {
   if (!slug) return 'overview';
@@ -39,6 +46,7 @@ export function Admin() {
   const [tab, setTab] = useState<AdminTab>(initialTab);
   const { data: health, loading, error, reload } = useFetch<any>(() => api.getHealth());
   const [actionLoading, setActionLoading] = useState('');
+  const [actionMessage, setActionMessage] = useState<AdminActionMessage | null>(null);
   const [queueFilter, setQueueFilter] = useState<SummaryQueueStatus>('failed');
   const [fetchFilter, setFetchFilter] = useState<FetchJobStatus>('failed');
 
@@ -68,11 +76,15 @@ export function Admin() {
 
   const trigger = async (action: string, fn: () => Promise<any>) => {
     setActionLoading(action);
+    setActionMessage({ type: 'pending', message: 'Đang gửi lệnh vận hành...' });
     try {
       await fn();
+      const message = ADMIN_ACTION_SUCCESS_MESSAGES[action] || 'Đã gửi lệnh. Số liệu sẽ cập nhật sau ít giây.';
+      setActionMessage({ type: 'success', message });
+      reload();
       setTimeout(reload, 3000);
     } catch (err: any) {
-      alert('Lỗi: ' + err.message);
+      setActionMessage({ type: 'error', message: err.message || 'Không gửi được lệnh vận hành.' });
     } finally {
       setActionLoading('');
     }
@@ -104,6 +116,7 @@ export function Admin() {
           reload={reload}
           trigger={trigger}
           actionLoading={actionLoading}
+          actionMessage={actionMessage}
           goToQueue={goToQueue}
           goToFetch={goToFetch}
           goToQuality={goToQuality}

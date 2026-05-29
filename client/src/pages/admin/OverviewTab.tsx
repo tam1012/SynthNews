@@ -1,6 +1,11 @@
 import { api } from '../../services/api';
 import { FetchJobStatus, SummaryQueueStatus, forumKindLabel, forumStatsValue, numberText, percentText, sourceQualityBadgeClass, sourceQualityLabel, sourceQualityNote, statusLabel } from './adminHelpers';
 
+export type AdminActionMessage = {
+  type: 'pending' | 'success' | 'error';
+  message: string;
+};
+
 function getBrowserProxySources(health: any): any[] {
   if (Array.isArray(health?.browserProxy?.sources) && health.browserProxy.sources.length > 0) {
     return health.browserProxy.sources;
@@ -56,6 +61,7 @@ export function OverviewTab({
   reload,
   trigger,
   actionLoading,
+  actionMessage,
   goToQueue,
   goToFetch,
   goToQuality,
@@ -66,6 +72,7 @@ export function OverviewTab({
   reload: () => void;
   trigger: (action: string, fn: () => Promise<any>) => Promise<void>;
   actionLoading: string;
+  actionMessage: AdminActionMessage | null;
   goToQueue: (status: SummaryQueueStatus) => void;
   goToFetch: (status: FetchJobStatus) => void;
   goToQuality: () => void;
@@ -86,6 +93,31 @@ export function OverviewTab({
             </div>
           ) : health ? (
             <div style={{ display: 'grid', gap: 12 }}>
+              {actionMessage && (
+                <div
+                  className="admin-action-message"
+                  style={{
+                    padding: '10px 12px',
+                    border: '1px solid var(--color-border-light)',
+                    borderRadius: 8,
+                    background: actionMessage.type === 'error'
+                      ? 'rgba(239, 68, 68, 0.08)'
+                      : actionMessage.type === 'success'
+                        ? 'rgba(34, 197, 94, 0.08)'
+                        : 'var(--color-bg-card)',
+                    color: actionMessage.type === 'error'
+                      ? 'var(--color-error)'
+                      : actionMessage.type === 'success'
+                        ? 'var(--color-success)'
+                        : 'var(--color-text-secondary)',
+                    fontSize: '0.86rem',
+                    fontWeight: 700,
+                  }}
+                >
+                  {actionMessage.message}
+                </div>
+              )}
+
               {browserProxySources.length > 0 && (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12 }}>
                   {browserProxySources.map((source: any) => {
