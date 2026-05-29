@@ -8,6 +8,7 @@ import ts from 'typescript';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const layoutShellSource = readFileSync(resolve(__dirname, '../src/components/layoutShell.ts'), 'utf8');
+const routerSource = readFileSync(resolve(__dirname, '../src/router.tsx'), 'utf8');
 const { outputText } = ts.transpileModule(layoutShellSource, {
   compilerOptions: {
     module: ts.ModuleKind.CommonJS,
@@ -31,9 +32,14 @@ test('home feed routes use the fluid layout shell on hard refresh', () => {
   assert.equal(usesFluidShell('/voz'), true);
   assert.equal(usesFluidShell('/reddit'), true);
   assert.equal(usesFluidShell('/digest'), true);
+  assert.equal(usesFluidShell('/28052026'), true);
 });
 
 test('admin routes keep the fluid layout shell', () => {
   assert.equal(usesFluidShell('/admin'), true);
   assert.equal(usesFluidShell('/sources'), true);
+});
+
+test('router serves ddmmyyyy date deep links through the home page', () => {
+  assert.match(routerSource, /<Route path="\/:dateSlug" element=\{<Home \/>\} \/>/);
 });

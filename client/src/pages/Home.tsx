@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState, useRef, useCallback, startTransition } from 'react';
-import { useLocation, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../services/api';
 import { useFetchRaw, useSettings } from '../hooks/useApi';
-import { filterArticlesBySelectedDate, getEmptyFeedMessage, getReaderLoadingState, shouldShowDetailPane, shouldShowRightPane, shouldShowScrollTopButton } from './homeUx';
+import { filterArticlesBySelectedDate, formatDateDeepLink, getEmptyFeedMessage, getReaderLoadingState, parseDateDeepLinkPath, shouldShowDetailPane, shouldShowRightPane, shouldShowScrollTopButton } from './homeUx';
 import { ArticleDetail } from './home/ArticleDetail';
 import { DigestTab } from './home/DigestTab';
 import { ArticleDetailSkeleton, FeedItem, FeedListSkeleton } from './home/FeedItem';
@@ -13,8 +13,10 @@ const FEED_PAGE_SIZE = 100;
 
 export function Home() {
   const location = useLocation();
+  const navigate = useNavigate();
   const { articleId: urlArticleId } = useParams<{ articleId?: string }>();
   const hasArticleDeepLink = Boolean(urlArticleId);
+  const linkedDate = useMemo(() => parseDateDeepLinkPath(location.pathname), [location.pathname]);
   const { fontSize, cycleFontSize, theme, toggleTheme } = useSettings();
 
   // Derive initial tab from URL path
@@ -31,16 +33,23 @@ export function Home() {
   const [selected, setSelected] = useState<any | null>(null);
   const [tab, setTab] = useState<'all' | 'news' | 'tech' | 'voz' | 'reddit' | 'digest'>(initialTab);
   const [selectedDigestId, setSelectedDigestId] = useState<string | null>(null);
+  const [userSelectedDate, setUserSelectedDate] = useState<string | null>(() => linkedDate);
 
   // Sync tab when URL changes (e.g. sidebar navigation)
   useEffect(() => {
     const path = location.pathname;
+    const pathDate = parseDateDeepLinkPath(path);
     let newTab: 'all' | 'news' | 'tech' | 'voz' | 'reddit' | 'digest' = 'all';
     if (path === '/voz') newTab = 'voz';
     else if (path === '/reddit') newTab = 'reddit';
     else if (path === '/digest') newTab = 'digest';
     else if (path === '/news') newTab = 'news';
     else if (path === '/tech') newTab = 'tech';
+    if (pathDate) {
+      setUserSelectedDate(pathDate);
+      setSelected(null);
+      setFilterTag('');
+    }
     if (newTab !== tab && !path.startsWith('/article')) {
       setTab(newTab);
       setSelected(null);
@@ -93,9 +102,6 @@ export function Home() {
   const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
   const splitLeftRef = useRef<HTMLDivElement>(null);
 
-  // User's explicit date pick (null = auto-select latest)
-  const [userSelectedDate, setUserSelectedDate] = useState<string | null>(null);
-
   // Fetch available dates
   const { data: datesRaw, loading: datesLoading } = useFetchRaw(
     () => api.getArticleDates(filterSource === 'all' ? undefined : filterSource),
@@ -109,6 +115,7 @@ export function Home() {
 
   // Derive effective date synchronously — no useEffect race condition
   const selectedDate = useMemo(() => {
+    if (linkedDate) return linkedDate;
     if (availableDates.length === 0) return null;
     if (userSelectedDate && availableDates.find(d => d.date === userSelectedDate)) {
       return userSelectedDate;
@@ -119,7 +126,9 @@ export function Home() {
   // Wrapper to keep setSelectedDate API for the rest of the component
   const setSelectedDate = useCallback((date: string | null) => {
     setUserSelectedDate(date);
-  }, []);
+    const datePath = formatDateDeepLink(date);
+    if (datePath) navigate(datePath, { replace: true });
+  }, [navigate]);
 
   const { data: raw, loading, error, reload } = useFetchRaw(
     () => {
@@ -357,6 +366,12 @@ export function Home() {
     const path = t === 'all' ? '/' : `/${t}`;
     window.history.replaceState(null, '', path);
   }, []);
+
+  const currentFeedPath = useMemo(() => {
+    const explicitDate = linkedDate || userSelectedDate;
+    if (tab === 'all' && explicitDate) return formatDateDeepLink(explicitDate) || '/';
+    return tab === 'all' ? '/' : `/${tab}`;
+  }, [linkedDate, tab, userSelectedDate]);
 
   // Load article from URL deep link (/article/:id)
   useEffect(() => {
@@ -680,9 +695,8 @@ export function Home() {
               article={selected}
               onClose={() => {
                 setSelected(null);
-                // Navigate back to current tab URL (no re-render)
-                const path = tab === 'all' ? '/' : `/${tab}`;
-                window.history.replaceState(null, '', path);
+                // Navigate back to current feed URL (no React Router re-render)
+                window.history.replaceState(null, '', currentFeedPath);
               }}
               onPrevArticle={handlePrevArticle}
               onNextArticle={handleNextArticle}

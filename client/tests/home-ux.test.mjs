@@ -82,3 +82,13 @@ test('feed articles are constrained to the selected local date before rendering'
   assert.deepEqual(filterArticlesBySelectedDate(articles, '2026-05-06').map((article) => article.id), ['new', 'fallback']);
   assert.deepEqual(filterArticlesBySelectedDate(articles, null).map((article) => article.id), ['new', 'old', 'fallback', 'missing']);
 });
+
+test('date deep links map ddmmyyyy paths to local ISO dates', () => {
+  const { formatDateDeepLink, parseDateDeepLinkPath } = loadTsModule('../src/pages/homeUx.ts');
+
+  assert.equal(parseDateDeepLinkPath('/28052026'), '2026-05-28');
+  assert.equal(parseDateDeepLinkPath('/29022024'), '2024-02-29');
+  assert.equal(parseDateDeepLinkPath('/31022026'), null);
+  assert.equal(parseDateDeepLinkPath('/news'), null);
+  assert.equal(formatDateDeepLink('2026-05-28'), '/28052026');
+});

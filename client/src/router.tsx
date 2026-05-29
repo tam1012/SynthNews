@@ -21,6 +21,7 @@ export function Router() {
           <Route path="/voz" element={<Home />} />
           <Route path="/reddit" element={<Home />} />
           <Route path="/digest" element={<Home />} />
+          <Route path="/:dateSlug" element={<Home />} />
           <Route path="/article/:articleId" element={<Home />} />
           <Route path="/sources" element={<Suspense fallback={<PageLoader />}><Sources /></Suspense>} />
           <Route path="/admin" element={<Suspense fallback={<PageLoader />}><Admin /></Suspense>} />
