@@ -57,18 +57,52 @@
   background: var(--color-bg-card);
   box-shadow: 0 1px 4px var(--color-shadow);
 }
-.settings-sheet-cycle {
-  padding: 6px 18px;
+.settings-sheet-font-size {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--color-border-light);
+}
+.settings-sheet-row-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+  font-size: 0.95rem;
+  color: var(--color-text);
+}
+.settings-sheet-row-heading strong {
+  color: var(--color-accent);
+  font-size: 0.9rem;
+}
+.settings-sheet-font-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+}
+.settings-sheet-font-option {
+  min-height: 36px;
   border-radius: 999px;
   border: 1px solid var(--color-border-light);
   background: var(--color-surface-container-low);
-  color: var(--color-text);
-  font-size: 0.9rem; font-weight: 600;
-  cursor: pointer; transition: all 0.15s;
+  color: var(--color-text-secondary);
+  font-size: 0.82rem;
+  font-weight: 700;
+  font-family: var(--font-heading);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
-.settings-sheet-cycle:hover {
+.settings-sheet-font-option:hover,
+.settings-sheet-font-option:focus-visible {
   border-color: var(--color-accent);
   color: var(--color-accent);
+}
+.settings-sheet-font-option.active {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: #fff;
+}
+[data-theme="dark"] .settings-sheet-font-option.active {
+  color: var(--color-bg);
 }
 .settings-sheet-section { padding: 14px 0; }
 .settings-sheet-label {

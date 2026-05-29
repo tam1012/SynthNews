@@ -1,16 +1,13 @@
-import { Outlet, useLocation } from 'react-router-dom';
-import { useEffect, useState, useRef, useCallback } from 'react';
-import { useSettings } from '../hooks/useApi';
+import { Outlet } from 'react-router-dom';
+import { useEffect, useState, useRef } from 'react';
+import { FONT_SIZES, useSettings } from '../hooks/useApi';
 import { Sidebar } from './Sidebar';
 import { MobileTopNav } from './MobileTopNav';
 import { MobileBottomNav } from './MobileBottomNav';
 import { SearchModal } from './SearchModal';
 
-const ADMIN_TOKEN_STORAGE_KEY = 'admin_token';
-
 export function Layout() {
-  const { fontSize, cycleFontSize, theme, toggleTheme } = useSettings();
-  const location = useLocation();
+  const { fontSize, setFontSize, theme, toggleTheme } = useSettings();
   const [showSettingsSheet, setShowSettingsSheet] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const sheetRef = useRef<HTMLDivElement>(null);
@@ -67,7 +64,7 @@ export function Layout() {
           theme={theme}
           toggleTheme={toggleTheme}
           fontSize={fontSize}
-          cycleFontSize={cycleFontSize}
+          setFontSize={setFontSize}
         />
         <div className="app-main">
           <MobileTopNav onOpenSettings={() => setShowSettingsSheet(true)} />
@@ -103,11 +100,23 @@ export function Layout() {
               </div>
             </div>
 
-            <div className="settings-sheet-row">
-              <span>Cỡ chữ</span>
-              <button className="settings-sheet-cycle" onClick={cycleFontSize}>
-                {fontSize}px
-              </button>
+            <div className="settings-sheet-font-size">
+              <div className="settings-sheet-row-heading">
+                <span>Cỡ chữ</span>
+                <strong>{fontSize}px</strong>
+              </div>
+              <div className="settings-sheet-font-grid" role="group" aria-label="Chọn cỡ chữ">
+                {FONT_SIZES.map(size => (
+                  <button
+                    key={size}
+                    type="button"
+                    className={`settings-sheet-font-option ${fontSize === size ? 'active' : ''}`}
+                    onClick={() => setFontSize(size)}
+                  >
+                    {size}px
+                  </button>
+                ))}
+              </div>
             </div>
 
 

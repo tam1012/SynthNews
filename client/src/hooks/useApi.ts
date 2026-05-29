@@ -1,5 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 
+export const FONT_SIZES = [12, 14, 16, 18, 20] as const;
+const DEFAULT_FONT_SIZE = 16;
+
+function normalizeFontSize(size: number) {
+  return FONT_SIZES.includes(size as typeof FONT_SIZES[number]) ? size : DEFAULT_FONT_SIZE;
+}
+
 export function useFetch<T>(fetcher: () => Promise<{ data: T }>, deps: any[] = []) {
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(true);
@@ -47,16 +54,9 @@ export function useFetchRaw<T>(fetcher: () => Promise<T>, deps: any[] = []) {
 
 
 export function useSettings() {
-  const FONT_SIZES = [12, 14, 16, 18, 20] as const;
-  const DEFAULT_FONT_SIZE = 16;
-
   const [fontSize, setFontSize] = useState(() =>
-    parseInt(localStorage.getItem('font_size') || String(DEFAULT_FONT_SIZE))
+    normalizeFontSize(parseInt(localStorage.getItem('font_size') || String(DEFAULT_FONT_SIZE)))
   );
-  const [fontDir, setFontDir] = useState<1 | -1>(() => {
-    const saved = localStorage.getItem('font_dir');
-    return saved === '-1' ? -1 : 1;
-  });
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     const saved = localStorage.getItem('theme');
     if (saved === 'dark' || saved === 'light') return saved;
@@ -65,28 +65,11 @@ export function useSettings() {
 
 
   const updateFontSize = (size: number) => {
-    setFontSize(size);
-    localStorage.setItem('font_size', String(size));
-    document.documentElement.style.setProperty('--font-size', `${size}px`);
-    document.documentElement.style.fontSize = `${size}px`;
-  };
-
-  /** Ping-pong cycle: 16→18→20→18→16→14→12→14→16… */
-  const cycleFontSize = () => {
-    const idx = FONT_SIZES.indexOf(fontSize as typeof FONT_SIZES[number]);
-    const currentIdx = idx >= 0 ? idx : FONT_SIZES.indexOf(DEFAULT_FONT_SIZE);
-    let nextDir = fontDir;
-
-    // Reverse direction at boundaries
-    if (currentIdx >= FONT_SIZES.length - 1 && fontDir === 1) nextDir = -1;
-    if (currentIdx <= 0 && fontDir === -1) nextDir = 1;
-
-    const nextIdx = currentIdx + nextDir;
-    const nextSize = FONT_SIZES[Math.max(0, Math.min(nextIdx, FONT_SIZES.length - 1))];
-
-    setFontDir(nextDir);
-    localStorage.setItem('font_dir', String(nextDir));
-    updateFontSize(nextSize);
+    const nextSize = normalizeFontSize(size);
+    setFontSize(nextSize);
+    localStorage.setItem('font_size', String(nextSize));
+    document.documentElement.style.setProperty('--font-size', `${nextSize}px`);
+    document.documentElement.style.fontSize = `${nextSize}px`;
   };
 
   const toggleTheme = () => {
@@ -105,7 +88,6 @@ export function useSettings() {
   return {
     fontSize,
     setFontSize: updateFontSize,
-    cycleFontSize,
     theme,
     toggleTheme,
   };

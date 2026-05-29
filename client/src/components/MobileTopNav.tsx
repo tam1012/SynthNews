@@ -1,5 +1,4 @@
 import { NavLink } from 'react-router-dom';
-import { useSettings } from '../hooks/useApi';
 
 interface MobileTopNavProps {
   onOpenSettings?: () => void;

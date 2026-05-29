@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, useRef, useCallback, startTransition } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../services/api';
-import { useFetchRaw, useSettings } from '../hooks/useApi';
+import { useFetchRaw } from '../hooks/useApi';
 import { filterArticlesBySelectedDate, formatDateDeepLink, getEmptyFeedMessage, getReaderLoadingState, parseDateDeepLinkPath, shouldShowDetailPane, shouldShowRightPane, shouldShowScrollTopButton } from './homeUx';
 import { ArticleDetail } from './home/ArticleDetail';
 import { DigestTab } from './home/DigestTab';
@@ -17,7 +17,6 @@ export function Home() {
   const { articleId: urlArticleId } = useParams<{ articleId?: string }>();
   const hasArticleDeepLink = Boolean(urlArticleId);
   const linkedDate = useMemo(() => parseDateDeepLinkPath(location.pathname), [location.pathname]);
-  const { fontSize, cycleFontSize, theme, toggleTheme } = useSettings();
 
   // Derive initial tab from URL path
   const initialTab = useMemo(() => {

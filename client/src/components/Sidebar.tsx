@@ -1,11 +1,12 @@
 import { NavLink, useLocation } from 'react-router-dom';
+import { FONT_SIZES } from '../hooks/useApi';
 
 interface SidebarProps {
   onOpenSearch?: () => void;
   theme?: string;
   toggleTheme?: () => void;
   fontSize?: number;
-  cycleFontSize?: () => void;
+  setFontSize?: (size: number) => void;
 }
 
 export function Sidebar({
@@ -13,7 +14,7 @@ export function Sidebar({
   theme,
   toggleTheme,
   fontSize,
-  cycleFontSize,
+  setFontSize,
 }: SidebarProps) {
   const location = useLocation();
   const path = location.pathname;
@@ -83,7 +84,7 @@ export function Sidebar({
           <kbd className="sidebar-search-kbd">Ctrl+K</kbd>
         </button>
 
-        {toggleTheme && cycleFontSize && (
+        {toggleTheme && setFontSize && (
           <div className="sidebar-quick-settings">
             <button
               className="sidebar-theme-toggle"
@@ -92,13 +93,31 @@ export function Sidebar({
             >
               {theme === 'light' ? '☀' : '☾'}
             </button>
-            <button
-              className="sidebar-font-cycle"
-              onClick={cycleFontSize}
-              title="Thay đổi cỡ chữ"
-            >
-              Cỡ chữ: {fontSize}px
-            </button>
+            <div className="sidebar-font-picker">
+              <button
+                className="sidebar-font-trigger"
+                type="button"
+                aria-haspopup="menu"
+                aria-label="Chọn cỡ chữ"
+                title="Chọn cỡ chữ"
+              >
+                Cỡ chữ: {fontSize}px
+              </button>
+              <div className="sidebar-font-menu" role="menu" aria-label="Chọn cỡ chữ">
+                {FONT_SIZES.map(size => (
+                  <button
+                    key={size}
+                    type="button"
+                    className={`sidebar-font-option ${fontSize === size ? 'active' : ''}`}
+                    onClick={() => setFontSize(size)}
+                    role="menuitemradio"
+                    aria-checked={fontSize === size}
+                  >
+                    {size}px
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
         )}
       </div>
