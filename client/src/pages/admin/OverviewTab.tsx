@@ -1,5 +1,5 @@
 import { api } from '../../services/api';
-import { FetchJobStatus, SummaryQueueStatus, forumKindLabel, forumStatsValue, numberText, percentText, sourceQualityBadgeClass, sourceQualityLabel, sourceQualityNote, statusLabel } from './adminHelpers';
+import { AdminWorkItem, FetchJobStatus, SummaryQueueStatus, buildAdminWorkItems, forumKindLabel, forumStatsValue, numberText, percentText, sourceQualityBadgeClass, sourceQualityLabel, sourceQualityNote, statusLabel } from './adminHelpers';
 
 export type AdminActionMessage = {
   type: 'pending' | 'success' | 'error';
@@ -54,6 +54,13 @@ function formatDateTime(value: unknown): string {
   return date.toLocaleString('vi-VN');
 }
 
+const ADMIN_WORK_SEVERITY_LABELS: Record<string, string> = {
+  critical: 'Khẩn cấp',
+  warning: 'Cần xem',
+  info: 'Theo dõi',
+  ok: 'Ổn',
+};
+
 export function OverviewTab({
   health,
   loading,
@@ -81,6 +88,28 @@ export function OverviewTab({
   const publicChecks = Array.isArray(health?.publicChecks) ? health.publicChecks : [];
   const publicChecksOk = publicChecks.length > 0 && publicChecks.every((check: any) => check.status === 'ok');
   const deployLabel = health?.deploy?.shortCommit || health?.deploy?.commit?.slice?.(0, 7) || 'chưa rõ';
+  const workItems = buildAdminWorkItems(health);
+
+  const openWorkItemTarget = (item: AdminWorkItem) => {
+    if (!item.target) return;
+    if (item.target === 'sources') {
+      window.location.href = '/sources';
+    } else if (item.target === 'quality') {
+      goToQuality();
+    } else if (item.target.startsWith('queue:')) {
+      goToQueue(item.target.replace('queue:', '') as SummaryQueueStatus);
+    } else if (item.target.startsWith('fetch:')) {
+      goToFetch(item.target.replace('fetch:', '') as FetchJobStatus);
+    }
+  };
+
+  const runWorkItemAction = (item: AdminWorkItem) => {
+    if (item.runAction === 'scrape') return trigger('scrape', api.triggerScrape);
+    if (item.runAction === 'fetch-articles') return trigger('fetch-articles', api.triggerFetchArticles);
+    if (item.runAction === 'summarize') return trigger('summarize', api.triggerSummarize);
+    if (item.runAction === 'digest') return trigger('digest', api.triggerDigest);
+    return Promise.resolve();
+  };
 
   return (
         <div>
@@ -207,7 +236,7 @@ export function OverviewTab({
                 </div>
               </div>
 
-              <div className="card" style={{ borderColor: health.sources?.failing || health.articles?.failed || health.articleFetchJobs?.failed ? 'var(--color-warning)' : 'var(--color-border)' }}>
+              <div className="card" style={{ borderColor: workItems.some((item) => item.severity === 'critical') ? 'var(--color-warning)' : 'var(--color-border)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
                   <div>
                     <div style={{ fontWeight: 700 }}>Cần xử lý</div>
@@ -218,16 +247,35 @@ export function OverviewTab({
                   <button className="btn btn-sm" onClick={reload}>Tải lại số liệu</button>
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 8 }}>
-                  {[
-                    { label: 'Nguồn đang lỗi', value: health.sources?.failing, color: health.sources?.failing > 0 ? 'var(--color-error)' : 'var(--color-success)', note: `${numberText(health.sources?.backed_off)} nguồn đang chờ thử lại`, onClick: () => window.location.href = '/sources', tip: 'Mở trang Nguồn tin để xem chi tiết' },
-                    { label: 'URL chưa lấy bài', value: health.articleFetchJobs?.discovered, color: health.articleFetchJobs?.failed > 0 ? 'var(--color-error)' : 'var(--color-warning)', note: `${numberText(health.articleFetchJobs?.failed)} lỗi · ${numberText(health.articleFetchJobs?.retryable_failed)} có thể thử lại`, onClick: () => goToFetch('discovered'), tip: 'Xem danh sách URL đang chờ lấy nội dung' },
-                    { label: 'Bài chờ tóm tắt', value: health.articles?.pending, color: health.articles?.failed > 0 ? 'var(--color-error)' : 'var(--color-warning)', note: `${numberText(health.articles?.failed)} lỗi · ${numberText(health.articles?.retryable_failed)} sẽ thử lại`, onClick: () => goToQueue('pending'), tip: 'Xem danh sách bài đang chờ AI tóm tắt' },
-                    { label: 'Bài bị bỏ qua', value: health.articles?.skipped, color: 'var(--color-text-muted)', note: 'Thường do nội dung quá ngắn hoặc AI từ chối', onClick: () => goToQueue('skipped'), tip: 'Xem bài bị bỏ qua — có thể xóa hoặc tóm tắt lại' },
-                  ].map((item) => (
-                    <div key={item.label} onClick={item.onClick} title={item.tip} style={{ padding: '10px 12px', border: '1px solid var(--color-border-light)', borderRadius: 8, cursor: 'pointer', transition: 'background 0.15s' }} className="admin-clickable-card">
-                      <div style={{ fontSize: '1.55rem', lineHeight: 1, fontWeight: 800, color: item.color }}>{item.value || 0}</div>
-                      <div style={{ fontSize: '0.82rem', fontWeight: 600, marginTop: 6 }}>{item.label} ›</div>
+                  {workItems.map((item) => (
+                    <div
+                      key={item.label}
+                      onClick={() => openWorkItemTarget(item)}
+                      title={item.target ? 'Bấm để mở nơi xử lý chi tiết' : undefined}
+                      style={{ padding: '10px 12px', border: '1px solid var(--color-border-light)', borderRadius: 8, cursor: item.target ? 'pointer' : 'default', transition: 'background 0.15s' }}
+                      className={`admin-work-item admin-work-item-${item.severity} ${item.target ? 'admin-clickable-card' : ''}`}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'flex-start' }}>
+                        <div style={{ fontSize: '1.45rem', lineHeight: 1, fontWeight: 800, color: item.severity === 'critical' ? 'var(--color-error)' : item.severity === 'warning' ? 'var(--color-warning)' : 'var(--color-text-muted)' }}>{item.value || 0}</div>
+                        <span className={`badge badge-${item.severity === 'critical' ? 'error' : item.severity === 'warning' ? 'pending' : 'success'}`}>
+                          Mức ưu tiên: {ADMIN_WORK_SEVERITY_LABELS[item.severity]}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: '0.82rem', fontWeight: 700, marginTop: 7 }}>{item.label}{item.target ? ' ›' : ''}</div>
                       <div style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', marginTop: 3 }}>{item.note}</div>
+                      {item.runAction && (
+                        <button
+                          className="btn btn-sm"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void runWorkItemAction(item);
+                          }}
+                          disabled={!!actionLoading}
+                          style={{ marginTop: 8 }}
+                        >
+                          {actionLoading === item.runAction ? 'Đang chạy...' : item.actionLabel || 'Chạy ngay'}
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>

@@ -3,8 +3,26 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import vm from 'node:vm';
+import ts from 'typescript';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+function loadTsModule(relativePath) {
+  const source = readFileSync(resolve(__dirname, relativePath), 'utf8');
+  const { outputText } = ts.transpileModule(source, {
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2022,
+    },
+  });
+  const moduleContext = { exports: {} };
+  vm.runInNewContext(outputText, {
+    exports: moduleContext.exports,
+    module: moduleContext,
+  });
+  return moduleContext.exports;
+}
 
 test('admin exposes a dedicated summary queue tab', () => {
   const source = readFileSync(resolve(__dirname, '../src/pages/Admin.tsx'), 'utf8');
@@ -87,4 +105,37 @@ test('admin trigger actions expose immediate status feedback', () => {
   assert.match(overviewSource, /actionMessage: AdminActionMessage \| null/);
   assert.match(overviewSource, /admin-action-message/);
   assert.match(overviewSource, /actionMessage\.message/);
+});
+
+test('admin work items are sorted by operational severity', () => {
+  const { buildAdminWorkItems } = loadTsModule('../src/pages/admin/adminHelpers.ts');
+
+  assert.equal(typeof buildAdminWorkItems, 'function');
+  const items = buildAdminWorkItems({
+    runtime: { dbReachable: false },
+    publicChecks: [{ key: 'site', status: 'error' }],
+    sources: { failing: 2, backed_off: 1 },
+    sourceQualitySummary: { stale: 1, low_yield: 1 },
+    articleFetchJobs: { failed: 3, retryable_failed: 2, discovered: 12 },
+    articles: { failed: 4, retryable_failed: 3, pending: 7, skipped: 5 },
+    lastDigest: null,
+  });
+
+  assert.deepEqual(
+    Array.from(items.slice(0, 4).map((item) => item.severity)),
+    ['critical', 'critical', 'critical', 'critical']
+  );
+  assert.equal(items[0].label, 'Database đang lỗi');
+  assert.ok(items.find((item) => item.label === 'Bài tóm tắt lỗi')?.runAction === 'summarize');
+  assert.ok(items.find((item) => item.label === 'URL lấy bài lỗi')?.runAction === 'fetch-articles');
+  assert.ok(items.find((item) => item.label === 'Bài chờ tóm tắt')?.target === 'queue:pending');
+});
+
+test('admin overview renders prioritized work item helper and action buttons', () => {
+  const overviewSource = readFileSync(resolve(__dirname, '../src/pages/admin/OverviewTab.tsx'), 'utf8');
+
+  assert.match(overviewSource, /buildAdminWorkItems\(health\)/);
+  assert.match(overviewSource, /admin-work-item/);
+  assert.match(overviewSource, /runAction/);
+  assert.match(overviewSource, /Mức ưu tiên/);
 });

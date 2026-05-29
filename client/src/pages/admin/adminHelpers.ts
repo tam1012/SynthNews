@@ -21,6 +21,27 @@ export type AdminTab = 'overview' | 'queue' | 'quality' | 'fetchJobs' | 'ai' | '
 export type SummaryQueueStatus = 'failed' | 'pending' | 'processing' | 'skipped' | 'done';
 export type QualityIssue = 'missing_tldr' | 'missing_summary_short' | 'missing_tags' | 'missing_hot_score' | 'short_summary';
 export type FetchJobStatus = 'failed' | 'discovered' | 'fetching' | 'done';
+export type AdminWorkItemSeverity = 'critical' | 'warning' | 'info' | 'ok';
+export type AdminWorkItemTarget =
+  | 'sources'
+  | 'quality'
+  | 'queue:failed'
+  | 'queue:pending'
+  | 'queue:processing'
+  | 'queue:skipped'
+  | 'fetch:failed'
+  | 'fetch:discovered'
+  | 'fetch:fetching';
+export type AdminWorkItemRunAction = 'scrape' | 'fetch-articles' | 'summarize' | 'digest';
+export type AdminWorkItem = {
+  label: string;
+  value: number | string;
+  note: string;
+  severity: AdminWorkItemSeverity;
+  target?: AdminWorkItemTarget;
+  runAction?: AdminWorkItemRunAction;
+  actionLabel?: string;
+};
 
 export const AI_PROVIDER_TYPES = [
   { value: 'custom', label: 'OpenAI-compatible / 9router' },
@@ -106,6 +127,139 @@ export function formatExtraConfig(value: unknown): string {
 
 export function numberText(value: unknown): string {
   return String(Number(value || 0));
+}
+
+const ADMIN_WORK_SEVERITY_ORDER: Record<AdminWorkItemSeverity, number> = {
+  critical: 0,
+  warning: 1,
+  info: 2,
+  ok: 3,
+};
+
+function asCount(value: unknown): number {
+  const count = Number(value || 0);
+  return Number.isFinite(count) ? count : 0;
+}
+
+function sortAdminWorkItems(items: AdminWorkItem[]): AdminWorkItem[] {
+  return items
+    .map((item, index) => ({ item, index }))
+    .filter(({ item }) => item.severity === 'ok' || asCount(item.value) > 0 || typeof item.value === 'string')
+    .sort((a, b) => {
+      const severity = ADMIN_WORK_SEVERITY_ORDER[a.item.severity] - ADMIN_WORK_SEVERITY_ORDER[b.item.severity];
+      if (severity !== 0) return severity;
+      return a.index - b.index;
+    })
+    .map(({ item }) => item);
+}
+
+export function buildAdminWorkItems(health: any): AdminWorkItem[] {
+  const publicChecks = Array.isArray(health?.publicChecks) ? health.publicChecks : [];
+  const hasPublicCheckFailure = publicChecks.some((check: any) => check.status !== 'ok');
+  const needsBrowser = Array.isArray(health?.browserProxy?.sources)
+    ? health.browserProxy.sources.some((source: any) => source.needsBrowser)
+    : Boolean(health?.vozProxy?.needsBrowser);
+
+  const items: AdminWorkItem[] = [];
+
+  if (health?.runtime && health.runtime.dbReachable === false) {
+    items.push({
+      label: 'Database đang lỗi',
+      value: 'Lỗi',
+      note: 'API vẫn trả health nhưng DB không kết nối được. Cần kiểm tra container/log VPS.',
+      severity: 'critical',
+    });
+  }
+
+  if (hasPublicCheckFailure) {
+    items.push({
+      label: 'Public site cần kiểm tra',
+      value: publicChecks.filter((check: any) => check.status !== 'ok').length,
+      note: 'Một hoặc nhiều public smoke check đang lỗi.',
+      severity: 'critical',
+    });
+  }
+
+  if (needsBrowser) {
+    items.push({
+      label: 'Cloudflare/VOZ cần browser',
+      value: 1,
+      note: 'Cần mở Chromium trên VPS để vượt antibot rồi tải lại số liệu.',
+      severity: 'critical',
+    });
+  }
+
+  items.push(
+    {
+      label: 'Bài tóm tắt lỗi',
+      value: health?.articles?.failed,
+      note: `${numberText(health?.articles?.retryable_failed)} bài có thể thử lại.`,
+      severity: 'critical',
+      target: 'queue:failed',
+      runAction: 'summarize',
+      actionLabel: 'Chạy tóm tắt',
+    },
+    {
+      label: 'URL lấy bài lỗi',
+      value: health?.articleFetchJobs?.failed,
+      note: `${numberText(health?.articleFetchJobs?.retryable_failed)} URL có thể thử lại.`,
+      severity: 'critical',
+      target: 'fetch:failed',
+      runAction: 'fetch-articles',
+      actionLabel: 'Chạy fetch',
+    },
+    {
+      label: 'Nguồn đang lỗi',
+      value: health?.sources?.failing,
+      note: `${numberText(health?.sources?.backed_off)} nguồn đang chờ thử lại.`,
+      severity: 'critical',
+      target: 'sources',
+      runAction: 'scrape',
+      actionLabel: 'Cào nguồn',
+    },
+    {
+      label: 'Bài chờ tóm tắt',
+      value: health?.articles?.pending,
+      note: 'Queue AI còn bài chưa xử lý.',
+      severity: 'warning',
+      target: 'queue:pending',
+      runAction: 'summarize',
+      actionLabel: 'Chạy tóm tắt',
+    },
+    {
+      label: 'URL chưa lấy bài',
+      value: health?.articleFetchJobs?.discovered,
+      note: 'URL đã phát hiện nhưng chưa lấy nội dung.',
+      severity: 'warning',
+      target: 'fetch:discovered',
+      runAction: 'fetch-articles',
+      actionLabel: 'Chạy fetch',
+    },
+    {
+      label: 'Nguồn lâu chưa ổn',
+      value: asCount(health?.sourceQualitySummary?.stale) + asCount(health?.sourceQualitySummary?.low_yield),
+      note: `${numberText(health?.sourceQualitySummary?.stale)} stale · ${numberText(health?.sourceQualitySummary?.low_yield)} ít bài mới.`,
+      severity: 'warning',
+      target: 'sources',
+    },
+    {
+      label: 'Chưa có bản tin',
+      value: health?.lastDigest ? 0 : 1,
+      note: 'Chưa tìm thấy bản tin gần nhất.',
+      severity: 'warning',
+      runAction: 'digest',
+      actionLabel: 'Tạo bản tin',
+    },
+    {
+      label: 'Bài bị bỏ qua',
+      value: health?.articles?.skipped,
+      note: 'Thường do nội dung quá ngắn hoặc AI từ chối.',
+      severity: 'info',
+      target: 'queue:skipped',
+    }
+  );
+
+  return sortAdminWorkItems(items);
 }
 
 export function statusLabel(value: string): string {
