@@ -11,7 +11,8 @@ test('admin exposes a dedicated summary queue tab', () => {
   const helpers = readFileSync(resolve(__dirname, '../src/pages/admin/adminHelpers.ts'), 'utf8');
 
   assert.match(helpers, /export type AdminTab = 'overview' \| 'queue'/);
-  assert.match(source, /\{ key: 'queue', label: 'Hàng đợi tóm tắt' \}/);
+  assert.match(source, /\{ tab: 'queue', slug: 'queue', label: 'Hàng đợi tóm tắt' \}/);
+  assert.match(source, /navigateToTab\('queue'\)/);
   assert.match(source, /tab === 'queue' && <SummaryQueueTab/);
 });
 
@@ -46,6 +47,19 @@ test('admin overview exposes source quality labels in Vietnamese', () => {
   assert.match(source, /Lâu chưa thành công/);
   assert.match(source, /Mở trang Nguồn tin/);
   assert.match(source, /health\.sourceQualitySummary/);
+});
+
+test('admin overview exposes system status from deploy runtime and public checks', () => {
+  const source = readFileSync(resolve(__dirname, '../src/pages/admin/OverviewTab.tsx'), 'utf8');
+
+  assert.match(source, /Tình trạng hệ thống/);
+  assert.match(source, /Đang chạy commit/);
+  assert.match(source, /Uptime app/);
+  assert.match(source, /Database/);
+  assert.match(source, /Public site/);
+  assert.match(source, /health\.deploy/);
+  assert.match(source, /health\.runtime/);
+  assert.match(source, /health\.publicChecks/);
 });
 
 test('admin overview uses navigation callbacks owned by the shell', () => {

@@ -31,6 +31,24 @@ function browserProxyInstruction(source: any): string {
   return `SSH/VNC vào VPS, mở Chromium đang bật remote debugging, truy cập ${verifyUrl} và vượt Cloudflare nếu có. Sau đó bấm “Tải lại số liệu”.`;
 }
 
+function formatUptime(seconds: unknown): string {
+  const totalSeconds = Number(seconds || 0);
+  if (!Number.isFinite(totalSeconds) || totalSeconds <= 0) return 'Mới khởi động';
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  if (days > 0) return `${days} ngày ${hours} giờ`;
+  if (hours > 0) return `${hours} giờ ${minutes} phút`;
+  return `${Math.max(1, minutes)} phút`;
+}
+
+function formatDateTime(value: unknown): string {
+  if (!value) return 'Chưa có dữ liệu';
+  const date = new Date(String(value));
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleString('vi-VN');
+}
+
 export function OverviewTab({
   health,
   loading,
@@ -53,6 +71,9 @@ export function OverviewTab({
   goToQuality: () => void;
 }) {
   const browserProxySources = getBrowserProxySources(health);
+  const publicChecks = Array.isArray(health?.publicChecks) ? health.publicChecks : [];
+  const publicChecksOk = publicChecks.length > 0 && publicChecks.every((check: any) => check.status === 'ok');
+  const deployLabel = health?.deploy?.shortCommit || health?.deploy?.commit?.slice?.(0, 7) || 'chưa rõ';
 
   return (
         <div>
@@ -98,6 +119,61 @@ export function OverviewTab({
                   })}
                 </div>
               )}
+
+              <div className="card">
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
+                  <div>
+                    <div style={{ fontWeight: 700 }}>Tình trạng hệ thống</div>
+                    <div style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)', marginTop: 2 }}>
+                      Kiểm tra nhanh app đang chạy, database và public site.
+                    </div>
+                  </div>
+                  <button className="btn btn-sm" onClick={reload}>Tải lại số liệu</button>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8 }}>
+                  <div style={{ padding: '10px 12px', border: '1px solid var(--color-border-light)', borderRadius: 8 }}>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Đang chạy commit</div>
+                    <div style={{ fontSize: '1.2rem', lineHeight: 1.2, fontWeight: 800, marginTop: 6 }}>{deployLabel}</div>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', marginTop: 4 }}>
+                      {health.deploy?.branch ? `Branch ${health.deploy.branch}` : 'Chưa rõ branch'} · deploy {formatDateTime(health.deploy?.deployedAt)}
+                    </div>
+                  </div>
+                  <div style={{ padding: '10px 12px', border: '1px solid var(--color-border-light)', borderRadius: 8 }}>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Uptime app</div>
+                    <div style={{ fontSize: '1.2rem', lineHeight: 1.2, fontWeight: 800, marginTop: 6 }}>{formatUptime(health.runtime?.uptimeSeconds)}</div>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', marginTop: 4 }}>
+                      {health.runtime?.nodeEnv || 'development'} · {health.runtime?.containerName || 'container chưa rõ'}
+                    </div>
+                  </div>
+                  <div style={{ padding: '10px 12px', border: '1px solid var(--color-border-light)', borderRadius: 8 }}>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Database</div>
+                    <div style={{ fontSize: '1.2rem', lineHeight: 1.2, fontWeight: 800, marginTop: 6, color: health.runtime?.dbReachable ? 'var(--color-success)' : 'var(--color-error)' }}>
+                      {health.runtime?.dbReachable ? 'Kết nối được' : 'Đang lỗi'}
+                    </div>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', marginTop: 4 }}>
+                      Kiểm tra lúc {formatDateTime(health.runtime?.checkedAt || health.time)}
+                    </div>
+                  </div>
+                  <div style={{ padding: '10px 12px', border: '1px solid var(--color-border-light)', borderRadius: 8 }}>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Public site</div>
+                    <div style={{ fontSize: '1.2rem', lineHeight: 1.2, fontWeight: 800, marginTop: 6, color: publicChecksOk ? 'var(--color-success)' : 'var(--color-warning)' }}>
+                      {publicChecksOk ? 'Reachable' : 'Cần kiểm tra'}
+                    </div>
+                    <div style={{ display: 'grid', gap: 3, marginTop: 6 }}>
+                      {publicChecks.length > 0 ? publicChecks.map((check: any) => (
+                        <div key={check.key || check.url} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>
+                          <span>{check.label || check.key}</span>
+                          <strong style={{ color: check.status === 'ok' ? 'var(--color-success)' : 'var(--color-error)' }}>
+                            {check.status === 'ok' ? `${check.httpStatus || 200}` : 'Lỗi'}
+                          </strong>
+                        </div>
+                      )) : (
+                        <div style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>Chưa có public check.</div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
 
               <div className="card" style={{ borderColor: health.sources?.failing || health.articles?.failed || health.articleFetchJobs?.failed ? 'var(--color-warning)' : 'var(--color-border)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
