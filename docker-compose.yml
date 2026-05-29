@@ -3,9 +3,18 @@ services:
     build: ./scrapling-sidecar
     container_name: newstamhv-scrapling
     restart: unless-stopped
+    # Reap zombie browser processes (Camoufox/Firefox children) that
+    # StealthyFetcher leaves behind on crash/timeout. Without an init as PID 1,
+    # these accumulate into thousands of defunct PIDs and melt the host CPU.
+    init: true
+    # Hard ceiling on processes: one runaway fetch can fork hundreds of browser
+    # children; cap it so a leak can never exhaust host PIDs again.
+    pids_limit: 512
     environment:
       TZ: Asia/Ho_Chi_Minh
       SCRAPLING_TIMEOUT_MS: ${SCRAPLING_TIMEOUT_MS:-60000}
+      SCRAPLING_WORKERS: ${SCRAPLING_WORKERS:-1}
+      SCRAPLING_MAX_CONCURRENCY: ${SCRAPLING_MAX_CONCURRENCY:-2}
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8000/health >/dev/null"]
       interval: 30s
@@ -15,6 +24,7 @@ services:
     deploy:
       resources:
         limits:
+          cpus: "2.0"
           memory: 2G
 
   db:

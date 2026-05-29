@@ -17,4 +17,7 @@ COPY app/ ./app/
 
 EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+# One uvicorn worker by default. Each worker runs its own ThreadPool of browser
+# launches; multiplying workers multiplies the live Camoufox processes and was a
+# key driver of the PID/CPU blowup. Override with SCRAPLING_WORKERS if needed.
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers ${SCRAPLING_WORKERS:-1}"]

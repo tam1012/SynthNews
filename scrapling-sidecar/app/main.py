@@ -6,12 +6,17 @@ from concurrent.futures import ThreadPoolExecutor
 from fastapi import FastAPI
 from pydantic import BaseModel
 
-from .config import TIMEOUT_MS
+from .config import TIMEOUT_MS, MAX_CONCURRENCY
 
 app = FastAPI(title="Scrapling Sidecar", version="1.0.0")
 
 _start_time = time.time()
-_executor = ThreadPoolExecutor(max_workers=4)
+# Bound the thread pool to MAX_CONCURRENCY so we never have more than N browser
+# launches in flight per worker. The semaphore is belt-and-suspenders: it gates
+# at the async layer before a thread is even claimed, so queued requests wait
+# instead of piling browser processes onto the host.
+_executor = ThreadPoolExecutor(max_workers=MAX_CONCURRENCY)
+_fetch_semaphore = asyncio.Semaphore(MAX_CONCURRENCY)
 
 
 class FetchOptions(BaseModel):
@@ -40,7 +45,13 @@ class FetchResponse(BaseModel):
 
 @app.get("/health")
 async def health():
-    return {"ok": True, "version": "1.0.0", "uptime_s": int(time.time() - _start_time)}
+    return {
+        "ok": True,
+        "version": "1.0.0",
+        "uptime_s": int(time.time() - _start_time),
+        "max_concurrency": MAX_CONCURRENCY,
+        "in_flight": MAX_CONCURRENCY - _fetch_semaphore._value,
+    }
 
 
 @app.post("/fetch", response_model=FetchResponse)
@@ -49,11 +60,12 @@ async def fetch(req: FetchRequest):
     timeout = req.options.timeout_ms or TIMEOUT_MS
 
     try:
-        loop = asyncio.get_event_loop()
-        if req.mode == "stealth":
-            html = await loop.run_in_executor(_executor, _stealth_fetch_sync, req.url, req.options, timeout)
-        else:
-            html = await loop.run_in_executor(_executor, _fast_fetch_sync, req.url, req.options, timeout)
+        async with _fetch_semaphore:
+            loop = asyncio.get_event_loop()
+            if req.mode == "stealth":
+                html = await loop.run_in_executor(_executor, _stealth_fetch_sync, req.url, req.options, timeout)
+            else:
+                html = await loop.run_in_executor(_executor, _fast_fetch_sync, req.url, req.options, timeout)
 
         elapsed = int((time.time() - start) * 1000)
 
