@@ -56,8 +56,9 @@ If browser warns about certificate, trust Caddy local CA or continue only for th
 ## Verify before commit/push
 
 ```powershell
-npm run build --workspace=server
+npm test --workspace=client
 npm test --workspace=server
+npm run build
 ```
 
 Manual checks:
@@ -65,9 +66,43 @@ Manual checks:
 - `https://synthnews.local/api/health/live` returns success.
 - Home feed loads.
 - `/sources` loads.
-- Admin write actions use local `ADMIN_TOKEN`.
+- `/admin` loads with the system status and action cards visible.
+- Admin write actions use local `ADMIN_TOKEN` and update the visible state without browser refresh.
 - Article detail routes load via SPA fallback.
 - `https://synthnews.site` still opens VPS production.
+
+## Release checklist
+
+Run this when a change is ready to leave local testing:
+
+1. Local checks pass:
+
+```powershell
+npm test --workspace=client
+npm test --workspace=server
+npm run build
+```
+
+2. Production-like local smoke passes at `https://synthnews.local`:
+   - Home feed, article detail, `/sources`, and `/admin` render without console errors.
+   - Desktop and mobile screenshots show no clipped text, overlapping controls, or broken admin cards.
+   - `https://synthnews.local/api/health/live` returns success.
+
+3. After push/deploy:
+   - GitHub Actions deploy is `success`.
+   - VPS repo is at the pushed commit:
+
+```powershell
+ssh -i "C:\Users\Ha Tam\Downloads\ssh-key-2026-04-20_tamhvt.key" ubuntu@158.178.239.119 "cd /home/ubuntu/newstamhv && git log --oneline -1"
+```
+
+4. Production smoke:
+
+```powershell
+curl.exe -fsS https://synthnews.site/ | Select-Object -First 1
+curl.exe -fsS https://synthnews.site/api/health/live
+curl.exe -fsS "https://synthnews.site/api/articles?limit=1"
+```
 
 ## Docker app parity
 

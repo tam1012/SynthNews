@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { getOne, getMany } from '../db/index.js';
 import { runScrapeJob, runArticleFetchJob, runSummarizeJob, runDigestJob, runCleanupJob } from '../jobs/scheduler.js';
+import { getDeployInfo, getPublicChecks, getRuntimeInfo } from '../lib/runtime-status.js';
 
 const health = new Hono();
 
@@ -48,6 +49,7 @@ health.get('/', async (c) => {
   try {
     const dbCheck = await getOne('SELECT NOW() as time');
     const scrapling = await getScraplingStatus();
+    const publicChecksPromise = getPublicChecks();
 
     const sourcesCount = await getOne<{ total: string; enabled: string; due: string; failing: string; backed_off: string }>(
       `SELECT COUNT(*) as total,
@@ -185,12 +187,18 @@ health.get('/', async (c) => {
       })),
       recent: forumRecent,
     };
+    const deploy = getDeployInfo();
+    const runtime = getRuntimeInfo(Boolean(dbCheck));
+    const publicChecks = await publicChecksPromise;
 
     return c.json({
       success: true,
       data: {
         status: 'ok',
         time: dbCheck?.time,
+        deploy,
+        runtime,
+        publicChecks,
         sources: {
           total: parseInt(sourcesCount?.total || '0'),
           enabled: parseInt(sourcesCount?.enabled || '0'),

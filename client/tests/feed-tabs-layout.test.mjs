@@ -14,8 +14,19 @@ function readCssBundle() {
 
 test('global stylesheet imports split CSS modules in cascade order', () => {
   const css = readFileSync(resolve(__dirname, '../src/styles/global.css'), 'utf8');
+  const importedFiles = Array.from(css.matchAll(/^@import '\.\/(.+?)';$/gm), match => match[1]);
 
-  assert.match(css, /@import '\.\/tokens\.css';\s*@import '\.\/base\.css';\s*@import '\.\/header\.css';\s*@import '\.\/components\.css';\s*@import '\.\/home\.css';\s*@import '\.\/sources\.css';\s*@import '\.\/admin\.css';\s*@import '\.\/settings-sheet\.css';/);
+  assert.deepEqual(importedFiles, [
+    'tokens.css',
+    'base.css',
+    'sidebar.css',
+    'header.css',
+    'components.css',
+    'home.css',
+    'sources.css',
+    'admin.css',
+    'settings-sheet.css',
+  ]);
 });
 
 test('desktop split feed tabs scroll within the left pane instead of overflowing it', () => {
@@ -28,14 +39,14 @@ test('desktop split feed tabs scroll within the left pane instead of overflowing
   assert.match(feedTabRule, /white-space:\s*nowrap/);
 });
 
-test('dark theme uses GitHub-style neutral dark tokens', () => {
+test('dark theme uses restrained neutral dark tokens', () => {
   const css = readCssBundle();
   const darkThemeRule = css.match(/\[data-theme="dark"\]\s*\{([^}]+)\}/)?.[1] || '';
 
-  assert.match(darkThemeRule, /--color-bg:\s*#0d1117/);
-  assert.match(darkThemeRule, /--color-bg-card:\s*#161b22/);
-  assert.match(darkThemeRule, /--color-accent:\s*#58a6ff/);
-  assert.match(darkThemeRule, /--color-border:\s*#30363d/);
+  assert.match(darkThemeRule, /--color-bg:\s*#161819/);
+  assert.match(darkThemeRule, /--color-bg-card:\s*#1e2022/);
+  assert.match(darkThemeRule, /--color-accent:\s*#9ec5ff/);
+  assert.match(darkThemeRule, /--color-border:\s*#363a3e/);
 });
 
 test('split feed toolbar keeps compact tabs separate from the filter button on narrow panes', () => {
@@ -52,10 +63,11 @@ test('split feed toolbar keeps compact tabs separate from the filter button on n
 test('desktop split view widens reader without changing feed column width', () => {
   const css = readCssBundle();
 
-  assert.match(css, /@media \(min-width:\s*900px\)\s*\{[\s\S]*body\.split-view-active \.container-fluid\s*\{[\s\S]*max-width:\s*calc\(100vw - 300px\)/);
+  assert.match(css, /@media \(min-width:\s*1100px\)\s*\{[\s\S]*body\.split-view-active\s*\{[\s\S]*overflow:\s*hidden/);
+  assert.match(css, /body\.split-view-active \.container-fluid\s*\{[\s\S]*max-width:\s*100%[\s\S]*padding:\s*0/);
   assert.match(css, /\.home-split-layout\s*\{[\s\S]*width:\s*100%/);
-  assert.match(css, /\.split-left\s*\{[\s\S]*flex:\s*0 0 360px/);
-  assert.match(css, /@media \(min-width:\s*1200px\)\s*\{[\s\S]*\.split-left\s*\{[\s\S]*flex:\s*0 0 400px/);
+  assert.match(css, /@media \(min-width:\s*1100px\)\s*\{[\s\S]*\.split-left\s*\{[\s\S]*flex:\s*0 1 360px[\s\S]*max-width:\s*360px/);
+  assert.match(css, /@media \(min-width:\s*1200px\)\s*\{[\s\S]*\.split-left\s*\{[\s\S]*flex:\s*0 1 400px[\s\S]*max-width:\s*400px/);
 });
 
 test('mobile reader exposes refresh row and floating scroll-to-top affordance styles', () => {
@@ -96,7 +108,7 @@ test('mobile feed and detail styles prioritize clean reading', () => {
   assert.match(css, /\.detail-title-editorial\s*\{[\s\S]*font-size:\s*clamp\(1\.75rem, 3\.4vw, 2\.1rem\)/);
   assert.match(detailSource, /startedOnPullBarRef/);
   assert.match(css, /--safe-bottom:\s*env\(safe-area-inset-bottom/);
-  assert.match(homeSource, /Tin mới/);
+  assert.match(homeSource, /Đang cập nhật tin mới/);
 });
 
 test('service worker unregisters legacy caches and reloads open clients', () => {
@@ -111,8 +123,8 @@ test('feed uses server-side tab pagination and exposes load-more control', () =>
   const homeSource = readFileSync(resolve(__dirname, '../src/pages/Home.tsx'), 'utf8');
   const apiSource = readFileSync(resolve(__dirname, '../src/services/api.ts'), 'utf8');
 
-  assert.match(apiSource, /feedTab\?: 'news' \| 'voz' \| 'reddit'/);
-  assert.match(homeSource, /feedTab: tab === 'digest' \? 'news' : tab/);
+  assert.match(apiSource, /feedTab\?: 'all' \| 'news' \| 'tech' \| 'voz' \| 'reddit'/);
+  assert.match(homeSource, /feedTab: tab === 'digest' \? 'all' : tab/);
   assert.match(homeSource, /handleLoadMoreArticles/);
   assert.match(homeSource, /Tải thêm bài cũ/);
 });
