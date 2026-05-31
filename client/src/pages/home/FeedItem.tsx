@@ -55,11 +55,17 @@ export function FeedItem({
   article,
   isActive,
   isRead,
+  isBookmarked,
+  onToggleBookmark,
+  onMuteSource,
   onClick,
 }: {
   article: any;
   isActive?: boolean;
   isRead?: boolean;
+  isBookmarked?: boolean;
+  onToggleBookmark?: () => void;
+  onMuteSource?: () => void;
   onClick: () => void;
 }) {
   const sourceLabel = extractSourceLabel(article);
@@ -96,6 +102,32 @@ export function FeedItem({
             +{article.cluster_count} nguồn
           </span>
         )}
+        <span className="feed-item-actions">
+          <button
+            type="button"
+            className={`feed-item-action-btn ${isBookmarked ? 'active' : ''}`}
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggleBookmark?.();
+            }}
+            title={isBookmarked ? 'Bỏ khỏi đọc sau' : 'Lưu đọc sau'}
+            aria-label={isBookmarked ? 'Bỏ khỏi đọc sau' : 'Lưu đọc sau'}
+          >
+            {isBookmarked ? '★' : '☆'}
+          </button>
+          <button
+            type="button"
+            className="feed-item-action-btn"
+            onClick={(event) => {
+              event.stopPropagation();
+              onMuteSource?.();
+            }}
+            title={`Ẩn nguồn ${sourceLabel}`}
+            aria-label={`Ẩn nguồn ${sourceLabel}`}
+          >
+            Ẩn
+          </button>
+        </span>
       </div>
       <div className="feed-item-body">
         <div className="feed-item-text">

@@ -1,4 +1,7 @@
 const READ_ARTICLES_STORAGE_KEY = 'read_articles';
+const BOOKMARKED_ARTICLES_STORAGE_KEY = 'bookmarked_articles';
+const MUTED_SOURCES_STORAGE_KEY = 'muted_sources';
+const MUTED_TAGS_STORAGE_KEY = 'muted_tags';
 const FEED_PREVIEW_MAX_CHARS = 180;
 const DETAIL_IMAGE_MIN_HEIGHT = 120;
 
@@ -97,6 +100,136 @@ export function getVisibleArticleTags(article: any, limit = 2): string[] {
     if (tags.length >= limit) break;
   }
   return tags;
+}
+
+export type DigestMode = 'short' | 'standard' | 'deep';
+
+export type ReaderPersonalizationOptions = {
+  mutedSourceKeys: string[];
+  mutedTags: string[];
+  bookmarkedArticleIds: string[];
+  bookmarkedOnly: boolean;
+};
+
+function normalizePreferenceKey(value: unknown): string {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+-\s+.*$/, '')
+    .replace(/\s+rss.*$/, '')
+    .replace(/\s+/g, ' ');
+}
+
+function readStringListStorage(key: string): string[] {
+  if (typeof window === 'undefined') return [];
+
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
+  } catch {
+    return [];
+  }
+}
+
+function writeStringListStorage(key: string, values: string[], limit = 500) {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(key, JSON.stringify(values.slice(0, limit)));
+}
+
+export function toggleListValue(values: string[], value: string): string[] {
+  const nextValue = String(value || '').trim();
+  if (!nextValue) return values;
+  return values.includes(nextValue)
+    ? values.filter(item => item !== nextValue)
+    : [nextValue, ...values];
+}
+
+export function getArticleSourcePreferenceKey(article: any): string {
+  return normalizePreferenceKey(article?.source_name || article?.source_id || extractSourceLabel(article || {}));
+}
+
+export function getArticleTopicPreferenceKeys(article: any): string[] {
+  if (!Array.isArray(article?.tags)) return [];
+  const seen = new Set<string>();
+  const keys: string[] = [];
+  for (const tag of article.tags) {
+    const key = normalizePreferenceKey(tag);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    keys.push(key);
+  }
+  return keys;
+}
+
+export function filterPersonalizedArticles<T extends { id?: string }>(articles: T[], options: ReaderPersonalizationOptions): T[] {
+  const mutedSourceSet = new Set(options.mutedSourceKeys.map(normalizePreferenceKey));
+  const mutedTagSet = new Set(options.mutedTags.map(normalizePreferenceKey));
+  const bookmarkSet = new Set(options.bookmarkedArticleIds);
+
+  return articles.filter((article: any) => {
+    if (options.bookmarkedOnly && !bookmarkSet.has(article.id)) return false;
+    if (mutedSourceSet.has(getArticleSourcePreferenceKey(article))) return false;
+    if (getArticleTopicPreferenceKeys(article).some(tag => mutedTagSet.has(tag))) return false;
+    return true;
+  });
+}
+
+export function loadBookmarkedArticles(): string[] {
+  return readStringListStorage(BOOKMARKED_ARTICLES_STORAGE_KEY);
+}
+
+export function saveBookmarkedArticles(ids: string[]) {
+  writeStringListStorage(BOOKMARKED_ARTICLES_STORAGE_KEY, ids);
+}
+
+export function loadMutedSources(): string[] {
+  return readStringListStorage(MUTED_SOURCES_STORAGE_KEY);
+}
+
+export function saveMutedSources(keys: string[]) {
+  writeStringListStorage(MUTED_SOURCES_STORAGE_KEY, keys, 200);
+}
+
+export function loadMutedTags(): string[] {
+  return readStringListStorage(MUTED_TAGS_STORAGE_KEY);
+}
+
+export function saveMutedTags(keys: string[]) {
+  writeStringListStorage(MUTED_TAGS_STORAGE_KEY, keys, 200);
+}
+
+export function buildDigestModeMarkdown(digest: any, mode: DigestMode): string {
+  const body = typeof digest?.body_markdown === 'string' ? digest.body_markdown.trim() : '';
+  if (mode === 'standard') return body;
+
+  const articles = Array.isArray(digest?.articles) ? digest.articles : [];
+  if (mode === 'short') {
+    const intro = makeShortPreview(body, 760);
+    const topArticles = articles.slice(0, 5)
+      .map((article: any) => `- ${cleanTitle(article.translated_title || article.title || 'Bài chưa có tiêu đề')}`)
+      .join('\n');
+
+    return [
+      '## Bản ngắn',
+      intro,
+      topArticles ? `### Tin chính\n${topArticles}` : '',
+    ].filter(Boolean).join('\n\n');
+  }
+
+  const articleLinks = articles
+    .filter((article: any) => article?.url)
+    .map((article: any) => {
+      const title = cleanTitle(article.translated_title || article.title || 'Bài gốc');
+      return `- [${title}](${article.url}) — ${extractSourceLabel(article)}`;
+    })
+    .join('\n');
+
+  return articleLinks
+    ? `${body}\n\n## Nguồn bài trong bản tin\n${articleLinks}`
+    : body;
 }
 
 /* ── image proxy helper ── */

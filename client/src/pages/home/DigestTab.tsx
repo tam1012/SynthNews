@@ -1,12 +1,13 @@
 import { lazy, Suspense, useState } from 'react';
 import { api } from '../../services/api';
 import { useFetchRaw } from '../../hooks/useApi';
-import { formatDateHeading, formatTime, proxyImgUrl } from './homeHelpers';
+import { buildDigestModeMarkdown, type DigestMode, formatDateHeading, formatTime, proxyImgUrl } from './homeHelpers';
 
 const ReactMarkdown = lazy(() => import('react-markdown'));
 
 export function DigestTab({ digestId }: { digestId?: string | null }) {
   const [internalDigestId, setInternalDigestId] = useState<string | null>(null);
+  const [digestMode, setDigestMode] = useState<DigestMode>('standard');
   const { data: digestListRaw, loading: listLoading, error: listError } = useFetchRaw(
     () => api.getDigests(1), []
   );
@@ -18,6 +19,7 @@ export function DigestTab({ digestId }: { digestId?: string | null }) {
     [activeDigestId]
   );
   const digest = (digestRaw as any)?.data;
+  const digestMarkdown = buildDigestModeMarkdown(digest, digestMode);
   const loading = listLoading || digestLoading;
   const error = listError || digestError;
 
@@ -68,6 +70,22 @@ export function DigestTab({ digestId }: { digestId?: string | null }) {
       <div className="digest-meta">
         {formatDateHeading(digest.digest_date)} · {formatTime(digest.created_at)} · {digest.article_count} tin
       </div>
+      <div className="digest-mode-toggle" role="group" aria-label="Chế độ bản tin">
+        {[
+          ['short', 'Ngắn'],
+          ['standard', 'Tiêu chuẩn'],
+          ['deep', 'Sâu'],
+        ].map(([mode, label]) => (
+          <button
+            key={mode}
+            type="button"
+            className={`digest-mode-btn ${digestMode === mode ? 'active' : ''}`}
+            onClick={() => setDigestMode(mode as DigestMode)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
       <div className="digest-content">
         <Suspense fallback={<div className="loading">Đang tải bản tin...</div>}>
           <ReactMarkdown
@@ -77,7 +95,7 @@ export function DigestTab({ digestId }: { digestId?: string | null }) {
               )
             }}
           >
-            {digest.body_markdown}
+            {digestMarkdown}
           </ReactMarkdown>
         </Suspense>
       </div>

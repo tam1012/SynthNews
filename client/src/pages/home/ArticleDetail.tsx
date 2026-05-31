@@ -6,7 +6,10 @@ const ReactMarkdown = lazy(() => import('react-markdown'));
 
 export function ArticleDetail({
   article,
+  isBookmarked,
   onClose,
+  onToggleBookmark,
+  onMuteSource,
   onPrevArticle,
   onNextArticle,
   hasPrevArticle,
@@ -16,7 +19,10 @@ export function ArticleDetail({
   onSelectArticle,
 }: {
   article: any;
+  isBookmarked?: boolean;
   onClose: () => void;
+  onToggleBookmark?: () => void;
+  onMuteSource?: () => void;
   onPrevArticle: () => void;
   onNextArticle: () => void;
   hasPrevArticle: boolean;
@@ -292,6 +298,22 @@ export function ArticleDetail({
                 </span>
               )}
               <span className="detail-reading-time">{estimateReadingTime(article)}</span>
+              <button
+                type="button"
+                className={`detail-personal-action ${isBookmarked ? 'active' : ''}`}
+                onClick={onToggleBookmark}
+                title={isBookmarked ? 'Bỏ khỏi đọc sau' : 'Lưu đọc sau'}
+              >
+                {isBookmarked ? '★ Đã lưu' : '☆ Đọc sau'}
+              </button>
+              <button
+                type="button"
+                className="detail-personal-action"
+                onClick={onMuteSource}
+                title={`Ẩn nguồn ${sourceLabel}`}
+              >
+                Ẩn nguồn
+              </button>
               <button
                 type="button"
                 className={`detail-rescrape-btn ${rescrapeState === 'loading' ? 'is-loading' : ''} ${rescrapeState === 'done' ? 'is-done' : ''} ${rescrapeState === 'error' ? 'is-error' : ''}`}

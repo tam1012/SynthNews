@@ -7,7 +7,23 @@ import { ArticleDetail } from './home/ArticleDetail';
 import { DigestTab } from './home/DigestTab';
 import { ArticleDetailSkeleton, FeedItem, FeedListSkeleton } from './home/FeedItem';
 import { ReadmeWelcome } from './home/ReadmeWelcome';
-import { classifyArticle, cleanTitle, formatDateHeading, formatTime, loadReadArticles, saveReadArticles } from './home/homeHelpers';
+import {
+  classifyArticle,
+  cleanTitle,
+  filterPersonalizedArticles,
+  formatDateHeading,
+  formatTime,
+  getArticleSourcePreferenceKey,
+  loadBookmarkedArticles,
+  loadMutedSources,
+  loadMutedTags,
+  loadReadArticles,
+  saveBookmarkedArticles,
+  saveMutedSources,
+  saveMutedTags,
+  saveReadArticles,
+  toggleListValue,
+} from './home/homeHelpers';
 
 const FEED_PAGE_SIZE = 100;
 
@@ -94,6 +110,10 @@ export function Home() {
     },
   }), []);
   const [readArticleIds, setReadArticleIds] = useState<string[]>(() => loadReadArticles());
+  const [bookmarkedArticleIds, setBookmarkedArticleIds] = useState<string[]>(() => loadBookmarkedArticles());
+  const [mutedSourceKeys, setMutedSourceKeys] = useState<string[]>(() => loadMutedSources());
+  const [mutedTags, setMutedTags] = useState<string[]>(() => loadMutedTags());
+  const [bookmarkedOnly, setBookmarkedOnly] = useState(false);
   const [deepLinkLoading, setDeepLinkLoading] = useState(hasArticleDeepLink);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showScrollTop, setShowScrollTop] = useState(false);
@@ -151,7 +171,12 @@ export function Home() {
   const allArticles: any[] = useMemo(() => filterArticlesBySelectedDate(articlePages, selectedDate), [articlePages, selectedDate]);
   const isShowingOfflineCache = Boolean(raw?.offline || raw?.stale || datesRaw?.offline || datesRaw?.stale);
 
-  const articles: any[] = allArticles;
+  const articles: any[] = useMemo(() => filterPersonalizedArticles(allArticles, {
+    mutedSourceKeys,
+    mutedTags,
+    bookmarkedArticleIds,
+    bookmarkedOnly,
+  }), [allArticles, bookmarkedArticleIds, bookmarkedOnly, mutedSourceKeys, mutedTags]);
   const hasMoreArticles = Boolean(raw?.meta && articlePages.length < raw.meta.total);
   const loadedArticleCount = articlePages.length;
   const totalArticleCount = raw?.meta?.total || loadedArticleCount;
@@ -217,6 +242,7 @@ export function Home() {
   }, [showFilter, showTagMenu]);
 
   const readArticleSet = useMemo(() => new Set(readArticleIds), [readArticleIds]);
+  const bookmarkedArticleSet = useMemo(() => new Set(bookmarkedArticleIds), [bookmarkedArticleIds]);
 
   const readerLoadingState = getReaderLoadingState({ isFeedLoading: loading, hasArticleDeepLink });
   const detailPaneVisible = shouldShowDetailPane({
@@ -250,6 +276,28 @@ export function Home() {
       window.setTimeout(() => setIsRefreshing(false), remainingMs);
     }
   }, [reload]);
+
+  const handleToggleBookmark = useCallback((articleId: string) => {
+    setBookmarkedArticleIds(prev => toggleListValue(prev, articleId));
+  }, []);
+
+  const handleMuteSource = useCallback((article: any) => {
+    const key = getArticleSourcePreferenceKey(article);
+    if (!key) return;
+    setMutedSourceKeys(prev => toggleListValue(prev, key));
+  }, []);
+
+  const handleMuteCurrentTopic = useCallback(() => {
+    if (!filterTag) return;
+    setMutedTags(prev => toggleListValue(prev, filterTag));
+    setFilterTag('');
+  }, [filterTag]);
+
+  const clearPersonalizationFilters = useCallback(() => {
+    setBookmarkedOnly(false);
+    setMutedSourceKeys([]);
+    setMutedTags([]);
+  }, []);
 
   const handleLoadMoreArticles = useCallback(async () => {
     if (isLoadingMore || !hasMoreArticles) return;
@@ -356,6 +404,18 @@ export function Home() {
   useEffect(() => {
     saveReadArticles(readArticleIds);
   }, [readArticleIds]);
+
+  useEffect(() => {
+    saveBookmarkedArticles(bookmarkedArticleIds);
+  }, [bookmarkedArticleIds]);
+
+  useEffect(() => {
+    saveMutedSources(mutedSourceKeys);
+  }, [mutedSourceKeys]);
+
+  useEffect(() => {
+    saveMutedTags(mutedTags);
+  }, [mutedTags]);
 
   useEffect(() => {
     document.title = selected
@@ -576,6 +636,24 @@ export function Home() {
                       )}
                     </div>
                   )}
+                  <button
+                    className={`compact-sort-btn ${bookmarkedOnly ? 'active' : ''}`}
+                    onClick={() => setBookmarkedOnly(prev => !prev)}
+                    type="button"
+                    title="Chỉ hiện bài đã lưu đọc sau"
+                  >
+                    ☆ Đọc sau
+                  </button>
+                  {filterTag && (
+                    <button
+                      className="compact-sort-btn"
+                      onClick={handleMuteCurrentTopic}
+                      type="button"
+                      title={`Ẩn chủ đề ${filterTag}`}
+                    >
+                      Ẩn chủ đề
+                    </button>
+                  )}
                 </>
               ) : (
                 <span className="digest-title-indicator" style={{ fontFamily: 'var(--font-heading)', fontSize: '0.92rem', fontWeight: 700, color: 'var(--color-text-secondary)' }}>
@@ -600,6 +678,17 @@ export function Home() {
             <div className="filter-active">
               <span>Đang lọc: <strong>{sources.find((s: any) => s.id === filterSource)?.name.replace(/ - .*$/, '')}</strong></span>
               <button className="btn btn-sm" onClick={() => setFilterSource('all')}>✕ Bỏ lọc</button>
+            </div>
+          )}
+
+          {tab !== 'digest' && (bookmarkedOnly || mutedSourceKeys.length > 0 || mutedTags.length > 0) && (
+            <div className="filter-active personalization-active">
+              <span>
+                {bookmarkedOnly ? 'Chỉ đọc sau' : 'Đang cá nhân hóa'}
+                {mutedSourceKeys.length > 0 && ` · ẩn ${mutedSourceKeys.length} nguồn`}
+                {mutedTags.length > 0 && ` · ẩn ${mutedTags.length} chủ đề`}
+              </span>
+              <button className="btn btn-sm" onClick={clearPersonalizationFilters}>Bỏ cá nhân hóa</button>
             </div>
           )}
 
@@ -639,6 +728,9 @@ export function Home() {
                         article={article}
                         isActive={selected?.id === article.id}
                         isRead={readArticleSet.has(article.id)}
+                        isBookmarked={bookmarkedArticleSet.has(article.id)}
+                        onToggleBookmark={() => handleToggleBookmark(article.id)}
+                        onMuteSource={() => handleMuteSource(article)}
                         onClick={() => handleSelectArticle(article)}
                       />
                     ))}
@@ -699,11 +791,14 @@ export function Home() {
           ) : selected ? (
             <ArticleDetail
               article={selected}
+              isBookmarked={bookmarkedArticleSet.has(selected.id)}
               onClose={() => {
                 setSelected(null);
                 // Navigate back to current feed URL (no React Router re-render)
                 window.history.replaceState(null, '', currentFeedPath);
               }}
+              onToggleBookmark={() => handleToggleBookmark(selected.id)}
+              onMuteSource={() => handleMuteSource(selected)}
               onPrevArticle={handlePrevArticle}
               onNextArticle={handleNextArticle}
               hasPrevArticle={hasPrevArticle}
