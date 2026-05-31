@@ -25,7 +25,7 @@ import {
   toggleListValue,
 } from './home/homeHelpers';
 
-const FEED_PAGE_SIZE = 100;
+const FEED_PAGE_SIZE = 40;
 
 export function Home() {
   const location = useLocation();
