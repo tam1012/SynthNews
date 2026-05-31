@@ -93,6 +93,28 @@ test('date deep links map ddmmyyyy paths to local ISO dates', () => {
   assert.equal(formatDateDeepLink('2026-05-28'), '/28052026');
 });
 
+test('date stepping moves one step per click and stops at the ends', () => {
+  const { stepSelectedDate } = loadTsModule('../src/pages/homeUx.ts');
+  // newest-first, as the UI sorts it
+  const dates = [{ date: '2026-05-31' }, { date: '2026-05-30' }, { date: '2026-05-28' }];
+
+  // older = ‹, one step at a time even across a gap (28th, not 29th)
+  assert.equal(stepSelectedDate(dates, '2026-05-31', 'older'), '2026-05-30');
+  assert.equal(stepSelectedDate(dates, '2026-05-30', 'older'), '2026-05-28');
+  // can't go older than the oldest
+  assert.equal(stepSelectedDate(dates, '2026-05-28', 'older'), null);
+
+  // newer = ›, walks back toward today
+  assert.equal(stepSelectedDate(dates, '2026-05-28', 'newer'), '2026-05-30');
+  assert.equal(stepSelectedDate(dates, '2026-05-30', 'newer'), '2026-05-31');
+  // can't go newer than the newest
+  assert.equal(stepSelectedDate(dates, '2026-05-31', 'newer'), null);
+
+  // unknown / null current date is a no-op
+  assert.equal(stepSelectedDate(dates, '2026-01-01', 'older'), null);
+  assert.equal(stepSelectedDate(dates, null, 'newer'), null);
+});
+
 test('feed item helpers expose fresh and visible tag state', () => {
   const { getVisibleArticleTags, isArticleFresh } = loadTsModule('../src/pages/home/homeHelpers.ts');
   const now = Date.parse('2026-05-29T08:00:00.000Z');

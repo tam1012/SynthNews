@@ -89,3 +89,19 @@ export function filterArticlesBySelectedDate<T extends { local_date?: string | n
   if (!selectedDate) return articles;
   return articles.filter((article) => (article.local_date || article.published_at?.slice(0, 10)) === selectedDate);
 }
+
+// Step through a newest-first list of ISO dates. `older` moves toward the past
+// (higher index), `newer` moves toward today (lower index). Returns null when
+// there is nowhere to go, so callers can no-op instead of jumping arbitrarily.
+export function stepSelectedDate(
+  sortedDates: { date: string }[],
+  selectedDate: string | null,
+  direction: 'older' | 'newer'
+): string | null {
+  if (!selectedDate) return null;
+  const idx = sortedDates.findIndex((d) => d.date === selectedDate);
+  if (idx < 0) return null;
+  const nextIdx = direction === 'older' ? idx + 1 : idx - 1;
+  if (nextIdx < 0 || nextIdx >= sortedDates.length) return null;
+  return sortedDates[nextIdx].date;
+}

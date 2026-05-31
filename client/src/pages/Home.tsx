@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, useRef, useCallback, startTransition } fr
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../services/api';
 import { useFetchRaw } from '../hooks/useApi';
-import { filterArticlesBySelectedDate, formatDateDeepLink, getEmptyFeedMessage, getReaderLoadingState, parseDateDeepLinkPath, shouldShowDetailPane, shouldShowRightPane, shouldShowScrollTopButton } from './homeUx';
+import { filterArticlesBySelectedDate, formatDateDeepLink, getEmptyFeedMessage, getReaderLoadingState, parseDateDeepLinkPath, shouldShowDetailPane, shouldShowRightPane, shouldShowScrollTopButton, stepSelectedDate } from './homeUx';
 import { ArticleDetail } from './home/ArticleDetail';
 import { DigestTab } from './home/DigestTab';
 import { ArticleDetailSkeleton, FeedItem, FeedListSkeleton } from './home/FeedItem';
@@ -136,15 +136,22 @@ export function Home() {
     return (datesRaw?.data || []).filter((d: { date: string }) => new Date(d.date) <= today);
   }, [datesRaw]);
 
+  // Single source of truth for date ordering (newest-first). The server already
+  // returns DESC, but offline/cache merges can reorder, so sort defensively here.
+  const sortedDates = useMemo(
+    () => [...availableDates].sort((a, b) => b.date.localeCompare(a.date)),
+    [availableDates]
+  );
+
   // Derive effective date synchronously — no useEffect race condition
   const selectedDate = useMemo(() => {
     if (linkedDate) return linkedDate;
-    if (availableDates.length === 0) return null;
-    if (userSelectedDate && availableDates.find(d => d.date === userSelectedDate)) {
+    if (sortedDates.length === 0) return null;
+    if (userSelectedDate && sortedDates.find(d => d.date === userSelectedDate)) {
       return userSelectedDate;
     }
-    return availableDates[0].date;
-  }, [availableDates, userSelectedDate]);
+    return sortedDates[0].date;
+  }, [sortedDates, userSelectedDate, linkedDate]);
 
   // Wrapper to keep setSelectedDate API for the rest of the component
   const setSelectedDate = useCallback((date: string | null) => {
@@ -152,6 +159,11 @@ export function Home() {
     const datePath = formatDateDeepLink(date);
     if (datePath) navigate(datePath, { replace: true });
   }, [navigate]);
+
+  const selectedDateIdx = useMemo(
+    () => sortedDates.findIndex(d => d.date === selectedDate),
+    [sortedDates, selectedDate]
+  );
 
   const { data: raw, loading, error, reload } = useFetchRaw(
     () => {
@@ -315,17 +327,16 @@ export function Home() {
     }
   }, [articlePage, filterSource, filterTag, hasMoreArticles, isLoadingMore, selectedDate, tab]);
 
-  // Date navigation handlers
+  // Date navigation handlers — operate on sortedDates (newest-first, index 0 = newest).
+  // ‹ goes older, › goes newer. stepSelectedDate returns null at the ends.
   const handlePrevDate = () => {
-    if (!selectedDate) return;
-    const idx = availableDates.findIndex(d => d.date === selectedDate);
-    if (idx < availableDates.length - 1) setSelectedDate(availableDates[idx + 1].date);
+    const next = stepSelectedDate(sortedDates, selectedDate, 'older');
+    if (next) setSelectedDate(next);
   };
 
   const handleNextDate = () => {
-    if (!selectedDate) return;
-    const idx = availableDates.findIndex(d => d.date === selectedDate);
-    if (idx > 0) setSelectedDate(availableDates[idx - 1].date);
+    const next = stepSelectedDate(sortedDates, selectedDate, 'newer');
+    if (next) setSelectedDate(next);
   };
 
   // Close on Escape
@@ -553,13 +564,13 @@ export function Home() {
           <div className={`split-feed-toolbar ${toolbarHidden ? 'toolbar-hidden' : ''}`}>
             <div className="toolbar-compact-row">
               {tab !== 'digest' ? (
-                <>
-                  {availableDates.length > 0 && selectedDate && (
+                <div className="toolbar-filter-wrap">
+                  {sortedDates.length > 0 && selectedDate && (
                     <div className="compact-date-nav">
                       <button
                         className="compact-date-btn"
                         onClick={handlePrevDate}
-                        disabled={availableDates.findIndex(d => d.date === selectedDate) === availableDates.length - 1}
+                        disabled={selectedDateIdx < 0 || selectedDateIdx >= sortedDates.length - 1}
                       >
                         ‹
                       </button>
@@ -569,7 +580,7 @@ export function Home() {
                       <button
                         className="compact-date-btn"
                         onClick={handleNextDate}
-                        disabled={availableDates.findIndex(d => d.date === selectedDate) === 0}
+                        disabled={selectedDateIdx <= 0}
                       >
                         ›
                       </button>
@@ -654,7 +665,7 @@ export function Home() {
                       Ẩn chủ đề
                     </button>
                   )}
-                </>
+                </div>
               ) : (
                 <span className="digest-title-indicator" style={{ fontFamily: 'var(--font-heading)', fontSize: '0.92rem', fontWeight: 700, color: 'var(--color-text-secondary)' }}>
                   Bản tin hàng ngày
