@@ -3,10 +3,11 @@ const ELLIPSIS = '...';
 export function stripTldrMarkup(text: string): string {
   return text
     .replace(/<[^>]+>/g, ' ')
+    .replace(/^\s*[-*+]\s+/gm, '')
     .replace(/^#+\s+/gm, '')
     .replace(/\*\*(.*?)\*\*/g, '$1')
     .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-    .replace(/[*_`>#-]/g, '')
+    .replace(/[*_`>#]/g, '')
     .replace(/\s+/g, ' ')
     .trim();
 }
