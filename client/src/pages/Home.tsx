@@ -13,13 +13,10 @@ import {
   filterPersonalizedArticles,
   formatDateHeading,
   formatTime,
-  getArticleSourcePreferenceKey,
   loadBookmarkedArticles,
-  loadMutedSources,
   loadMutedTags,
   loadReadArticles,
   saveBookmarkedArticles,
-  saveMutedSources,
   saveMutedTags,
   saveReadArticles,
   toggleListValue,
@@ -111,7 +108,6 @@ export function Home() {
   }), []);
   const [readArticleIds, setReadArticleIds] = useState<string[]>(() => loadReadArticles());
   const [bookmarkedArticleIds, setBookmarkedArticleIds] = useState<string[]>(() => loadBookmarkedArticles());
-  const [mutedSourceKeys, setMutedSourceKeys] = useState<string[]>(() => loadMutedSources());
   const [mutedTags, setMutedTags] = useState<string[]>(() => loadMutedTags());
   const [bookmarkedOnly, setBookmarkedOnly] = useState(false);
   const [deepLinkLoading, setDeepLinkLoading] = useState(hasArticleDeepLink);
@@ -184,11 +180,10 @@ export function Home() {
   const isShowingOfflineCache = Boolean(raw?.offline || raw?.stale || datesRaw?.offline || datesRaw?.stale);
 
   const articles: any[] = useMemo(() => filterPersonalizedArticles(allArticles, {
-    mutedSourceKeys,
     mutedTags,
     bookmarkedArticleIds,
     bookmarkedOnly,
-  }), [allArticles, bookmarkedArticleIds, bookmarkedOnly, mutedSourceKeys, mutedTags]);
+  }), [allArticles, bookmarkedArticleIds, bookmarkedOnly, mutedTags]);
   const hasMoreArticles = Boolean(raw?.meta && articlePages.length < raw.meta.total);
   const loadedArticleCount = articlePages.length;
   const totalArticleCount = raw?.meta?.total || loadedArticleCount;
@@ -293,12 +288,6 @@ export function Home() {
     setBookmarkedArticleIds(prev => toggleListValue(prev, articleId));
   }, []);
 
-  const handleMuteSource = useCallback((article: any) => {
-    const key = getArticleSourcePreferenceKey(article);
-    if (!key) return;
-    setMutedSourceKeys(prev => toggleListValue(prev, key));
-  }, []);
-
   const handleMuteCurrentTopic = useCallback(() => {
     if (!filterTag) return;
     setMutedTags(prev => toggleListValue(prev, filterTag));
@@ -307,7 +296,6 @@ export function Home() {
 
   const clearPersonalizationFilters = useCallback(() => {
     setBookmarkedOnly(false);
-    setMutedSourceKeys([]);
     setMutedTags([]);
   }, []);
 
@@ -419,10 +407,6 @@ export function Home() {
   useEffect(() => {
     saveBookmarkedArticles(bookmarkedArticleIds);
   }, [bookmarkedArticleIds]);
-
-  useEffect(() => {
-    saveMutedSources(mutedSourceKeys);
-  }, [mutedSourceKeys]);
 
   useEffect(() => {
     saveMutedTags(mutedTags);
@@ -692,11 +676,10 @@ export function Home() {
             </div>
           )}
 
-          {tab !== 'digest' && (bookmarkedOnly || mutedSourceKeys.length > 0 || mutedTags.length > 0) && (
+          {tab !== 'digest' && (bookmarkedOnly || mutedTags.length > 0) && (
             <div className="filter-active personalization-active">
               <span>
                 {bookmarkedOnly ? 'Chỉ đọc sau' : 'Đang cá nhân hóa'}
-                {mutedSourceKeys.length > 0 && ` · ẩn ${mutedSourceKeys.length} nguồn`}
                 {mutedTags.length > 0 && ` · ẩn ${mutedTags.length} chủ đề`}
               </span>
               <button className="btn btn-sm" onClick={clearPersonalizationFilters}>Bỏ cá nhân hóa</button>
@@ -741,7 +724,6 @@ export function Home() {
                         isRead={readArticleSet.has(article.id)}
                         isBookmarked={bookmarkedArticleSet.has(article.id)}
                         onToggleBookmark={() => handleToggleBookmark(article.id)}
-                        onMuteSource={() => handleMuteSource(article)}
                         onClick={() => handleSelectArticle(article)}
                       />
                     ))}
@@ -809,7 +791,6 @@ export function Home() {
                 window.history.replaceState(null, '', currentFeedPath);
               }}
               onToggleBookmark={() => handleToggleBookmark(selected.id)}
-              onMuteSource={() => handleMuteSource(selected)}
               onPrevArticle={handlePrevArticle}
               onNextArticle={handleNextArticle}
               hasPrevArticle={hasPrevArticle}

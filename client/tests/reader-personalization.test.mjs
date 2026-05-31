@@ -24,7 +24,7 @@ function loadTsModule(relativePath) {
   return moduleContext.exports;
 }
 
-test('reader personalization filters muted sources and topics before bookmark-only mode', () => {
+test('reader personalization filters muted topics before bookmark-only mode', () => {
   const { filterPersonalizedArticles } = loadTsModule('../src/pages/home/homeHelpers.ts');
 
   const articles = [
@@ -35,17 +35,15 @@ test('reader personalization filters muted sources and topics before bookmark-on
 
   assert.deepEqual(
     filterPersonalizedArticles(articles, {
-      mutedSourceKeys: ['voz'],
       mutedTags: ['policy'],
       bookmarkedArticleIds: ['a2', 'a3'],
       bookmarkedOnly: false,
     }).map((article) => article.id),
-    ['a3']
+    ['a2', 'a3']
   );
 
   assert.deepEqual(
     filterPersonalizedArticles(articles, {
-      mutedSourceKeys: [],
       mutedTags: [],
       bookmarkedArticleIds: ['a2', 'a3'],
       bookmarkedOnly: true,
@@ -56,12 +54,10 @@ test('reader personalization filters muted sources and topics before bookmark-on
 
 test('reader preference helpers normalize keys and toggle ids deterministically', () => {
   const {
-    getArticleSourcePreferenceKey,
     getArticleTopicPreferenceKeys,
     toggleListValue,
   } = loadTsModule('../src/pages/home/homeHelpers.ts');
 
-  assert.equal(getArticleSourcePreferenceKey({ source_name: ' Reuters - World RSS ' }), 'reuters');
   assert.deepEqual(Array.from(getArticleTopicPreferenceKeys({ tags: [' AI ', 'AI', '', 'Security'] })), ['ai', 'security']);
   assert.deepEqual(Array.from(toggleListValue(['a', 'b'], 'b')), ['a']);
   assert.deepEqual(Array.from(toggleListValue(['a'], 'b')), ['b', 'a']);
@@ -98,12 +94,12 @@ test('reader UI wires bookmark mute controls and digest mode selector', () => {
 
   assert.match(homeSource, /bookmarkedOnly/);
   assert.match(homeSource, /filterPersonalizedArticles/);
-  assert.match(homeSource, /mutedSourceKeys/);
   assert.match(homeSource, /mutedTags/);
+  assert.doesNotMatch(homeSource, /mutedSourceKeys/);
   assert.match(feedItemSource, /onToggleBookmark/);
-  assert.match(feedItemSource, /onMuteSource/);
+  assert.doesNotMatch(feedItemSource, /onMuteSource/);
   assert.match(detailSource, /onToggleBookmark/);
-  assert.match(detailSource, /onMuteSource/);
+  assert.doesNotMatch(detailSource, /onMuteSource/);
   assert.match(digestSource, /DigestMode/);
   assert.match(digestSource, /buildDigestModeMarkdown/);
 });

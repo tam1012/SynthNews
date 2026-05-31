@@ -1,6 +1,5 @@
 const READ_ARTICLES_STORAGE_KEY = 'read_articles';
 const BOOKMARKED_ARTICLES_STORAGE_KEY = 'bookmarked_articles';
-const MUTED_SOURCES_STORAGE_KEY = 'muted_sources';
 const MUTED_TAGS_STORAGE_KEY = 'muted_tags';
 const FEED_PREVIEW_MAX_CHARS = 180;
 const DETAIL_IMAGE_MIN_HEIGHT = 120;
@@ -105,7 +104,6 @@ export function getVisibleArticleTags(article: any, limit = 2): string[] {
 export type DigestMode = 'short' | 'standard' | 'deep';
 
 export type ReaderPersonalizationOptions = {
-  mutedSourceKeys: string[];
   mutedTags: string[];
   bookmarkedArticleIds: string[];
   bookmarkedOnly: boolean;
@@ -147,10 +145,6 @@ export function toggleListValue(values: string[], value: string): string[] {
     : [nextValue, ...values];
 }
 
-export function getArticleSourcePreferenceKey(article: any): string {
-  return normalizePreferenceKey(article?.source_name || article?.source_id || extractSourceLabel(article || {}));
-}
-
 export function getArticleTopicPreferenceKeys(article: any): string[] {
   if (!Array.isArray(article?.tags)) return [];
   const seen = new Set<string>();
@@ -165,13 +159,11 @@ export function getArticleTopicPreferenceKeys(article: any): string[] {
 }
 
 export function filterPersonalizedArticles<T extends { id?: string }>(articles: T[], options: ReaderPersonalizationOptions): T[] {
-  const mutedSourceSet = new Set(options.mutedSourceKeys.map(normalizePreferenceKey));
   const mutedTagSet = new Set(options.mutedTags.map(normalizePreferenceKey));
   const bookmarkSet = new Set(options.bookmarkedArticleIds);
 
   return articles.filter((article: any) => {
     if (options.bookmarkedOnly && !bookmarkSet.has(article.id)) return false;
-    if (mutedSourceSet.has(getArticleSourcePreferenceKey(article))) return false;
     if (getArticleTopicPreferenceKeys(article).some(tag => mutedTagSet.has(tag))) return false;
     return true;
   });
@@ -183,14 +175,6 @@ export function loadBookmarkedArticles(): string[] {
 
 export function saveBookmarkedArticles(ids: string[]) {
   writeStringListStorage(BOOKMARKED_ARTICLES_STORAGE_KEY, ids);
-}
-
-export function loadMutedSources(): string[] {
-  return readStringListStorage(MUTED_SOURCES_STORAGE_KEY);
-}
-
-export function saveMutedSources(keys: string[]) {
-  writeStringListStorage(MUTED_SOURCES_STORAGE_KEY, keys, 200);
 }
 
 export function loadMutedTags(): string[] {

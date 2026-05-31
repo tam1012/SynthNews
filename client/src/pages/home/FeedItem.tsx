@@ -57,7 +57,6 @@ export function FeedItem({
   isRead,
   isBookmarked,
   onToggleBookmark,
-  onMuteSource,
   onClick,
 }: {
   article: any;
@@ -65,7 +64,6 @@ export function FeedItem({
   isRead?: boolean;
   isBookmarked?: boolean;
   onToggleBookmark?: () => void;
-  onMuteSource?: () => void;
   onClick: () => void;
 }) {
   const sourceLabel = extractSourceLabel(article);
@@ -114,18 +112,6 @@ export function FeedItem({
             aria-label={isBookmarked ? 'Bỏ khỏi đọc sau' : 'Lưu đọc sau'}
           >
             {isBookmarked ? '★' : '☆'}
-          </button>
-          <button
-            type="button"
-            className="feed-item-action-btn"
-            onClick={(event) => {
-              event.stopPropagation();
-              onMuteSource?.();
-            }}
-            title={`Ẩn nguồn ${sourceLabel}`}
-            aria-label={`Ẩn nguồn ${sourceLabel}`}
-          >
-            Ẩn
           </button>
         </span>
       </div>

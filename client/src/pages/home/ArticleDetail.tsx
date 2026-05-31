@@ -9,7 +9,6 @@ export function ArticleDetail({
   isBookmarked,
   onClose,
   onToggleBookmark,
-  onMuteSource,
   onPrevArticle,
   onNextArticle,
   hasPrevArticle,
@@ -22,7 +21,6 @@ export function ArticleDetail({
   isBookmarked?: boolean;
   onClose: () => void;
   onToggleBookmark?: () => void;
-  onMuteSource?: () => void;
   onPrevArticle: () => void;
   onNextArticle: () => void;
   hasPrevArticle: boolean;
@@ -305,14 +303,6 @@ export function ArticleDetail({
                 title={isBookmarked ? 'Bỏ khỏi đọc sau' : 'Lưu đọc sau'}
               >
                 {isBookmarked ? '★ Đã lưu' : '☆ Đọc sau'}
-              </button>
-              <button
-                type="button"
-                className="detail-personal-action"
-                onClick={onMuteSource}
-                title={`Ẩn nguồn ${sourceLabel}`}
-              >
-                Ẩn nguồn
               </button>
               <button
                 type="button"
