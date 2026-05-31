@@ -48,6 +48,25 @@ test('admin health helpers normalize optional public checks and browser proxy so
   assert.equal(buildAdminWorkItems(health)[0].label, 'Public site cần kiểm tra');
 });
 
+test('admin work items flag a down scrapling sidecar as critical', () => {
+  const { buildAdminWorkItems } = loadTsModule('../src/pages/admin/adminHelpers.ts');
+
+  const down = buildAdminWorkItems({ scrapling: { configured: true, ok: false, message: 'Scrapling unreachable' } });
+  const sidecarItem = down.find((item) => item.label === 'Scrapling sidecar lỗi');
+  assert.ok(sidecarItem, 'expected a sidecar work item when sidecar is down');
+  assert.equal(sidecarItem.severity, 'critical');
+
+  // Healthy or unconfigured sidecar should not produce a work item.
+  assert.equal(
+    buildAdminWorkItems({ scrapling: { configured: true, ok: true } }).some((item) => item.label === 'Scrapling sidecar lỗi'),
+    false
+  );
+  assert.equal(
+    buildAdminWorkItems({ scrapling: { configured: false, ok: false } }).some((item) => item.label === 'Scrapling sidecar lỗi'),
+    false
+  );
+});
+
 test('admin entry points use explicit AdminHealth typing instead of raw any for health', () => {
   const adminSource = readFileSync(resolve(__dirname, '../src/pages/Admin.tsx'), 'utf8');
   const overviewSource = readFileSync(resolve(__dirname, '../src/pages/admin/OverviewTab.tsx'), 'utf8');

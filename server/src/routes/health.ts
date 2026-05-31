@@ -20,13 +20,20 @@ function num(value: unknown): number {
 
 type SourceQualityStatus = 'healthy' | 'low_yield' | 'failing' | 'stale' | 'disabled';
 
-async function getScraplingStatus(): Promise<{ configured: boolean; ok: boolean; message: string }> {
+async function getScraplingStatus(): Promise<{ configured: boolean; ok: boolean; message: string; uptimeSeconds?: number; maxConcurrency?: number; inFlight?: number }> {
   const url = process.env.SCRAPLING_SERVICE_URL;
   if (!url) return { configured: false, ok: false, message: 'SCRAPLING_SERVICE_URL not configured' };
   try {
     const res = await fetch(`${url}/health`, { signal: AbortSignal.timeout(3000) });
-    const data = await res.json() as { ok?: boolean };
-    return { configured: true, ok: data.ok === true, message: data.ok ? 'Scrapling sidecar ready' : 'Scrapling unhealthy' };
+    const data = await res.json() as { ok?: boolean; uptime_s?: number; max_concurrency?: number; in_flight?: number };
+    return {
+      configured: true,
+      ok: data.ok === true,
+      message: data.ok ? 'Scrapling sidecar ready' : 'Scrapling unhealthy',
+      uptimeSeconds: num(data.uptime_s),
+      maxConcurrency: num(data.max_concurrency),
+      inFlight: num(data.in_flight),
+    };
   } catch (err: any) {
     return { configured: true, ok: false, message: `Scrapling unreachable: ${err.message}` };
   }

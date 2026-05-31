@@ -88,6 +88,7 @@ export function OverviewTab({
   const browserProxySources = getBrowserProxySources(health);
   const publicChecks = getPublicChecks(health);
   const publicChecksOk = publicChecks.length > 0 && publicChecks.every((check) => check.status === 'ok');
+  const scrapling = health?.scrapling;
   const deployLabel = health?.deploy?.shortCommit || health?.deploy?.commit?.slice?.(0, 7) || 'chưa rõ';
   const workItems = buildAdminWorkItems(health);
 
@@ -234,6 +235,19 @@ export function OverviewTab({
                       )}
                     </div>
                   </div>
+                  {scrapling?.configured && (
+                    <div style={{ padding: '10px 12px', border: '1px solid var(--color-border-light)', borderRadius: 8 }}>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Scrapling sidecar</div>
+                      <div style={{ fontSize: '1.2rem', lineHeight: 1.2, fontWeight: 800, marginTop: 6, color: scrapling.ok ? 'var(--color-success)' : 'var(--color-error)' }}>
+                        {scrapling.ok ? 'Sẵn sàng' : 'Đang lỗi'}
+                      </div>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', marginTop: 4 }}>
+                        {scrapling.ok
+                          ? `Đang xử lý ${numberText(scrapling.inFlight)}/${numberText(scrapling.maxConcurrency)} · uptime ${formatUptime(scrapling.uptimeSeconds)}`
+                          : (scrapling.message || 'Sidecar không phản hồi — VOZ/Reddit sẽ ngừng ra bài.')}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 

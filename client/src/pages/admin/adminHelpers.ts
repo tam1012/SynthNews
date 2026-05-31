@@ -141,6 +141,14 @@ export type AdminHealth = {
   articles?: Record<string, number | undefined>;
   articleFetchJobs?: Record<string, number | undefined>;
   lastDigest?: AdminDigestSummary | null;
+  scrapling?: {
+    configured?: boolean;
+    ok?: boolean;
+    message?: string;
+    uptimeSeconds?: number;
+    maxConcurrency?: number;
+    inFlight?: number;
+  };
   forum?: {
     totals24h?: AdminForumTotals[];
     recent?: AdminForumLog[];
@@ -333,6 +341,15 @@ export function buildAdminWorkItems(health: AdminHealth | null | undefined): Adm
       label: 'Cloudflare/VOZ cần browser',
       value: 1,
       note: 'Cần mở Chromium trên VPS để vượt antibot rồi tải lại số liệu.',
+      severity: 'critical',
+    });
+  }
+
+  if (health?.scrapling?.configured && health.scrapling.ok === false) {
+    items.push({
+      label: 'Scrapling sidecar lỗi',
+      value: 'Lỗi',
+      note: health.scrapling.message || 'Sidecar không phản hồi. VOZ/Reddit sẽ ngừng ra bài tới khi khôi phục.',
       severity: 'critical',
     });
   }
