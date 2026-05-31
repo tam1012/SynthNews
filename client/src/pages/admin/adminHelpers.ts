@@ -22,6 +22,102 @@ export type SummaryQueueStatus = 'failed' | 'pending' | 'processing' | 'skipped'
 export type QualityIssue = 'missing_tldr' | 'missing_summary_short' | 'missing_tags' | 'missing_hot_score' | 'short_summary';
 export type FetchJobStatus = 'failed' | 'discovered' | 'fetching' | 'done';
 export type AdminWorkItemSeverity = 'critical' | 'warning' | 'info' | 'ok';
+export type AdminPublicCheck = {
+  key?: string;
+  label?: string;
+  status: string;
+  httpStatus?: number;
+  url?: string;
+};
+export type AdminBrowserProxySource = {
+  id?: string;
+  label?: string;
+  ok?: boolean;
+  needsBrowser?: boolean;
+  cookieFound?: boolean;
+  cookieExpiresAt?: string | null;
+  remoteBrowserUrl?: string;
+  verifyUrl?: string;
+  message?: string;
+};
+export type AdminSourceQuality = {
+  id: string;
+  name: string;
+  status: string;
+  lastErrorMessage?: string | null;
+  consecutiveFailures?: number;
+  runs24h?: number;
+  itemsFound24h?: number;
+  itemsInserted24h?: number;
+  insertRate24h?: number;
+};
+export type AdminForumTotals = {
+  kind: string;
+  threadsSeen?: number;
+  inserted?: number;
+  skippedFewComments?: number;
+  skippedFewUsefulComments?: number;
+  skippedDuplicate?: number;
+  fetchErrors?: number;
+};
+export type AdminForumLog = {
+  source_id?: string;
+  source_name?: string;
+  started_at: string;
+  forum?: AdminForumTotals;
+};
+export type AdminScrapeLog = {
+  status: string;
+  started_at: string;
+  items_found?: number;
+  items_inserted?: number;
+  error_message?: string | null;
+};
+export type AdminDigestSummary = {
+  title?: string | null;
+  digest_date: string;
+  article_count?: number;
+};
+export type AdminHealth = {
+  time?: string;
+  deploy?: {
+    commit?: string | null;
+    shortCommit?: string | null;
+    branch?: string | null;
+    deployedAt?: string | null;
+  };
+  runtime?: {
+    uptimeSeconds?: number;
+    nodeEnv?: string;
+    containerName?: string | null;
+    dbReachable?: boolean;
+    checkedAt?: string;
+  };
+  publicChecks?: AdminPublicCheck[];
+  browserProxy?: {
+    remoteBrowserUrl?: string;
+    sources?: AdminBrowserProxySource[];
+  };
+  vozProxy?: {
+    ok?: boolean;
+    needsBrowser?: boolean;
+    cfClearanceFound?: boolean;
+    cfClearanceExpiresAt?: string | null;
+    remoteBrowserUrl?: string;
+    message?: string;
+  };
+  sources?: Record<string, number | undefined>;
+  sourceQualitySummary?: Record<string, number | undefined>;
+  sourceQuality?: AdminSourceQuality[];
+  articles?: Record<string, number | undefined>;
+  articleFetchJobs?: Record<string, number | undefined>;
+  lastDigest?: AdminDigestSummary | null;
+  forum?: {
+    totals24h?: AdminForumTotals[];
+    recent?: AdminForumLog[];
+  };
+  recentLogs?: AdminScrapeLog[];
+};
 export type AdminWorkItemTarget =
   | 'sources'
   | 'quality'
@@ -153,12 +249,35 @@ function sortAdminWorkItems(items: AdminWorkItem[]): AdminWorkItem[] {
     .map(({ item }) => item);
 }
 
-export function buildAdminWorkItems(health: any): AdminWorkItem[] {
-  const publicChecks = Array.isArray(health?.publicChecks) ? health.publicChecks : [];
-  const hasPublicCheckFailure = publicChecks.some((check: any) => check.status !== 'ok');
-  const needsBrowser = Array.isArray(health?.browserProxy?.sources)
-    ? health.browserProxy.sources.some((source: any) => source.needsBrowser)
-    : Boolean(health?.vozProxy?.needsBrowser);
+export function getPublicChecks(health: AdminHealth | null | undefined): AdminPublicCheck[] {
+  return Array.isArray(health?.publicChecks) ? health.publicChecks : [];
+}
+
+export function getBrowserProxySources(health: AdminHealth | null | undefined): AdminBrowserProxySource[] {
+  if (Array.isArray(health?.browserProxy?.sources) && health.browserProxy.sources.length > 0) {
+    return health.browserProxy.sources.map((source) => ({
+      ...source,
+      remoteBrowserUrl: source.remoteBrowserUrl || health.browserProxy?.remoteBrowserUrl,
+    }));
+  }
+  if (!health?.vozProxy) return [];
+  return [{
+    id: 'voz',
+    label: 'VOZ',
+    ok: health.vozProxy.ok,
+    needsBrowser: health.vozProxy.needsBrowser,
+    cookieFound: health.vozProxy.cfClearanceFound,
+    cookieExpiresAt: health.vozProxy.cfClearanceExpiresAt,
+    remoteBrowserUrl: health.vozProxy.remoteBrowserUrl,
+    message: health.vozProxy.message,
+  }];
+}
+
+export function buildAdminWorkItems(health: AdminHealth | null | undefined): AdminWorkItem[] {
+  if (!health) return [];
+  const publicChecks = getPublicChecks(health);
+  const hasPublicCheckFailure = publicChecks.some((check) => check.status !== 'ok');
+  const needsBrowser = getBrowserProxySources(health).some((source) => source.needsBrowser);
 
   const items: AdminWorkItem[] = [];
 
@@ -174,7 +293,7 @@ export function buildAdminWorkItems(health: any): AdminWorkItem[] {
   if (hasPublicCheckFailure) {
     items.push({
       label: 'Public site cần kiểm tra',
-      value: publicChecks.filter((check: any) => check.status !== 'ok').length,
+      value: publicChecks.filter((check) => check.status !== 'ok').length,
       note: 'Một hoặc nhiều public smoke check đang lỗi.',
       severity: 'critical',
     });
@@ -285,7 +404,7 @@ export function forumKindLabel(kind: string): string {
   return labels[kind] || kind;
 }
 
-export function forumStatsValue(row: any, key: string): number {
+export function forumStatsValue(row: AdminForumTotals | AdminForumLog | null | undefined, key: keyof AdminForumTotals): number {
   return Number(row?.[key] || row?.forum?.[key] || 0);
 }
 
@@ -307,7 +426,7 @@ export function sourceQualityBadgeClass(status: string): string {
   return 'error';
 }
 
-export function sourceQualityNote(source: any): string {
+export function sourceQualityNote(source: AdminSourceQuality): string {
   if (source.status === 'disabled') return 'Nguồn đang tắt, không cào tự động.';
   if (source.status === 'failing') return source.lastErrorMessage || `${source.consecutiveFailures || 0} lần lỗi liên tiếp.`;
   if (source.status === 'stale') return 'Nguồn bật nhưng lâu chưa có lần cào thành công.';

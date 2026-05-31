@@ -9,7 +9,7 @@ import { PromptConfigTab } from './admin/PromptConfigTab';
 import { QualityControlTab } from './admin/QualityControlTab';
 import { SummaryQueueTab } from './admin/SummaryQueueTab';
 import { BlocklistTab } from './admin/BlocklistTab';
-import { AdminTab, FetchJobStatus, SummaryQueueStatus } from './admin/adminHelpers';
+import { AdminHealth, AdminTab, FetchJobStatus, SummaryQueueStatus } from './admin/adminHelpers';
 
 const TAB_SLUGS: { tab: AdminTab; slug: string; label: string }[] = [
   { tab: 'overview', slug: 'overview', label: 'Tổng quan' },
@@ -44,7 +44,7 @@ export function Admin() {
   const initialTab = slugToTab(tabParam);
 
   const [tab, setTab] = useState<AdminTab>(initialTab);
-  const { data: health, loading, error, reload } = useFetch<any>(() => api.getHealth());
+  const { data: health, loading, error, reload } = useFetch<AdminHealth>(() => api.getHealth());
   const [actionLoading, setActionLoading] = useState('');
   const [actionMessage, setActionMessage] = useState<AdminActionMessage | null>(null);
   const [queueFilter, setQueueFilter] = useState<SummaryQueueStatus>('failed');
@@ -74,7 +74,7 @@ export function Admin() {
     navigateToTab('quality');
   };
 
-  const trigger = async (action: string, fn: () => Promise<any>) => {
+  const trigger = async (action: string, fn: () => Promise<unknown>) => {
     setActionLoading(action);
     setActionMessage({ type: 'pending', message: 'Đang gửi lệnh vận hành...' });
     try {
@@ -83,8 +83,8 @@ export function Admin() {
       setActionMessage({ type: 'success', message });
       reload();
       setTimeout(reload, 3000);
-    } catch (err: any) {
-      setActionMessage({ type: 'error', message: err.message || 'Không gửi được lệnh vận hành.' });
+    } catch (err: unknown) {
+      setActionMessage({ type: 'error', message: err instanceof Error ? err.message : 'Không gửi được lệnh vận hành.' });
     } finally {
       setActionLoading('');
     }

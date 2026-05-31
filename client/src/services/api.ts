@@ -1,8 +1,9 @@
 import { getCachePolicy, makeApiCacheKey } from './apiCache';
+import type { AdminHealth } from '../pages/admin/adminHelpers';
 
 const API_BASE = '/api';
-const responseCache = new Map<string, { expiresAt: number; data: any }>();
-const inFlightRequests = new Map<string, Promise<any>>();
+const responseCache = new Map<string, { expiresAt: number; data: unknown }>();
+const inFlightRequests = new Map<string, Promise<unknown>>();
 
 type ArticleFeedTab = 'all' | 'news' | 'tech' | 'voz' | 'reddit';
 type ArticleSearchOptions = {
@@ -86,7 +87,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
 export const api = {
   // Health
-  getHealth: () => request<any>('/health'),
+  getHealth: () => request<{ success: boolean; data: AdminHealth }>('/health'),
 
   // Sources
   getSources: () => request<any>('/sources'),

@@ -103,7 +103,7 @@ test('admin overview exposes system status from deploy runtime and public checks
   assert.match(source, /Public site/);
   assert.match(source, /health\.deploy/);
   assert.match(source, /health\.runtime/);
-  assert.match(source, /health\.publicChecks/);
+  assert.match(source, /getPublicChecks\(health\)/);
 });
 
 test('admin overview uses navigation callbacks owned by the shell', () => {

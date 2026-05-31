@@ -1,27 +1,28 @@
 import { api } from '../../services/api';
-import { AdminWorkItem, FetchJobStatus, SummaryQueueStatus, buildAdminWorkItems, forumKindLabel, forumStatsValue, numberText, percentText, sourceQualityBadgeClass, sourceQualityLabel, sourceQualityNote, statusLabel } from './adminHelpers';
+import {
+  AdminHealth,
+  AdminScrapeLog,
+  AdminSourceQuality,
+  AdminWorkItem,
+  FetchJobStatus,
+  SummaryQueueStatus,
+  buildAdminWorkItems,
+  forumKindLabel,
+  forumStatsValue,
+  getBrowserProxySources,
+  getPublicChecks,
+  numberText,
+  percentText,
+  sourceQualityBadgeClass,
+  sourceQualityLabel,
+  sourceQualityNote,
+  statusLabel,
+} from './adminHelpers';
 
 export type AdminActionMessage = {
   type: 'pending' | 'success' | 'error';
   message: string;
 };
-
-function getBrowserProxySources(health: any): any[] {
-  if (Array.isArray(health?.browserProxy?.sources) && health.browserProxy.sources.length > 0) {
-    return health.browserProxy.sources;
-  }
-  if (!health?.vozProxy) return [];
-  return [{
-    id: 'voz',
-    label: 'VOZ',
-    ok: health.vozProxy.ok,
-    needsBrowser: health.vozProxy.needsBrowser,
-    cookieFound: health.vozProxy.cfClearanceFound,
-    cookieExpiresAt: health.vozProxy.cfClearanceExpiresAt,
-    remoteBrowserUrl: health.vozProxy.remoteBrowserUrl,
-    message: health.vozProxy.message,
-  }];
-}
 
 function formatBrowserCookieExpiry(label: string, expiresAt: string | null | undefined): string | null {
   if (!expiresAt) return null;
@@ -31,7 +32,7 @@ function formatBrowserCookieExpiry(label: string, expiresAt: string | null | und
   return `Cookie ${label} dự kiến hết hạn lúc ${new Date(expiresAt).toLocaleString('vi-VN')} (${diffHours} giờ nữa).`;
 }
 
-function browserProxyInstruction(source: any): string {
+function browserProxyInstruction(source: { id?: string; verifyUrl?: string }): string {
   const verifyUrl = source.verifyUrl || (source.id === 'reuters' ? 'https://www.reuters.com' : 'https://voz.vn');
   return `SSH/VNC vào VPS, mở Chromium đang bật remote debugging, truy cập ${verifyUrl} và vượt Cloudflare nếu có. Sau đó bấm “Tải lại số liệu”.`;
 }
@@ -73,11 +74,11 @@ export function OverviewTab({
   goToFetch,
   goToQuality,
 }: {
-  health: any;
+  health: AdminHealth | null | undefined;
   loading: boolean;
   error: string | null;
   reload: () => void;
-  trigger: (action: string, fn: () => Promise<any>) => Promise<void>;
+  trigger: (action: string, fn: () => Promise<unknown>) => Promise<void>;
   actionLoading: string;
   actionMessage: AdminActionMessage | null;
   goToQueue: (status: SummaryQueueStatus) => void;
@@ -85,8 +86,8 @@ export function OverviewTab({
   goToQuality: () => void;
 }) {
   const browserProxySources = getBrowserProxySources(health);
-  const publicChecks = Array.isArray(health?.publicChecks) ? health.publicChecks : [];
-  const publicChecksOk = publicChecks.length > 0 && publicChecks.every((check: any) => check.status === 'ok');
+  const publicChecks = getPublicChecks(health);
+  const publicChecksOk = publicChecks.length > 0 && publicChecks.every((check) => check.status === 'ok');
   const deployLabel = health?.deploy?.shortCommit || health?.deploy?.commit?.slice?.(0, 7) || 'chưa rõ';
   const workItems = buildAdminWorkItems(health);
 
@@ -149,7 +150,7 @@ export function OverviewTab({
 
               {browserProxySources.length > 0 && (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12 }}>
-                  {browserProxySources.map((source: any) => {
+                  {browserProxySources.map((source) => {
                     const label = source.label || source.id || 'Nguồn';
                     const remoteBrowserUrl = source.remoteBrowserUrl || health.browserProxy?.remoteBrowserUrl || health.vozProxy?.remoteBrowserUrl;
                     const expiryText = formatBrowserCookieExpiry(label, source.cookieExpiresAt);
@@ -221,7 +222,7 @@ export function OverviewTab({
                       {publicChecksOk ? 'Reachable' : 'Cần kiểm tra'}
                     </div>
                     <div style={{ display: 'grid', gap: 3, marginTop: 6 }}>
-                      {publicChecks.length > 0 ? publicChecks.map((check: any) => (
+                      {publicChecks.length > 0 ? publicChecks.map((check) => (
                         <div key={check.key || check.url} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>
                           <span>{check.label || check.key}</span>
                           <strong style={{ color: check.status === 'ok' ? 'var(--color-success)' : 'var(--color-error)' }}>
@@ -366,9 +367,9 @@ export function OverviewTab({
 
                   <div style={{ display: 'grid', gap: 8 }}>
                     {health.sourceQuality
-                      .filter((source: any) => source.status !== 'healthy')
+                      .filter((source: AdminSourceQuality) => source.status !== 'healthy')
                       .slice(0, 8)
-                      .map((source: any, i: number) => (
+                      .map((source: AdminSourceQuality, i: number) => (
                         <div key={source.id} style={{ fontSize: '0.8rem', paddingTop: i === 0 ? 0 : 8, borderTop: i === 0 ? 'none' : '1px solid var(--color-border-light)' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                             <strong>{source.name}</strong>
@@ -382,7 +383,7 @@ export function OverviewTab({
                           </div>
                         </div>
                       ))}
-                    {health.sourceQuality.filter((source: any) => source.status !== 'healthy').length === 0 && (
+                    {health.sourceQuality.filter((source: AdminSourceQuality) => source.status !== 'healthy').length === 0 && (
                       <div style={{ color: 'var(--color-text-muted)', fontSize: '0.82rem' }}>Tất cả nguồn đang ổn.</div>
                     )}
                   </div>
@@ -401,7 +402,7 @@ export function OverviewTab({
                   </div>
 
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8, marginBottom: 12 }}>
-                    {health.forum.totals24h?.map((row: any) => (
+                    {health.forum.totals24h?.map((row) => (
                       <div key={row.kind} style={{ padding: '10px 12px', border: '1px solid var(--color-border-light)', borderRadius: 8 }}>
                         <div style={{ fontSize: '0.86rem', fontWeight: 700, marginBottom: 8 }}>{forumKindLabel(row.kind)}</div>
                         <div style={{ display: 'grid', gap: 5, fontSize: '0.78rem' }}>
@@ -425,7 +426,7 @@ export function OverviewTab({
 
                   {health.forum.recent?.length > 0 && (
                     <div style={{ display: 'grid', gap: 8 }}>
-                      {health.forum.recent.slice(0, 4).map((log: any, i: number) => (
+                      {health.forum.recent.slice(0, 4).map((log, i: number) => (
                         <div key={`${log.source_id || 'forum'}-${log.started_at}-${i}`} style={{ fontSize: '0.78rem', paddingTop: i === 0 ? 0 : 8, borderTop: i === 0 ? 'none' : '1px solid var(--color-border-light)' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
                             <strong>{log.source_name || log.source_id || forumKindLabel(log.forum?.kind)}</strong>
@@ -475,7 +476,7 @@ export function OverviewTab({
               {health.recentLogs?.length > 0 && (
                 <div className="card">
                   <div style={{ fontWeight: 700, marginBottom: 10 }}>Lần cào gần đây</div>
-                  {health.recentLogs.map((log: any, i: number) => (
+                  {health.recentLogs.map((log: AdminScrapeLog, i: number) => (
                     <div key={i} style={{ fontSize: '0.82rem', padding: '8px 0', borderBottom: i < health.recentLogs.length - 1 ? '1px solid var(--color-border-light)' : 'none' }}>
                       <span className={`badge badge-${log.status === 'success' ? 'success' : log.status === 'failed' ? 'error' : 'pending'}`}>
                         {statusLabel(log.status)}
