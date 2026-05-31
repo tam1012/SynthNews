@@ -1,32 +1,37 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../services/api';
 import { useFetchRaw } from '../../hooks/useApi';
-import { FETCH_JOB_STATUSES, FetchJobStatus, statusLabel } from './adminHelpers';
+import { AdminArticleFetchJob, AdminPageMeta, FETCH_JOB_STATUSES, FetchJobStatus, statusLabel } from './adminHelpers';
+
+type AdminFetchJobsResponse = {
+  data: AdminArticleFetchJob[];
+  meta?: AdminPageMeta;
+};
 
 export function FetchJobsTab({ initialStatus }: { initialStatus?: FetchJobStatus }) {
   const [status, setStatus] = useState<FetchJobStatus>(initialStatus || 'failed');
   const [page, setPage] = useState(1);
   const [actionLoading, setActionLoading] = useState('');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const { data: raw, loading, error, reload } = useFetchRaw(
+  const { data: raw, loading, error, reload } = useFetchRaw<AdminFetchJobsResponse>(
     () => api.getArticleFetchJobs({ page, limit: 50, status }), [page, status]
   );
-  const jobs: any[] = raw?.data || [];
+  const jobs: AdminArticleFetchJob[] = raw?.data || [];
   const meta = raw?.meta || { page, total: 0, totalPages: 0 };
-  const allSelected = jobs.length > 0 && jobs.every((job: any) => selectedIds.includes(job.id));
+  const allSelected = jobs.length > 0 && jobs.every((job) => selectedIds.includes(job.id));
 
   useEffect(() => {
     setSelectedIds([]);
   }, [page, status]);
 
-  const runAction = async (key: string, fn: () => Promise<any>) => {
+  const runAction = async (key: string, fn: () => Promise<unknown>) => {
     setActionLoading(key);
     try {
       await fn();
       setSelectedIds([]);
       reload();
-    } catch (err: any) {
-      alert('Lỗi: ' + err.message);
+    } catch (err: unknown) {
+      alert('Lỗi: ' + (err instanceof Error ? err.message : 'Không thực hiện được thao tác.'));
     } finally {
       setActionLoading('');
     }
@@ -55,7 +60,7 @@ export function FetchJobsTab({ initialStatus }: { initialStatus?: FetchJobStatus
   };
 
   const toggleSelectAll = () => {
-    setSelectedIds(allSelected ? [] : jobs.map((job: any) => job.id));
+    setSelectedIds(allSelected ? [] : jobs.map((job) => job.id));
   };
 
   const handleBatchRetry = async () => {
@@ -131,7 +136,7 @@ export function FetchJobsTab({ initialStatus }: { initialStatus?: FetchJobStatus
             </div>
           )}
 
-          {jobs.map((job: any) => (
+          {jobs.map((job) => (
             <div key={job.id} className="card" style={{ padding: 12 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'flex-start' }}>
                 <input

@@ -78,6 +78,35 @@ export type AdminDigestSummary = {
   digest_date: string;
   article_count?: number;
 };
+export type AdminPageMeta = {
+  page?: number;
+  total?: number;
+  totalPages?: number;
+};
+export type AdminArticle = {
+  id: string;
+  title?: string | null;
+  source_name?: string | null;
+  published_at?: string | null;
+  summary_status?: string | null;
+  retry_count?: number | null;
+  last_summary_error?: string | null;
+  tldr?: string | null;
+  summary_short?: string | null;
+  summary_text?: string | null;
+  hot_score?: number | null;
+  tags?: string[] | null;
+};
+export type AdminArticleFetchJob = {
+  id: string;
+  title?: string | null;
+  url?: string | null;
+  source_name?: string | null;
+  status?: string | null;
+  retry_count?: number | null;
+  updated_at?: string | null;
+  last_error?: string | null;
+};
 export type AdminHealth = {
   time?: string;
   deploy?: {
@@ -473,7 +502,7 @@ export function getPromptConfigWarnings(formData: PromptConfigFormData): string[
   return warnings;
 }
 
-export function getArticleQualityIssues(article: any): string[] {
+export function getArticleQualityIssues(article: AdminArticle): string[] {
   const issues: string[] = [];
   if (!String(article.tldr || '').trim()) issues.push('Thiếu TL;DR');
   if (!String(article.summary_short || '').trim()) issues.push('Thiếu tóm tắt ngắn');

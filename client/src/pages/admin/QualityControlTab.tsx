@@ -1,25 +1,30 @@
 import { useState } from 'react';
 import { api } from '../../services/api';
 import { useFetchRaw } from '../../hooks/useApi';
-import { QUALITY_ISSUES, QualityIssue, getArticleQualityIssues } from './adminHelpers';
+import { AdminArticle, AdminPageMeta, QUALITY_ISSUES, QualityIssue, getArticleQualityIssues } from './adminHelpers';
+
+type AdminArticlesResponse = {
+  data: AdminArticle[];
+  meta?: AdminPageMeta;
+};
 
 export function QualityControlTab() {
   const [issue, setIssue] = useState<QualityIssue>('missing_tldr');
   const [page, setPage] = useState(1);
   const [actionLoading, setActionLoading] = useState('');
-  const { data: raw, loading, error, reload } = useFetchRaw(
+  const { data: raw, loading, error, reload } = useFetchRaw<AdminArticlesResponse>(
     () => api.getArticles({ page, limit: 50, status: 'done', qualityIssue: issue }), [page, issue]
   );
-  const articles: any[] = raw?.data || [];
+  const articles: AdminArticle[] = raw?.data || [];
   const meta = raw?.meta || { page, total: 0, totalPages: 0 };
 
-  const runAction = async (key: string, fn: () => Promise<any>) => {
+  const runAction = async (key: string, fn: () => Promise<unknown>) => {
     setActionLoading(key);
     try {
       await fn();
       reload();
-    } catch (err: any) {
-      alert('Lỗi: ' + err.message);
+    } catch (err: unknown) {
+      alert('Lỗi: ' + (err instanceof Error ? err.message : 'Không thực hiện được thao tác.'));
     } finally {
       setActionLoading('');
     }
@@ -67,7 +72,7 @@ export function QualityControlTab() {
             Hiển thị {articles.length} / {meta.total || 0} bài · Trang {meta.page || page}/{meta.totalPages || 1}
           </div>
 
-          {articles.map((a: any) => (
+          {articles.map((a) => (
             <div key={a.id} className="card" style={{ padding: 12 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'flex-start' }}>
                 <div style={{ flex: 1, minWidth: 0 }}>

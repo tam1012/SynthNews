@@ -1,32 +1,37 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../services/api';
 import { useFetchRaw } from '../../hooks/useApi';
-import { SUMMARY_QUEUE_STATUSES, SummaryQueueStatus, statusLabel } from './adminHelpers';
+import { AdminArticle, AdminPageMeta, SUMMARY_QUEUE_STATUSES, SummaryQueueStatus, statusLabel } from './adminHelpers';
+
+type AdminArticlesResponse = {
+  data: AdminArticle[];
+  meta?: AdminPageMeta;
+};
 
 export function SummaryQueueTab({ initialStatus }: { initialStatus?: SummaryQueueStatus }) {
   const [status, setStatus] = useState<SummaryQueueStatus>(initialStatus || 'failed');
   const [page, setPage] = useState(1);
   const [actionLoading, setActionLoading] = useState('');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const { data: raw, loading, error, reload } = useFetchRaw(
+  const { data: raw, loading, error, reload } = useFetchRaw<AdminArticlesResponse>(
     () => api.getArticles({ page, limit: 50, status }), [page, status]
   );
-  const articles: any[] = raw?.data || [];
+  const articles: AdminArticle[] = raw?.data || [];
   const meta = raw?.meta || { page, total: 0, totalPages: 0 };
-  const allSelected = articles.length > 0 && articles.every((a: any) => selectedIds.includes(a.id));
+  const allSelected = articles.length > 0 && articles.every((a) => selectedIds.includes(a.id));
 
   useEffect(() => {
     setSelectedIds([]);
   }, [page, status]);
 
-  const runAction = async (key: string, fn: () => Promise<any>) => {
+  const runAction = async (key: string, fn: () => Promise<unknown>) => {
     setActionLoading(key);
     try {
       await fn();
       setSelectedIds([]);
       reload();
-    } catch (err: any) {
-      alert('Lỗi: ' + err.message);
+    } catch (err: unknown) {
+      alert('Lỗi: ' + (err instanceof Error ? err.message : 'Không thực hiện được thao tác.'));
     } finally {
       setActionLoading('');
     }
@@ -46,7 +51,7 @@ export function SummaryQueueTab({ initialStatus }: { initialStatus?: SummaryQueu
     await runAction(`reset-${id}`, () => api.resetArticleSummary(id));
   };
 
-  const handleRescrape = async (article: any) => {
+  const handleRescrape = async (article: AdminArticle) => {
     await runAction(`rescrape-${article.id}`, () => api.rescrapeArticle(article.id));
   };
 
@@ -59,7 +64,7 @@ export function SummaryQueueTab({ initialStatus }: { initialStatus?: SummaryQueu
   };
 
   const toggleSelectAll = () => {
-    setSelectedIds(allSelected ? [] : articles.map((a: any) => a.id));
+    setSelectedIds(allSelected ? [] : articles.map((a) => a.id));
   };
 
   const handleBatchReset = async () => {
@@ -135,7 +140,7 @@ export function SummaryQueueTab({ initialStatus }: { initialStatus?: SummaryQueu
             </div>
           )}
 
-          {articles.map((a: any) => (
+          {articles.map((a) => (
             <div key={a.id} className="card" style={{ padding: 12 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'flex-start' }}>
                 <input
