@@ -71,6 +71,7 @@ const baseStubs = {
   './firecrawl-fetch.js': {
     firecrawlFetch: async () => { throw new Error('Firecrawl unavailable'); },
     shouldUseFirecrawl: () => false,
+    hasFirecrawlKey: () => false,
     FirecrawlUnavailableError: class FirecrawlUnavailableError extends Error {},
   },
   './selector-learning.js': { learnSelectorProfileFromHtml: async () => null },

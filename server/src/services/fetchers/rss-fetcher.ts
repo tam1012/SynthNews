@@ -7,7 +7,7 @@ import { normalizePublicHttpUrl, truncate, sleep } from '../../lib/utils.js';
 import { matchPromoKeyword } from '../../lib/promoFilter.js';
 import { BROWSER_UA, GOOGLEBOT_UA, browserHeaders, randomUA, playwrightFetch, isBlockedHtml, workerProxyFetch, isWorkerProxyConfigured, shouldSkipWorkerProxy, WorkerProxyUnavailableError } from './http-utils.js';
 import { scraplingFetchWithFallback } from './scrapling-fetch.js';
-import { firecrawlFetch, shouldUseFirecrawl, FirecrawlUnavailableError } from './firecrawl-fetch.js';
+import { firecrawlFetch, shouldUseFirecrawl, hasFirecrawlKey, FirecrawlUnavailableError } from './firecrawl-fetch.js';
 import { insertArticleIfNew, MIN_ARTICLE_TEXT_LENGTH } from './article-writer.js';
 import { SourceFetcher } from './types.js';
 import { learnSelectorProfileFromHtml } from './selector-learning.js';
@@ -335,6 +335,14 @@ async function extractWithAiSelector(html: string, pageUrl: string, defaultTimez
 async function fetchFullArticle(jobUrl: string, policy = getRssDomainPolicy(jobUrl), defaultTimezone: string = 'Z'): Promise<{ title: string; content: string; imageUrl: string | null; publishedAt: string | null; metadata?: any }> {
   let fetchError: Error | null = null;
   let browserError: Error | null = null;
+  // Track whether the free layers failed because of anti-bot blocking (vs. a
+  // genuinely short/empty page). Only blocked pages escalate to Firecrawl, so
+  // credits aren't spent on real 404s or thin content.
+  let sawBlock = false;
+  const noteBlock = (status?: number, html?: string) => {
+    if (status === 401 || status === 403 || status === 429) sawBlock = true;
+    if (html && isBlockedHtml(html)) sawBlock = true;
+  };
 
   // ── Attempt 1: native fetch with random browser UA + full headers ────────
   try {
@@ -343,10 +351,10 @@ async function fetchFullArticle(jobUrl: string, policy = getRssDomainPolicy(jobU
       headers: browserHeaders(ua),
       signal: AbortSignal.timeout(15000),
     });
-    if (!response.ok) throw new Error(`Status code ${response.status}`);
+    if (!response.ok) { noteBlock(response.status); throw new Error(`Status code ${response.status}`); }
 
     const html = await response.text();
-    if (isBlockedHtml(html)) throw new Error('blocked HTML');
+    if (isBlockedHtml(html)) { sawBlock = true; throw new Error('blocked HTML'); }
     const article = await extractArticleFromHtml(html, jobUrl, 'fetch', defaultTimezone);
     if (article.content.length >= MIN_ARTICLE_TEXT_LENGTH) return article;
     fetchError = new Error(`fetch extraction too short (${article.content.length} characters)`);
@@ -361,10 +369,10 @@ async function fetchFullArticle(jobUrl: string, policy = getRssDomainPolicy(jobU
       headers: browserHeaders(GOOGLEBOT_UA),
       signal: AbortSignal.timeout(15000),
     });
-    if (!response.ok) throw new Error(`Status code ${response.status}`);
+    if (!response.ok) { noteBlock(response.status); throw new Error(`Status code ${response.status}`); }
 
     const html = await response.text();
-    if (isBlockedHtml(html)) throw new Error('blocked HTML');
+    if (isBlockedHtml(html)) { sawBlock = true; throw new Error('blocked HTML'); }
     const article = await extractArticleFromHtml(html, jobUrl, 'fetch:googlebot', defaultTimezone);
     if (article.content.length >= MIN_ARTICLE_TEXT_LENGTH) return article;
     fetchError = new Error(`googlebot extraction too short (${article.content.length} characters)`);
@@ -377,7 +385,7 @@ async function fetchFullArticle(jobUrl: string, policy = getRssDomainPolicy(jobU
     try {
       console.warn(`Retrying RSS article via Worker proxy ${jobUrl}`);
       const result = await workerProxyFetch(jobUrl, { timeoutMs: 25000 });
-      if (!result.ok) throw new Error(`worker proxy upstream ${result.upstreamStatus}`);
+      if (!result.ok) { noteBlock(result.upstreamStatus, result.body); throw new Error(`worker proxy upstream ${result.upstreamStatus}`); }
       const article = await extractArticleFromHtml(result.body, jobUrl, 'worker-proxy', defaultTimezone);
       if (article.content.length >= MIN_ARTICLE_TEXT_LENGTH) return article;
       fetchError = new Error(`worker proxy extraction too short (${article.content.length} characters)`);
@@ -403,7 +411,7 @@ async function fetchFullArticle(jobUrl: string, policy = getRssDomainPolicy(jobU
       blockHeavyResources: true,
       settleMs: 1000,
     });
-    if (isBlockedHtml(html)) throw new Error('blocked HTML');
+    if (isBlockedHtml(html)) { sawBlock = true; throw new Error('blocked HTML'); }
     const article = await extractArticleFromHtml(html, jobUrl, 'scrapling-stealth', defaultTimezone);
     if (article.content.length >= MIN_ARTICLE_TEXT_LENGTH) return article;
     browserError = new Error(`scrapling extraction too short (${article.content.length} characters)`);
@@ -411,10 +419,12 @@ async function fetchFullArticle(jobUrl: string, policy = getRssDomainPolicy(jobU
     browserError = err instanceof Error ? err : new Error(String(err));
   }
 
-  // ── Attempt 5: Firecrawl hosted (residential proxy pool) for hard-blocked domains ──
-  if (shouldUseFirecrawl(jobUrl)) {
+  // ── Attempt 5: Firecrawl hosted (residential proxy pool) ──
+  // Fires when the host is on the proactive allowlist OR the free layers were
+  // blocked by anti-bot (sawBlock). Skipped for genuinely short/missing pages.
+  if (hasFirecrawlKey() && (shouldUseFirecrawl(jobUrl) || sawBlock)) {
     try {
-      console.warn(`Retrying RSS article via Firecrawl ${jobUrl}`);
+      console.warn(`Retrying RSS article via Firecrawl ${jobUrl}${sawBlock ? ' (block-triggered)' : ''}`);
       const html = await firecrawlFetch(jobUrl, 60000);
       const article = await extractArticleFromHtml(html, jobUrl, 'firecrawl', defaultTimezone);
       if (article.content.length >= MIN_ARTICLE_TEXT_LENGTH) return article;

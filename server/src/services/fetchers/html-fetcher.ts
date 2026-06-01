@@ -3,7 +3,7 @@ import { normalizePublicHttpUrl, truncate, sleep } from '../../lib/utils.js';
 import { matchPromoKeyword } from '../../lib/promoFilter.js';
 import { browserHeaders, isBlockedHtml, randomUA, playwrightFetch, workerProxyFetch, isWorkerProxyConfigured, shouldSkipWorkerProxy, WorkerProxyUnavailableError } from './http-utils.js';
 import { scraplingFetchWithFallback } from './scrapling-fetch.js';
-import { firecrawlFetch, shouldUseFirecrawl } from './firecrawl-fetch.js';
+import { firecrawlFetch, shouldUseFirecrawl, hasFirecrawlKey } from './firecrawl-fetch.js';
 import { insertArticleIfNew } from './article-writer.js';
 import type { DiscoveredArticle } from '../article-fetch-queue.js';
 import { SourceFetcher } from './types.js';
@@ -239,14 +239,20 @@ export const htmlFetcher: SourceFetcher = {
     // Try native fetch first, then worker proxy, then Scrapling stealth fallback
     let articleHtml = '';
     let fetchOk = false;
+    // Track anti-bot blocking so a blocked page escalates to Firecrawl even when
+    // the host isn't on the proactive allowlist. Genuine errors don't escalate.
+    let sawBlock = false;
     try {
       const articleRes = await fetch(job.url, {
         headers: browserHeaders(randomUA()),
         signal: AbortSignal.timeout(15000),
       });
-      if (!articleRes.ok) throw new Error(`Status code ${articleRes.status}`);
+      if (!articleRes.ok) {
+        if ([401, 403, 429].includes(articleRes.status)) sawBlock = true;
+        throw new Error(`Status code ${articleRes.status}`);
+      }
       articleHtml = await articleRes.text();
-      if (isBlockedHtml(articleHtml)) throw new Error('blocked HTML');
+      if (isBlockedHtml(articleHtml)) { sawBlock = true; throw new Error('blocked HTML'); }
       fetchOk = true;
     } catch (firstErr: any) {
       if (isWorkerProxyConfigured() && !shouldSkipWorkerProxy(job.url)) {
@@ -256,6 +262,8 @@ export const htmlFetcher: SourceFetcher = {
           if (result.ok) {
             articleHtml = result.body;
             fetchOk = true;
+          } else if ([401, 403, 429].includes(result.upstreamStatus) || isBlockedHtml(result.body)) {
+            sawBlock = true;
           }
         } catch (proxyErr: any) {
           if (!(proxyErr instanceof WorkerProxyUnavailableError)) {
@@ -276,12 +284,13 @@ export const htmlFetcher: SourceFetcher = {
             settleMs: 1000,
             userAgent: randomUA(),
           });
-          if (isBlockedHtml(articleHtml)) throw new Error('blocked HTML');
+          if (isBlockedHtml(articleHtml)) { sawBlock = true; throw new Error('blocked HTML'); }
           fetchOk = true;
         } catch (scrErr: any) {
-          // Last resort: Firecrawl hosted (residential proxy) for hard-blocked domains.
-          if (shouldUseFirecrawl(job.url)) {
-            console.warn(`html-fetcher: scrapling failed for ${job.url}, trying Firecrawl: ${scrErr.message}`);
+          // Last resort: Firecrawl hosted (residential proxy). Fires for allowlist
+          // hosts OR any host blocked by anti-bot along the way.
+          if (hasFirecrawlKey() && (shouldUseFirecrawl(job.url) || sawBlock)) {
+            console.warn(`html-fetcher: scrapling failed for ${job.url}, trying Firecrawl${sawBlock ? ' (block-triggered)' : ''}: ${scrErr.message}`);
             articleHtml = await firecrawlFetch(job.url, 60000);
           } else {
             throw scrErr;
