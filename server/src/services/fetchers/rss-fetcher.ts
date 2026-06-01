@@ -7,6 +7,7 @@ import { normalizePublicHttpUrl, truncate, sleep } from '../../lib/utils.js';
 import { matchPromoKeyword } from '../../lib/promoFilter.js';
 import { BROWSER_UA, GOOGLEBOT_UA, browserHeaders, randomUA, playwrightFetch, isBlockedHtml, workerProxyFetch, isWorkerProxyConfigured, shouldSkipWorkerProxy, WorkerProxyUnavailableError } from './http-utils.js';
 import { scraplingFetchWithFallback } from './scrapling-fetch.js';
+import { firecrawlFetch, shouldUseFirecrawl, FirecrawlUnavailableError } from './firecrawl-fetch.js';
 import { insertArticleIfNew, MIN_ARTICLE_TEXT_LENGTH } from './article-writer.js';
 import { SourceFetcher } from './types.js';
 import { learnSelectorProfileFromHtml } from './selector-learning.js';
@@ -408,6 +409,21 @@ async function fetchFullArticle(jobUrl: string, policy = getRssDomainPolicy(jobU
     browserError = new Error(`scrapling extraction too short (${article.content.length} characters)`);
   } catch (err: any) {
     browserError = err instanceof Error ? err : new Error(String(err));
+  }
+
+  // ── Attempt 5: Firecrawl hosted (residential proxy pool) for hard-blocked domains ──
+  if (shouldUseFirecrawl(jobUrl)) {
+    try {
+      console.warn(`Retrying RSS article via Firecrawl ${jobUrl}`);
+      const html = await firecrawlFetch(jobUrl, 60000);
+      const article = await extractArticleFromHtml(html, jobUrl, 'firecrawl', defaultTimezone);
+      if (article.content.length >= MIN_ARTICLE_TEXT_LENGTH) return article;
+      browserError = new Error(`firecrawl extraction too short (${article.content.length} characters)`);
+    } catch (err: any) {
+      if (!(err instanceof FirecrawlUnavailableError)) {
+        browserError = err instanceof Error ? err : new Error(String(err));
+      }
+    }
   }
 
   throw new Error(`Full article fetch failed: ${fetchError?.message || 'unknown fetch error'}; browser fallback failed: ${browserError?.message || 'unknown browser error'}`);

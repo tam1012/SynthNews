@@ -3,6 +3,7 @@ import { normalizePublicHttpUrl, truncate, sleep } from '../../lib/utils.js';
 import { matchPromoKeyword } from '../../lib/promoFilter.js';
 import { browserHeaders, isBlockedHtml, randomUA, playwrightFetch, workerProxyFetch, isWorkerProxyConfigured, shouldSkipWorkerProxy, WorkerProxyUnavailableError } from './http-utils.js';
 import { scraplingFetchWithFallback } from './scrapling-fetch.js';
+import { firecrawlFetch, shouldUseFirecrawl } from './firecrawl-fetch.js';
 import { insertArticleIfNew } from './article-writer.js';
 import type { DiscoveredArticle } from '../article-fetch-queue.js';
 import { SourceFetcher } from './types.js';
@@ -129,9 +130,9 @@ export const htmlFetcher: SourceFetcher = {
   async discover(source) {
     const config = source.parser_config || {};
     const sitemapEnabled = shouldDiscoverSitemap(config);
-    if (!config.articleLinkSelector && !sitemapEnabled) {
-      throw new Error('parser_config with articleLinkSelector is required for web sources');
-    }
+    // No articleLinkSelector required: web sources fall back to heuristic link
+    // scoring (collectHeuristicArticleLinks) and/or sitemap discovery. A bare
+    // URL like https://www.reuters.com/world/ is enough to start crawling.
 
     const sourceUrl = normalizePublicHttpUrl(source.url, false);
     if (!sourceUrl) throw new Error('Source URL must be a public http(s) URL');
@@ -233,9 +234,6 @@ export const htmlFetcher: SourceFetcher = {
   },
   async fetchArticle(job, source) {
     const config = source.parser_config || {};
-    if (!config.articleLinkSelector && !config.discoverSitemap) {
-      throw new Error('parser_config with articleLinkSelector is required for web sources');
-    }
 
     await sleep(500);
     // Try native fetch first, then worker proxy, then Scrapling stealth fallback
@@ -267,16 +265,28 @@ export const htmlFetcher: SourceFetcher = {
       }
       if (!fetchOk) {
         console.warn(`html-fetcher: native+proxy failed for ${job.url}, falling back to Scrapling: ${firstErr.message}`);
-        articleHtml = await scraplingFetchWithFallback(job.url, {
-          mode: 'stealth',
-          blockResources: false,
-          waitMs: 1000,
-        }, {
-          rawText: false,
-          blockHeavyResources: false,
-          settleMs: 1000,
-          userAgent: randomUA(),
-        });
+        try {
+          articleHtml = await scraplingFetchWithFallback(job.url, {
+            mode: 'stealth',
+            blockResources: false,
+            waitMs: 1000,
+          }, {
+            rawText: false,
+            blockHeavyResources: false,
+            settleMs: 1000,
+            userAgent: randomUA(),
+          });
+          if (isBlockedHtml(articleHtml)) throw new Error('blocked HTML');
+          fetchOk = true;
+        } catch (scrErr: any) {
+          // Last resort: Firecrawl hosted (residential proxy) for hard-blocked domains.
+          if (shouldUseFirecrawl(job.url)) {
+            console.warn(`html-fetcher: scrapling failed for ${job.url}, trying Firecrawl: ${scrErr.message}`);
+            articleHtml = await firecrawlFetch(job.url, 60000);
+          } else {
+            throw scrErr;
+          }
+        }
       }
     }
 
@@ -362,12 +372,6 @@ export const htmlFetcher: SourceFetcher = {
   },
   async fetch(source) {
     const result = { itemsFound: 0, itemsInserted: 0, errors: [] as string[], metadata: {} as Record<string, unknown> };
-    const config = source.parser_config || {};
-
-    if (!config.articleLinkSelector && !config.discoverSitemap) {
-      result.errors.push('parser_config with articleLinkSelector is required for web sources');
-      return result;
-    }
 
     try {
       const discovered = await htmlFetcher.discover!(source);

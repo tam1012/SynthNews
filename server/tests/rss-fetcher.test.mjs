@@ -68,6 +68,11 @@ const baseStubs = {
   './article-writer.js': { insertArticleIfNew: async () => true, MIN_ARTICLE_TEXT_LENGTH: 500 },
   '../../lib/promoFilter.js': { matchPromoKeyword: () => null },
   './sitemap-discovery.js': { discoverSitemapArticles: async () => [] },
+  './firecrawl-fetch.js': {
+    firecrawlFetch: async () => { throw new Error('Firecrawl unavailable'); },
+    shouldUseFirecrawl: () => false,
+    FirecrawlUnavailableError: class FirecrawlUnavailableError extends Error {},
+  },
   './selector-learning.js': { learnSelectorProfileFromHtml: async () => null },
   './selector-profile.js': {
     extractWithSelectorProfile: () => ({ title: '', content: '', imageUrl: null, publishedAt: null, matchedSelector: null }),

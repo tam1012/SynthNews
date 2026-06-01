@@ -60,6 +60,11 @@ const baseStubs = {
   },
   './article-writer.js': { insertArticleIfNew: async () => true },
   './selector-learning.js': { learnSelectorProfileFromHtml: async () => null },
+  './firecrawl-fetch.js': {
+    firecrawlFetch: async () => { throw new Error('Firecrawl unavailable'); },
+    shouldUseFirecrawl: () => false,
+    FirecrawlUnavailableError: class FirecrawlUnavailableError extends Error {},
+  },
   './selector-profile.js': {
     extractWithSelectorProfile: () => ({ title: '', content: '', imageUrl: null, publishedAt: null, matchedSelector: null }),
     getDomainFromUrl: () => null,

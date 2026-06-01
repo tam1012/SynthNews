@@ -2,6 +2,28 @@ import { playwrightFetch, type PlaywrightFetchOptions } from './http-utils.js';
 
 const SCRAPLING_SERVICE_URL = process.env.SCRAPLING_SERVICE_URL || '';
 
+// Residential/rotating proxy applied ONLY to hard-blocked domains (Reuters,
+// Bloomberg, ...) so we don't burn paid proxy bandwidth on sites that work from
+// the datacenter IP. SCRAPLING_PROXY_URL is the proxy connection string
+// (http://user:pass@host:port); SCRAPLING_PROXY_DOMAINS is a comma-separated
+// allowlist of hostnames that should route through it.
+const SCRAPLING_PROXY_URL = process.env.SCRAPLING_PROXY_URL || '';
+const SCRAPLING_PROXY_DOMAINS = (process.env.SCRAPLING_PROXY_DOMAINS || '')
+  .split(',')
+  .map((d) => d.trim().toLowerCase())
+  .filter(Boolean);
+
+export function getScraplingProxyForUrl(targetUrl: string): string | undefined {
+  if (!SCRAPLING_PROXY_URL || SCRAPLING_PROXY_DOMAINS.length === 0) return undefined;
+  try {
+    const host = new URL(targetUrl).hostname.replace(/^www\./, '').toLowerCase();
+    const matched = SCRAPLING_PROXY_DOMAINS.some((d) => host === d || host.endsWith('.' + d));
+    return matched ? SCRAPLING_PROXY_URL : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export class ScraplingUnavailableError extends Error {
   constructor(message: string) {
     super(message);
@@ -17,6 +39,8 @@ export interface ScraplingFetchOptions {
   blockResources?: boolean;
   timeoutMs?: number;
   solveCloudflare?: boolean;
+  /** Override proxy. When omitted, a domain-gated residential proxy is auto-applied. */
+  proxy?: string;
 }
 
 interface ScraplingResponse {
@@ -33,6 +57,7 @@ export async function scraplingFetch(url: string, options: ScraplingFetchOptions
   }
 
   const timeout = options.timeoutMs || 60000;
+  const proxy = options.proxy ?? getScraplingProxyForUrl(url);
 
   let res: Response;
   try {
@@ -49,6 +74,7 @@ export async function scraplingFetch(url: string, options: ScraplingFetchOptions
           raw_text: options.rawText ?? false,
           timeout_ms: timeout,
           solve_cloudflare: options.solveCloudflare ?? false,
+          proxy: proxy || undefined,
         },
       }),
       signal: AbortSignal.timeout(timeout + 5000),

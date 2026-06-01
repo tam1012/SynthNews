@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { getMany, getOne, query } from '../db/index.js';
 import { generateId, normalizePublicHttpUrl, normalizeUrl } from '../lib/utils.js';
-import { resolveSourceUrl } from '../lib/sourceResolver.js';
+import { resolveSourceUrl, fallbackResolveFetch } from '../lib/sourceResolver.js';
 import { getFetcherForSource } from '../services/fetchers/registry.js';
 import { SourceRow, sourceFetchers } from '../services/fetchers/index.js';
 import { scrapeSource } from '../services/scraper.js';
@@ -362,7 +362,7 @@ sources.post('/detect', async (c) => {
   }
 
   try {
-    const result = await resolveSourceUrl(url);
+    const result = await resolveSourceUrl(url, fallbackResolveFetch);
     return c.json({ success: true, data: result });
   } catch (err: any) {
     return c.json({ success: false, error: { code: 'VALIDATION', message: err.message } }, 400);

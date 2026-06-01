@@ -31,6 +31,59 @@ const COMMON_FEED_PATHS = ['/feed', '/rss', '/rss.xml', '/atom.xml', '/index.xml
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 const defaultFetch: ResolveFetch = (url, init) => fetch(url, init);
 
+// Heuristic: a 200 response that is actually an anti-bot challenge page.
+function looksBlocked(status: number, body: string): boolean {
+  if (status === 401 || status === 403 || status === 429) return true;
+  if (body.length > 50000) return false;
+  const lowered = body.toLowerCase();
+  return lowered.includes('just a moment...') ||
+    lowered.includes('challenges.cloudflare.com') ||
+    lowered.includes('cf-browser-verification') ||
+    lowered.includes('captcha-delivery.com') ||
+    lowered.includes('access denied') ||
+    lowered.includes('token.awswaf.com');
+}
+
+// Production-only resilient fetch for the primary document: native fetch, then
+// Cloudflare Worker proxy (better IP reputation), then Scrapling stealth. Uses
+// dynamic imports so unit tests (which inject their own fetcher) never load the
+// browser/proxy stack. Returns a ResolveFetchResponse-compatible object.
+async function fallbackResolveFetch(url: string, init?: RequestInit): Promise<ResolveFetchResponse> {
+  const httpUtils = await import('../services/fetchers/http-utils.js');
+
+  // Native first.
+  try {
+    const res = await fetch(url, init);
+    const text = await res.text();
+    if (res.ok && !looksBlocked(res.status, text)) {
+      return { ok: true, status: res.status, url: res.url || url, headers: res.headers, text: async () => text };
+    }
+  } catch {}
+
+  // Worker proxy (skips CF-protected domains per WORKER_PROXY_SKIP_DOMAINS).
+  if (httpUtils.isWorkerProxyConfigured() && !httpUtils.shouldSkipWorkerProxy(url)) {
+    try {
+      const result = await httpUtils.workerProxyFetch(url, { timeoutMs: 25000 });
+      if (result.ok) {
+        return { ok: true, status: 200, url, headers: { get: () => 'text/html' }, text: async () => result.body };
+      }
+    } catch {}
+  }
+
+  // Scrapling stealth (last resort; solves Cloudflare where possible).
+  try {
+    const { scraplingFetch } = await import('../services/fetchers/scrapling-fetch.js');
+    const html = await scraplingFetch(url, { mode: 'stealth', blockResources: true, waitMs: 1000, timeoutMs: 60000 });
+    if (html && !looksBlocked(200, html)) {
+      return { ok: true, status: 200, url, headers: { get: () => 'text/html' }, text: async () => html };
+    }
+  } catch {}
+
+  return { ok: false, status: 403, url, headers: { get: () => 'text/plain' }, text: async () => '' };
+}
+
+export { fallbackResolveFetch };
+
 function isPrivateHostname(hostname: string): boolean {
   const host = hostname.toLowerCase();
   if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local')) return true;
@@ -350,6 +403,12 @@ export async function resolveSourceUrl(rawUrl: string, fetcher: ResolveFetch = d
       result.suggested_url = result.rss_feeds[0].url;
       if (result.detected_kind === 'html') result.detected_kind = 'rss';
     } else if (sitemapPreview.sitemapCount > 0) {
+      result.type = 'web';
+      result.parser_config = { discoverSitemap: true };
+    } else {
+      // No RSS and no sitemap detected: keep it crawlable anyway. The html
+      // fetcher runs heuristic link scoring + sitemap discovery without needing
+      // a hand-written articleLinkSelector, so a bare section URL still works.
       result.type = 'web';
       result.parser_config = { discoverSitemap: true };
     }
