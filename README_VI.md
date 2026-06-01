@@ -67,9 +67,11 @@ Project này được thiết kế cho nhu cầu tự host cá nhân: ít thao t
 
 - RSS parser cho nguồn RSS chuẩn.
 - Web scraper với AI-learned selector profiles: tự học CSS selector từ HTML lần đầu, cache lại cho lần sau.
+- **Web source không cần selector thủ công**: nguồn web chỉ cần URL section (vd `https://www.reuters.com/world/`) là cào được — html-fetcher tự động dùng heuristic link scoring + sitemap discovery, không bắt buộc `articleLinkSelector` trong `parser_config` nữa.
 - **Content extraction 3 tầng**: AI selector → cheerio CSS selectors → Mozilla Readability fallback.
 - **Quality gate**: chặn insert bài có content quá ngắn trước khi vào DB, tránh tạo summary rỗng.
-- **Fetch fallback 4 tầng**: HTTP native → Cloudflare Worker proxy → Scrapling stealth browser sidecar → Playwright headless. Mỗi tầng tự kích hoạt khi tầng trước bị block/timeout.
+- **Fetch fallback nhiều tầng**: HTTP native → Cloudflare Worker proxy → Scrapling stealth browser sidecar → Scrapling + residential proxy (domain-gated) → **hosted fetch chain** (ScrapingAnt → Scrape.do → Firecrawl). Mỗi tầng tự kích hoạt khi tầng trước bị block/timeout.
+- **Block-triggered escalation**: bất kỳ site nào fail hết các tầng free *vì bị anti-bot chặn* (HTTP 4xx hoặc trang challenge Cloudflare/DataDome) sẽ tự động nhảy lên hosted fetch — không cần thêm domain bằng tay. Bài ngắn thật/404 thì KHÔNG escalate, để tiết kiệm credit. `HOSTED_FETCH_DOMAINS` (kế thừa `FIRECRAWL_DOMAINS`) còn dùng làm allowlist chủ động cho các site cứng (Reuters, Bloomberg).
 - **Rate limiting**: per-domain throttle 10s giữa các request cùng domain, 1.5s giữa domain khác nhau. Configurable qua `FETCH_PER_DOMAIN_DELAY_MS`.
 - **Rescue job**: tự tìm bài cũ bị skipped vì thiếu content, requeue fetch lại và cập nhật article gốc.
 - GitHub Trending scraper riêng.
@@ -141,6 +143,7 @@ Backend:
 - cheerio
 - Scrapling Python sidecar (stealth browser fetch, Cloudflare bypass)
 - playwright (fallback khi Scrapling unavailable)
+- Hosted fetch chain: ScrapingAnt + Scrape.do + Firecrawl (fallback API thương mại, free tier, vượt DataDome/Cloudflare)
 - @mozilla/readability + jsdom (content extraction fallback)
 - sharp (image processing)
 
@@ -227,7 +230,8 @@ DevOps:
 │   │   │       ├── selector-profile.ts   # Selector cache/profile
 │   │   │       ├── article-writer.ts     # DB insert + quality gate
 │   │   │       ├── http-utils.ts         # HTTP fetch + Playwright fallback
-│   │   │       ├── scrapling-fetch.ts    # Scrapling sidecar client + fallback
+│   │   │       ├── scrapling-fetch.ts    # Scrapling sidecar client + fallback (+ residential proxy passthrough)
+│   │   │       ├── hosted-fetch.ts        # Hosted fetch chain (ScrapingAnt → Scrape.do → Firecrawl)
 │   │   │       ├── registry.ts           # Fetcher routing
 │   │   │       └── types.ts
 │   │   └── index.ts                # Server entry point
@@ -504,6 +508,16 @@ Biến quan trọng:
 | `WORKER_PROXY_SKIP_DOMAINS` | Domains không dùng Worker proxy (comma-separated), optional |
 | `SCRAPLING_SERVICE_URL` | Scrapling sidecar URL, mặc định `http://scrapling:8000` trong Docker |
 | `SCRAPLING_TIMEOUT_MS` | Timeout cho Scrapling requests, mặc định `60000` |
+| `SCRAPLING_PROXY_URL` | Residential/rotating proxy cho các domain bị chặn cứng, route qua Scrapling. Format `http://user:pass@host:port`, optional |
+| `SCRAPLING_PROXY_DOMAINS` | Allowlist host dùng residential proxy (comma-separated), để không tốn băng thông proxy cho site chạy tốt từ IP VPS |
+| `SCRAPINGANT_API_KEY` | API key ScrapingAnt (hosted fetch, free ~10k credit/tháng), optional |
+| `SCRAPINGANT_MAX_PER_DAY` | Trần số request ScrapingAnt mỗi 24 giờ, mặc định `300` |
+| `SCRAPEDO_API_KEY` | API key Scrape.do (hosted fetch, free ~1k credit/tháng), optional |
+| `SCRAPEDO_MAX_PER_DAY` | Trần số request Scrape.do mỗi 24 giờ, mặc định `30` |
+| `FIRECRAWL_API_KEY` | API key Firecrawl (hosted fetch, mạnh nhất với DataDome), optional |
+| `FIRECRAWL_API_URL` | Base URL Firecrawl, mặc định `https://api.firecrawl.dev` |
+| `FIRECRAWL_MAX_PER_DAY` | Trần số request Firecrawl mỗi 24 giờ, mặc định `30` |
+| `HOSTED_FETCH_DOMAINS` | Allowlist host luôn thử hosted fetch chủ động (comma-separated), kế thừa `FIRECRAWL_DOMAINS` |
 | `FETCH_PER_DOMAIN_DELAY_MS` | Delay tối thiểu giữa requests cùng domain, mặc định `10000` |
 | `BLOCKED_DOMAINS` | Danh sách domain bị chặn (comma-separated), override default nếu set |
 | `MIN_ARTICLE_TEXT_LENGTH` | Ngưỡng tối thiểu content để insert article, mặc định `500` chars |
@@ -757,7 +771,7 @@ Lưu ý: đổi URL smoke test public trong `deploy.yml` nếu dùng domain khá
 | Job | Lịch | Việc làm |
 |---|---|---|
 | Source discovery | `*/5 * * * *` + startup check | Kiểm tra source đến hạn theo `next_run_at`; source mặc định 60 phút/lần, có jitter nhỏ, lỗi thì backoff tối đa 24 giờ |
-| Article Fetch Queue | `*/5 * * * *` | Claim URL đã discover trong `article_fetch_jobs`, fetch nội dung chi tiết (HTTP → Worker proxy → Scrapling stealth → Playwright fallback), per-domain throttle 10s giữa mỗi request cùng domain |
+| Article Fetch Queue | `*/5 * * * *` | Claim URL đã discover trong `article_fetch_jobs`, fetch nội dung chi tiết (HTTP → Worker proxy → Scrapling stealth → Scrapling+residential proxy → hosted fetch chain), per-domain throttle 10s giữa mỗi request cùng domain |
 | Summarize | `*/10 * * * *` | Claim bài `pending`, gọi AI, cập nhật `done/skipped/failed` |
 | Forum Rescrape | `0,30 * * * *` | Cào lại Reddit/VOZ mới, bỏ qua phút `00` theo nhịp digest để giảm tải |
 | Digest | `30 17,23,5,14 * * *` (UTC) = 0:30, 6:30, 12:30, 21:30 (GMT+7) | Tạo bản tin từ các bài đã tóm tắt trong 24 giờ gần nhất |
@@ -864,4 +878,5 @@ Nếu dùng domain riêng (không phải domain mẫu trong repo), cập nhật 
 - `fetch-proxy-worker.js` là generic Cloudflare Worker proxy cho các domain bị block IP datacenter (Yahoo, NYT, Reuters, v.v.). Deploy rồi set `WORKER_PROXY_URL` và `WORKER_PROXY_TOKEN`.
 - `voz-proxy-worker.js` là Cloudflare Worker proxy cho VOZ (bypass Cloudflare-to-Cloudflare challenge).
 - `reuters-proxy-worker.js` là Cloudflare Worker proxy riêng cho Reuters.
+- **Hosted fetch chain** (`server/src/services/fetchers/hosted-fetch.ts`): tầng fetch cuối khi mọi tầng free bị anti-bot chặn. Thử lần lượt theo thứ tự nhiều credit free nhất trước: ScrapingAnt (~10k/tháng) → Scrape.do (~1k/tháng) → Firecrawl (~1k/tháng, mạnh nhất với DataDome như Reuters). Provider nào không có key hoặc chạm trần `*_MAX_PER_DAY` (rolling 24 giờ) thì bị bỏ qua; provider trả 429/lỗi/trang rỗng thì nhảy provider kế. Tên provider thắng được ghi vào `metadata.extractor` của bài. Thêm key mới chỉ cần set env, không phải sửa code.
 - **Blocklist**: quản lý URL/domain patterns bị chặn qua `/api/blocklist`. Bài từ URL match pattern sẽ bị skip ở bước discover và fetch.

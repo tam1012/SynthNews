@@ -35,8 +35,11 @@ Designed for self-hosting with minimal maintenance, SynthNews features automatic
 
 ### 1. Intelligent Crawling & Anti-Bot Pipeline
 
-*   **4-Tier Fetching Cascade**: Overcomes datacenter IP blocks and rate limits via an automatic fallback cascade:
-    $$\text{Native HTTP Fetch} \longrightarrow \text{Cloudflare Worker Proxies} \longrightarrow \text{Scrapling Stealth Browser Sidecar} \longrightarrow \text{Headless Playwright}$$
+*   **Multi-Tier Fetching Cascade**: Overcomes datacenter IP blocks and rate limits via an automatic fallback cascade:
+    $$\text{Native HTTP} \rightarrow \text{CF Worker Proxies} \rightarrow \text{Scrapling Stealth} \rightarrow \text{Scrapling + Residential Proxy} \rightarrow \text{Hosted Fetch APIs}$$
+*   **Hosted Fetch Chain**: When every free tier is defeated by anti-bot challenges, requests escalate to a chain of commercial scraping APIs tried in order of free-credit abundance: **ScrapingAnt → Scrape.do → Firecrawl** (the latter being strongest against DataDome, e.g. Reuters). Each provider is skipped if it lacks a key or hits its rolling 24h cap; a 429/error/blocked response falls through to the next.
+*   **Block-Triggered Escalation**: Any host that fails all free layers *because it was blocked* (HTTP 4xx or a Cloudflare/DataDome challenge page) auto-escalates to the hosted fetch chain — no allowlist edit required. Genuinely short or 404 pages do *not* escalate, preserving credits. `HOSTED_FETCH_DOMAINS` additionally forces known-hard hosts to try hosted fetch proactively.
+*   **Selector-Free Web Sources**: Web sources need only a section URL (e.g. `https://www.reuters.com/world/`); the HTML fetcher auto-discovers article links via heuristic link scoring and sitemap parsing, with no hand-written `articleLinkSelector` required.
 *   **AI-Learned CSS Selectors**: Utilizes LLMs to inspect raw HTML once, automatically discover the main article content and title selectors, and cache these selector profiles. If selectors break due to website updates, the engine relearns them automatically.
 *   **3-Stage Content Extraction**: Extracts clean text using AI learned selectors first, falls back to static Cheerio parsing second, and uses Mozilla Readability library third.
 *   **Deep Forum Crawling**:
@@ -111,8 +114,9 @@ Designed for self-hosting with minimal maintenance, SynthNews features automatic
 *   **Scraping Helpers**: Cheerio, RSS-Parser, Mozilla Readability, jsdom.
 
 ### Sidecars & Proxies
-*   **Scrapling Sidecar**: Python-based stealth scraping microservice leveraging Playwright/Stealth browsers to bypass Cloudflare.
+*   **Scrapling Sidecar**: Python-based stealth scraping microservice leveraging Playwright/Stealth browsers to bypass Cloudflare. Supports an optional residential proxy passthrough for hard-blocked, domain-gated hosts.
 *   **Cloudflare Workers**: Edge proxies dynamically routing Reddit, VOZ, and Reuters requests.
+*   **Hosted Fetch APIs**: A fallback chain of commercial scraping APIs (ScrapingAnt, Scrape.do, Firecrawl) used as the last resort against DataDome/Cloudflare, each gated by an optional key and a per-provider daily cap.
 
 ---
 
@@ -157,7 +161,7 @@ Designed for self-hosting with minimal maintenance, SynthNews features automatic
 ### 1. Source Discovery & Scraping
 The scheduler executes every 5 minutes, querying the PostgreSQL database for enabled sources that have reached their scheduled `next_run_at`. 
 *   **RSS / RSS Forum Feed**: Fetches feed items and places them in `article_fetch_jobs` as raw URL payloads.
-*   **Direct Web Sources**: Analyzes the site, checks cached selector profiles, and extracts raw text using the 4-tier cascade.
+*   **Direct Web Sources**: Analyzes the site, checks cached selector profiles, and extracts raw text using the multi-tier fetching cascade.
 *   **Adaptive Backoff**: Successful crawls schedule `next_run_at` based on `fetch_interval_minutes` with added jitter. Successive failures increase the delay exponentially, up to a maximum of 24 hours.
 
 ### 2. Article Fetching & Detail Enrichment
@@ -207,6 +211,10 @@ The application reads configuration from local `.env` files. Critical parameters
 | `MAX_ARTICLES_PER_SOURCE` | Maximum number of articles discovered per source during one crawl (default: `20`) |
 | `MAX_AI_CALLS_PER_RUN` | Maximum number of pending articles summarized in a single cron tick (default: `30`) |
 | `SCRAPLING_SERVICE_URL` | Address of the Python sidecar service (default: `http://scrapling:8000`) |
+| `SCRAPLING_PROXY_URL` / `SCRAPLING_PROXY_DOMAINS` | Optional residential proxy + host allowlist routed through Scrapling for hard-blocked domains |
+| `SCRAPINGANT_API_KEY` / `SCRAPEDO_API_KEY` / `FIRECRAWL_API_KEY` | Optional hosted-fetch provider keys (chain tried in that order) |
+| `*_MAX_PER_DAY` | Rolling 24h request cap per hosted provider (defaults: ScrapingAnt `300`, Scrape.do `30`, Firecrawl `30`) |
+| `HOSTED_FETCH_DOMAINS` | Hosts that proactively try the hosted-fetch chain first (comma-separated) |
 | `MIN_ARTICLE_TEXT_LENGTH` | Character threshold for filtering out empty/stub articles (default: `500`) |
 
 ---
@@ -303,4 +311,5 @@ To bypass IP-based scraping blockades on sites like Reddit, VOZ, or Reuters, dep
 
 *   **Prompt Refinement**: When editing the AI summarization prompt in `/admin`, ensure you ask the model to populate the JSON key `translated_title` so headlines translate correctly.
 *   **First Run Configuration**: After deploying a fresh installation, navigate to `/admin` to configure an active AI provider and add sources at `/sources`. The crawler is active immediately, but summaries require an active provider key.
+*   **Hosted Fetch Keys**: To unblock DataDome/Cloudflare sites, set any of `SCRAPINGANT_API_KEY`, `SCRAPEDO_API_KEY`, or `FIRECRAWL_API_KEY`. The chain auto-activates on anti-bot blocks; add a new provider by setting its env key, no code change needed. The winning provider is recorded in each article's `metadata.extractor`.
 *   **Debugging Blank Images**: The Hono backend serves an image proxy at `/api/img/*` to resize, clean up headers, and secure image fetches. Check logs on the backend if images do not render in the detail pages.
