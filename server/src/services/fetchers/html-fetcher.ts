@@ -3,7 +3,7 @@ import { normalizePublicHttpUrl, truncate, sleep } from '../../lib/utils.js';
 import { matchPromoKeyword } from '../../lib/promoFilter.js';
 import { browserHeaders, isBlockedHtml, randomUA, playwrightFetch, workerProxyFetch, isWorkerProxyConfigured, shouldSkipWorkerProxy, WorkerProxyUnavailableError } from './http-utils.js';
 import { scraplingFetchWithFallback } from './scrapling-fetch.js';
-import { firecrawlFetch, shouldUseFirecrawl, hasFirecrawlKey } from './firecrawl-fetch.js';
+import { hostedFetch, shouldUseHostedFetch, hasHostedFetchKey } from './hosted-fetch.js';
 import { insertArticleIfNew } from './article-writer.js';
 import type { DiscoveredArticle } from '../article-fetch-queue.js';
 import { SourceFetcher } from './types.js';
@@ -287,11 +287,12 @@ export const htmlFetcher: SourceFetcher = {
           if (isBlockedHtml(articleHtml)) { sawBlock = true; throw new Error('blocked HTML'); }
           fetchOk = true;
         } catch (scrErr: any) {
-          // Last resort: Firecrawl hosted (residential proxy). Fires for allowlist
-          // hosts OR any host blocked by anti-bot along the way.
-          if (hasFirecrawlKey() && (shouldUseFirecrawl(job.url) || sawBlock)) {
-            console.warn(`html-fetcher: scrapling failed for ${job.url}, trying Firecrawl${sawBlock ? ' (block-triggered)' : ''}: ${scrErr.message}`);
-            articleHtml = await firecrawlFetch(job.url, 60000);
+          // Last resort: hosted fetch (ScrapingAnt -> Scrape.do -> Firecrawl).
+          // Fires for allowlist hosts OR any host blocked by anti-bot along the way.
+          if (hasHostedFetchKey() && (shouldUseHostedFetch(job.url) || sawBlock)) {
+            const { html, provider } = await hostedFetch(job.url, 60000);
+            console.warn(`html-fetcher: scrapling failed for ${job.url}, used hosted fetch (${provider})${sawBlock ? ' (block-triggered)' : ''}: ${scrErr.message}`);
+            articleHtml = html;
           } else {
             throw scrErr;
           }

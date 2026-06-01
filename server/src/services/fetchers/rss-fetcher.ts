@@ -7,7 +7,7 @@ import { normalizePublicHttpUrl, truncate, sleep } from '../../lib/utils.js';
 import { matchPromoKeyword } from '../../lib/promoFilter.js';
 import { BROWSER_UA, GOOGLEBOT_UA, browserHeaders, randomUA, playwrightFetch, isBlockedHtml, workerProxyFetch, isWorkerProxyConfigured, shouldSkipWorkerProxy, WorkerProxyUnavailableError } from './http-utils.js';
 import { scraplingFetchWithFallback } from './scrapling-fetch.js';
-import { firecrawlFetch, shouldUseFirecrawl, hasFirecrawlKey, FirecrawlUnavailableError } from './firecrawl-fetch.js';
+import { hostedFetch, shouldUseHostedFetch, hasHostedFetchKey, HostedFetchUnavailableError } from './hosted-fetch.js';
 import { insertArticleIfNew, MIN_ARTICLE_TEXT_LENGTH } from './article-writer.js';
 import { SourceFetcher } from './types.js';
 import { learnSelectorProfileFromHtml } from './selector-learning.js';
@@ -419,18 +419,18 @@ async function fetchFullArticle(jobUrl: string, policy = getRssDomainPolicy(jobU
     browserError = err instanceof Error ? err : new Error(String(err));
   }
 
-  // ── Attempt 5: Firecrawl hosted (residential proxy pool) ──
+  // ── Attempt 5: Hosted fetch (ScrapingAnt -> Scrape.do -> Firecrawl) ──
   // Fires when the host is on the proactive allowlist OR the free layers were
   // blocked by anti-bot (sawBlock). Skipped for genuinely short/missing pages.
-  if (hasFirecrawlKey() && (shouldUseFirecrawl(jobUrl) || sawBlock)) {
+  if (hasHostedFetchKey() && (shouldUseHostedFetch(jobUrl) || sawBlock)) {
     try {
-      console.warn(`Retrying RSS article via Firecrawl ${jobUrl}${sawBlock ? ' (block-triggered)' : ''}`);
-      const html = await firecrawlFetch(jobUrl, 60000);
-      const article = await extractArticleFromHtml(html, jobUrl, 'firecrawl', defaultTimezone);
+      const { html, provider } = await hostedFetch(jobUrl, 60000);
+      console.warn(`Retrying RSS article via hosted fetch (${provider}) ${jobUrl}${sawBlock ? ' (block-triggered)' : ''}`);
+      const article = await extractArticleFromHtml(html, jobUrl, provider, defaultTimezone);
       if (article.content.length >= MIN_ARTICLE_TEXT_LENGTH) return article;
-      browserError = new Error(`firecrawl extraction too short (${article.content.length} characters)`);
+      browserError = new Error(`hosted fetch (${provider}) extraction too short (${article.content.length} characters)`);
     } catch (err: any) {
-      if (!(err instanceof FirecrawlUnavailableError)) {
+      if (!(err instanceof HostedFetchUnavailableError)) {
         browserError = err instanceof Error ? err : new Error(String(err));
       }
     }

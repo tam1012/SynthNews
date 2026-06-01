@@ -60,11 +60,11 @@ const baseStubs = {
   },
   './article-writer.js': { insertArticleIfNew: async () => true },
   './selector-learning.js': { learnSelectorProfileFromHtml: async () => null },
-  './firecrawl-fetch.js': {
-    firecrawlFetch: async () => { throw new Error('Firecrawl unavailable'); },
-    shouldUseFirecrawl: () => false,
-    hasFirecrawlKey: () => false,
-    FirecrawlUnavailableError: class FirecrawlUnavailableError extends Error {},
+  './hosted-fetch.js': {
+    hostedFetch: async () => { throw new Error('Hosted fetch unavailable'); },
+    shouldUseHostedFetch: () => false,
+    hasHostedFetchKey: () => false,
+    HostedFetchUnavailableError: class HostedFetchUnavailableError extends Error {},
   },
   './selector-profile.js': {
     extractWithSelectorProfile: () => ({ title: '', content: '', imageUrl: null, publishedAt: null, matchedSelector: null }),
