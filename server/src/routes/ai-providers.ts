@@ -1,6 +1,11 @@
 import { Hono } from 'hono';
 import { getMany, getOne, query, withTransaction } from '../db/index.js';
 import { generateId } from '../lib/utils.js';
+import {
+  validateAiProviderCreatePayload,
+  validateAiProviderPatchPayload,
+  validateAiProviderRoutingPayload,
+} from '../lib/aiProviderValidation.js';
 
 const aiProviders = new Hono();
 
@@ -30,6 +35,20 @@ async function providerExists(id: string | null | undefined): Promise<boolean> {
   return Boolean(row);
 }
 
+async function readJsonBody(c: any): Promise<unknown> {
+  return c.req.json().catch(() => ({}));
+}
+
+function validationResponse(c: any, err: unknown) {
+  return c.json({
+    success: false,
+    error: {
+      code: 'VALIDATION',
+      message: err instanceof Error ? err.message : 'Invalid request payload',
+    },
+  }, 400);
+}
+
 // Danh sach providers
 aiProviders.get('/', async (c) => {
   const rows = await getMany(
@@ -49,9 +68,13 @@ aiProviders.get('/routing', async (c) => {
 });
 
 aiProviders.patch('/routing', async (c) => {
-  const body = await c.req.json();
-  const primaryProviderId = body.primary_provider_id || null;
-  const fallbackProviderId = body.fallback_provider_id || null;
+  let routing;
+  try {
+    routing = validateAiProviderRoutingPayload(await readJsonBody(c));
+  } catch (err) {
+    return validationResponse(c, err);
+  }
+  const { primary_provider_id: primaryProviderId, fallback_provider_id: fallbackProviderId } = routing;
 
   if (!await providerExists(primaryProviderId) || !await providerExists(fallbackProviderId)) {
     return c.json({ success: false, error: { code: 'VALIDATION', message: 'Provider not found' } }, 400);
@@ -99,25 +122,11 @@ aiProviders.get('/:id', async (c) => {
 
 // Them provider moi
 aiProviders.post('/', async (c) => {
-  const body = await c.req.json();
-  const {
-    name, provider_type, model, api_endpoint, api_key,
-    max_tokens, temperature, extra_config,
-  } = body;
-
-  if (!name || !provider_type || !model) {
-    return c.json({
-      success: false,
-      error: { code: 'VALIDATION', message: 'name, provider_type, model are required' },
-    }, 400);
-  }
-
-  const validTypes = ['vertex_ai_key', 'openai', 'openai_responses', 'gemini', 'xai', 'mimo', 'anthropic', 'deepseek', 'groq', 'custom'];
-  if (!validTypes.includes(provider_type)) {
-    return c.json({
-      success: false,
-      error: { code: 'VALIDATION', message: `provider_type must be one of: ${validTypes.join(', ')}` },
-    }, 400);
+  let payload;
+  try {
+    payload = validateAiProviderCreatePayload(await readJsonBody(c));
+  } catch (err) {
+    return validationResponse(c, err);
   }
 
   const id = generateId('aip');
@@ -127,9 +136,9 @@ aiProviders.post('/', async (c) => {
                                 max_tokens, temperature, extra_config)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
     [
-      id, name, provider_type, model, api_endpoint || null, api_key || null,
-      max_tokens || 4096, temperature ?? 0.3,
-      extra_config ? JSON.stringify(extra_config) : null,
+      id, payload.name, payload.provider_type, payload.model, payload.api_endpoint, payload.api_key,
+      payload.max_tokens, payload.temperature,
+      payload.extra_config ? JSON.stringify(payload.extra_config) : null,
     ]
   );
 
@@ -145,34 +154,29 @@ aiProviders.post('/', async (c) => {
 // Cap nhat provider
 aiProviders.patch('/:id', async (c) => {
   const { id } = c.req.param();
-  const body = await c.req.json();
+  let payload;
+  try {
+    payload = validateAiProviderPatchPayload(await readJsonBody(c));
+  } catch (err) {
+    return validationResponse(c, err);
+  }
 
   const existing = await getOne('SELECT id FROM ai_providers WHERE id = $1', [id]);
   if (!existing) {
     return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Provider not found' } }, 404);
   }
 
-  const allowedFields = [
-    'name', 'provider_type', 'model', 'api_endpoint', 'api_key',
-    'max_tokens', 'temperature', 'extra_config',
-  ];
   const updates: string[] = [];
   const values: any[] = [];
   let paramIndex = 1;
 
-  for (const field of allowedFields) {
-    if (body[field] !== undefined) {
-      let value = body[field];
-      if (field === 'extra_config' && typeof value === 'object') value = JSON.stringify(value);
-      // Cho phep xoa api_key/service_account bang cach gui chuoi rong
-      updates.push(`${field} = $${paramIndex}`);
-      values.push(value === '' ? null : value);
-      paramIndex++;
-    }
-  }
-
-  if (updates.length === 0) {
-    return c.json({ success: false, error: { code: 'VALIDATION', message: 'No fields to update' } }, 400);
+  for (const [field, rawValue] of Object.entries(payload)) {
+    const value = field === 'extra_config' && rawValue
+      ? JSON.stringify(rawValue)
+      : rawValue;
+    updates.push(`${field} = $${paramIndex}`);
+    values.push(value);
+    paramIndex++;
   }
 
   values.push(id);
