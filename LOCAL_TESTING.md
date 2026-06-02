@@ -37,12 +37,16 @@ Set at least these local values in `.env`:
 ```text
 DB_PASSWORD=newstamhv_secret
 ADMIN_TOKEN=change-me-local-admin-token
+SCRAPLING_SERVICE_TOKEN=change-me-local-sidecar-token
 PUBLIC_SITE_URL=https://synthnews.local
 CORS_ORIGIN=https://synthnews.local
 ```
 
 Keep `.env` uncommitted. If you change `DB_PASSWORD`, also update
 `DATABASE_URL` in `.env.local` to use the same password.
+If you run the app container or Scrapling sidecar, keep `SCRAPLING_SERVICE_TOKEN`
+identical in `.env` and `.env.local` so the app can call `/fetch` with
+`X-Sidecar-Token`.
 
 6. Start local Postgres. Existing Docker Compose exposes DB at `127.0.0.1:5433`:
 

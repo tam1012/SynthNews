@@ -1,6 +1,7 @@
 import { playwrightFetch, type PlaywrightFetchOptions } from './http-utils.js';
 
 const SCRAPLING_SERVICE_URL = process.env.SCRAPLING_SERVICE_URL || '';
+const SCRAPLING_SERVICE_TOKEN = process.env.SCRAPLING_SERVICE_TOKEN || '';
 
 // Residential/rotating proxy applied ONLY to hard-blocked domains (Reuters,
 // Bloomberg, ...) so we don't burn paid proxy bandwidth on sites that work from
@@ -55,15 +56,20 @@ export async function scraplingFetch(url: string, options: ScraplingFetchOptions
   if (!SCRAPLING_SERVICE_URL) {
     throw new ScraplingUnavailableError('SCRAPLING_SERVICE_URL not configured');
   }
+  if (process.env.NODE_ENV === 'production' && !SCRAPLING_SERVICE_TOKEN) {
+    throw new Error('SCRAPLING_SERVICE_TOKEN not configured');
+  }
 
   const timeout = options.timeoutMs || 60000;
   const proxy = options.proxy ?? getScraplingProxyForUrl(url);
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (SCRAPLING_SERVICE_TOKEN) headers['X-Sidecar-Token'] = SCRAPLING_SERVICE_TOKEN;
 
   let res: Response;
   try {
     res = await fetch(`${SCRAPLING_SERVICE_URL}/fetch`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({
         url,
         mode: options.mode || 'stealth',
@@ -84,6 +90,9 @@ export async function scraplingFetch(url: string, options: ScraplingFetchOptions
   }
 
   if (!res.ok) {
+    if (res.status === 400 || res.status === 401 || res.status === 403) {
+      throw new Error(`Scrapling service rejected request with HTTP ${res.status}`);
+    }
     throw new ScraplingUnavailableError(`Scrapling service returned HTTP ${res.status}`);
   }
 

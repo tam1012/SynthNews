@@ -3,12 +3,15 @@ services:
     build: ./scrapling-sidecar
     container_name: newstamhv-scrapling
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     # Reap zombie browser processes (Camoufox/Firefox children) that
     # StealthyFetcher leaves behind on crash/timeout. Without an init as PID 1,
     # these accumulate into thousands of defunct PIDs and melt the host CPU.
     init: true
     environment:
       TZ: Asia/Ho_Chi_Minh
+      SCRAPLING_SERVICE_TOKEN: ${SCRAPLING_SERVICE_TOKEN:?SCRAPLING_SERVICE_TOKEN is required}
       SCRAPLING_TIMEOUT_MS: ${SCRAPLING_TIMEOUT_MS:-60000}
       SCRAPLING_WORKERS: ${SCRAPLING_WORKERS:-1}
       SCRAPLING_MAX_CONCURRENCY: ${SCRAPLING_MAX_CONCURRENCY:-2}
@@ -31,6 +34,8 @@ services:
     image: postgres:16-alpine
     container_name: newstamhv-db
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     environment:
       POSTGRES_DB: newstamhv
       POSTGRES_USER: newstamhv
@@ -49,6 +54,8 @@ services:
     build: .
     container_name: newstamhv-app
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     depends_on:
       db:
         condition: service_healthy
@@ -88,6 +95,7 @@ services:
       WORKER_PROXY_SKIP_DOMAINS: ${WORKER_PROXY_SKIP_DOMAINS:-voz.vn,vozforums.com}
       SCRAPLING_PROXY_URL: ${SCRAPLING_PROXY_URL:-}
       SCRAPLING_PROXY_DOMAINS: ${SCRAPLING_PROXY_DOMAINS:-}
+      SCRAPLING_SERVICE_TOKEN: ${SCRAPLING_SERVICE_TOKEN:?SCRAPLING_SERVICE_TOKEN is required}
       FIRECRAWL_API_KEY: ${FIRECRAWL_API_KEY:-}
       FIRECRAWL_API_URL: ${FIRECRAWL_API_URL:-https://api.firecrawl.dev}
       FIRECRAWL_MAX_PER_DAY: ${FIRECRAWL_MAX_PER_DAY:-30}

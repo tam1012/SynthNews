@@ -211,6 +211,7 @@ The application reads configuration from local `.env` files. Critical parameters
 | `MAX_ARTICLES_PER_SOURCE` | Maximum number of articles discovered per source during one crawl (default: `20`) |
 | `MAX_AI_CALLS_PER_RUN` | Maximum number of pending articles summarized in a single cron tick (default: `30`) |
 | `SCRAPLING_SERVICE_URL` | Address of the Python sidecar service (default: `http://scrapling:8000`) |
+| `SCRAPLING_SERVICE_TOKEN` | Shared internal token sent by the app as `X-Sidecar-Token` when calling Scrapling `/fetch` |
 | `SCRAPLING_PROXY_URL` / `SCRAPLING_PROXY_DOMAINS` | Optional residential proxy + host allowlist routed through Scrapling for hard-blocked domains |
 | `SCRAPINGANT_API_KEY` / `SCRAPEDO_API_KEY` / `FIRECRAWL_API_KEY` | Optional hosted-fetch provider keys (chain tried in that order) |
 | `*_MAX_PER_DAY` | Rolling 24h request cap per hosted provider (defaults: ScrapingAnt `300`, Scrape.do `30`, Firecrawl `30`) |
