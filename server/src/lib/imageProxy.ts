@@ -8,7 +8,7 @@ import { createHash } from 'crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync, statSync, readdirSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import sharp from 'sharp';
-import { isPrivateHostname, normalizePublicHttpUrl } from './utils.js';
+import { isPrivateHostname, normalizePublicHttpUrlWithDns } from './utils.js';
 
 /* ── Presets ── */
 export type ImagePreset = 'thumb' | 'detail' | 'og';
@@ -32,8 +32,8 @@ const FETCH_TIMEOUT_MS = 8000;
 const MAX_SOURCE_BYTES = 10 * 1024 * 1024; // 10 MB source limit
 const MAX_SOURCE_PIXELS = 50_000_000;
 
-function toCacheableUrl(sourceUrl: string): string {
-  const normalized = normalizePublicHttpUrl(sourceUrl);
+async function toCacheableUrl(sourceUrl: string): Promise<string> {
+  const normalized = await normalizePublicHttpUrlWithDns(sourceUrl);
   if (!normalized) {
     throw new Error('Invalid source image URL');
   }
@@ -133,7 +133,7 @@ export async function getOptimizedImage(
 ): Promise<{ data: Buffer; contentType: string; cacheHit: boolean }> {
   ensureCacheDir();
 
-  const normalizedSourceUrl = toCacheableUrl(sourceUrl);
+  const normalizedSourceUrl = await toCacheableUrl(sourceUrl);
   const filename = cacheKey(normalizedSourceUrl, preset);
   const cachePath = join(CACHE_DIR, filename);
 

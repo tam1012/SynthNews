@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { getMany, getOne, query } from '../db/index.js';
+import { getMany, getOne, query, withTransaction } from '../db/index.js';
 import { LOCAL_DATE_SQL, LOCAL_DATE_TEXT_SQL, PUBLIC_ARTICLE_FRESHNESS_SQL, buildArticleListFilters, buildArticleListOrderBy, buildArticleSearchFilters } from '../lib/articleFilters.js';
 import { hasValidAdminToken } from '../lib/auth.js';
 import { decodeArticleRows, decodeArticleTextFields } from '../lib/htmlEntities.js';
@@ -337,10 +337,13 @@ articles.post('/batch/delete', async (c) => {
   if (parsed.response) return parsed.response;
   const ids = parsed.ids!;
 
-  await query('DELETE FROM digest_items WHERE article_id = ANY($1::text[])', [ids]);
-  const result = await query('DELETE FROM articles WHERE id = ANY($1::text[])', [ids]);
+  const deleted = await withTransaction(async (client) => {
+    await client.query('DELETE FROM digest_items WHERE article_id = ANY($1::text[])', [ids]);
+    const result = await client.query('DELETE FROM articles WHERE id = ANY($1::text[])', [ids]);
+    return result.rowCount || 0;
+  });
 
-  return c.json({ success: true, data: { requested: ids.length, deleted: result.rowCount || 0 } });
+  return c.json({ success: true, data: { requested: ids.length, deleted } });
 });
 
 articles.post('/:id/reset-summary', async (c) => {
@@ -374,13 +377,17 @@ articles.post('/:id/reset-summary', async (c) => {
 
 articles.delete('/:id', async (c) => {
   const { id } = c.req.param();
-  const existing = await getOne('SELECT id FROM articles WHERE id = $1', [id]);
-  if (!existing) {
+
+  const deleted = await withTransaction(async (client) => {
+    const existing = await client.query('SELECT id FROM articles WHERE id = $1 FOR UPDATE', [id]);
+    if (existing.rowCount === 0) return false;
+    await client.query('DELETE FROM digest_items WHERE article_id = $1', [id]);
+    await client.query('DELETE FROM articles WHERE id = $1', [id]);
+    return true;
+  });
+  if (!deleted) {
     return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Article not found' } }, 404);
   }
-
-  await query('DELETE FROM digest_items WHERE article_id = $1', [id]);
-  await query('DELETE FROM articles WHERE id = $1', [id]);
 
   return c.json({ success: true, data: { deleted: true } });
 });
@@ -430,32 +437,36 @@ articles.post('/:id/cluster', async (c) => {
     return c.json({ success: false, error: { code: 'VALIDATION', message: 'Cannot cluster an article into itself' } }, 400);
   }
 
-  const article = await getOne<any>('SELECT id FROM articles WHERE id = $1', [id]);
-  if (!article) {
-    return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Article not found' } }, 404);
-  }
-  const target = await getOne<any>('SELECT id, parent_article_id FROM articles WHERE id = $1', [targetId]);
-  if (!target) {
-    return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Target leader not found' } }, 404);
-  }
-  if (target.parent_article_id) {
-    return c.json({ success: false, error: { code: 'TARGET_NOT_LEADER', message: 'Bài đích đã là follower trong cụm khác.' } }, 400);
-  }
+  const clusterResult = await withTransaction(async (client) => {
+    const article = await client.query('SELECT id FROM articles WHERE id = $1 FOR UPDATE', [id]);
+    if (article.rowCount === 0) return { ok: false, status: 404, code: 'NOT_FOUND', message: 'Article not found' };
 
-  await query(
-    `UPDATE articles
-     SET parent_article_id = $1,
-         summary_status = 'skipped',
-         last_summary_error = $2
-     WHERE id = $3`,
-    [targetId, `Đã gom cụm thủ công vào bài ${targetId}`, id]
-  );
+    const target = await client.query<any>('SELECT id, parent_article_id FROM articles WHERE id = $1 FOR UPDATE', [targetId]);
+    if (target.rowCount === 0) return { ok: false, status: 404, code: 'NOT_FOUND', message: 'Target leader not found' };
+    if (target.rows[0].parent_article_id) {
+      return { ok: false, status: 400, code: 'TARGET_NOT_LEADER', message: 'Bài đích đã là follower trong cụm khác.' };
+    }
 
-  // Re-parent any followers that pointed at the now-demoted article so the cluster stays flat.
-  await query(
-    `UPDATE articles SET parent_article_id = $1 WHERE parent_article_id = $2`,
-    [targetId, id]
-  );
+    await client.query(
+      `UPDATE articles
+       SET parent_article_id = $1,
+           summary_status = 'skipped',
+           last_summary_error = $2
+       WHERE id = $3`,
+      [targetId, `Đã gom cụm thủ công vào bài ${targetId}`, id]
+    );
+
+    // Re-parent any followers that pointed at the now-demoted article so the cluster stays flat.
+    await client.query(
+      `UPDATE articles SET parent_article_id = $1 WHERE parent_article_id = $2`,
+      [targetId, id]
+    );
+    return { ok: true, status: 200 };
+  });
+
+  if (!clusterResult.ok) {
+    return c.json({ success: false, error: { code: clusterResult.code, message: clusterResult.message } }, clusterResult.status as any);
+  }
 
   return c.json({ success: true, message: `Đã gom bài vào cụm ${targetId}.` });
 });
@@ -541,26 +552,28 @@ articles.post('/:id/rescrape', async (c) => {
   // Non-forum: enqueue a rescue fetch job. The article-fetch job runner will call
   // updateRescuedArticle which overwrites raw_content + clears summary state.
   const jobId = generateId('afj');
-  await query(
-    `INSERT INTO article_fetch_jobs (id, source_id, url, title, external_id, published_at, payload_json, status, retry_count, last_error)
-     SELECT $1, a.source_id, a.url, a.title, NULL, a.published_at,
-            jsonb_build_object('rescueArticleId', a.id),
-            'discovered', 0, NULL
-       FROM articles a
-      WHERE a.id = $2
-      ON CONFLICT (source_id, url) DO UPDATE
-        SET status = 'discovered', retry_count = 0, last_error = NULL,
-            payload_json = EXCLUDED.payload_json`,
-    [jobId, id]
-  );
+  await withTransaction(async (client) => {
+    await client.query(
+      `INSERT INTO article_fetch_jobs (id, source_id, url, title, external_id, published_at, payload_json, status, retry_count, last_error)
+       SELECT $1, a.source_id, a.url, a.title, NULL, a.published_at,
+              jsonb_build_object('rescueArticleId', a.id),
+              'discovered', 0, NULL
+         FROM articles a
+        WHERE a.id = $2
+        ON CONFLICT (source_id, url) DO UPDATE
+          SET status = 'discovered', retry_count = 0, last_error = NULL,
+              payload_json = EXCLUDED.payload_json`,
+      [jobId, id]
+    );
 
-  // Also pre-reset summary state so the UI immediately reflects "pending"
-  await query(
-    `UPDATE articles
-       SET summary_status = 'pending', retry_count = 0, last_summary_error = NULL
-     WHERE id = $1`,
-    [id]
-  );
+    // Also pre-reset summary state so the UI immediately reflects "pending"
+    await client.query(
+      `UPDATE articles
+         SET summary_status = 'pending', retry_count = 0, last_summary_error = NULL
+       WHERE id = $1`,
+      [id]
+    );
+  });
 
   // Kick off the fetch job + summarize asynchronously
   if (typeof runArticleFetchJob === 'function') {

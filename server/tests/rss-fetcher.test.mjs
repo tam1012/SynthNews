@@ -53,7 +53,12 @@ const baseStubs = {
   entities: { decodeHTML: (value) => value },
   '@mozilla/readability': { Readability: class { parse() { return null; } } },
   jsdom: { JSDOM: class { constructor() { this.window = { document: {}, close() {} }; } } },
-  '../../lib/utils.js': { normalizePublicHttpUrl: (value) => new URL(value).toString(), truncate: (value) => value, sleep: async () => {} },
+  '../../lib/utils.js': {
+    normalizePublicHttpUrl: (value) => new URL(value).toString(),
+    normalizePublicHttpUrlWithDns: async (value) => new URL(value).toString(),
+    truncate: (value) => value,
+    sleep: async () => {},
+  },
   './http-utils.js': {
     BROWSER_UA: 'test-agent',
     GOOGLEBOT_UA: 'googlebot-agent',

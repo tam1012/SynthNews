@@ -19,3 +19,13 @@ test('article routes expose bounded batch actions for admin queues', () => {
   assert.match(source, /runSummarizeJob/);
   assert.match(source, /runArticleFetchJob/);
 });
+
+test('multi-step article mutations are wrapped in database transactions', () => {
+  const source = readFileSync(resolve(__dirname, '../src/routes/articles.ts'), 'utf8');
+
+  assert.match(source, /withTransaction/);
+  assert.match(source, /articles\.post\('\/batch\/delete'[\s\S]*withTransaction/);
+  assert.match(source, /articles\.delete\('\/:id'[\s\S]*withTransaction/);
+  assert.match(source, /articles\.post\('\/:id\/cluster'[\s\S]*withTransaction/);
+  assert.match(source, /articles\.post\('\/:id\/rescrape'[\s\S]*withTransaction[\s\S]*jsonb_build_object\('rescueArticleId', a\.id\)/);
+});

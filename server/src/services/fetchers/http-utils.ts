@@ -1,7 +1,7 @@
 import { execFile } from 'child_process';
 import { chromium, ChromiumBrowser } from 'playwright';
 import puppeteer from 'puppeteer-core';
-import { normalizePublicHttpUrl } from '../../lib/utils.js';
+import { normalizePublicHttpUrlWithDns } from '../../lib/utils.js';
 
 // ---------------------------------------------------------------------------
 // User-Agent pool – realistic desktop browsers
@@ -46,18 +46,15 @@ export function browserHeaders(ua?: string): Record<string, string> {
 // ---------------------------------------------------------------------------
 // curl wrapper
 // ---------------------------------------------------------------------------
-export function curlFetch(url: string, _accept: string, timeoutSec: number, ua?: string): Promise<{ ok: boolean; status: number; text: () => Promise<string>; json: () => Promise<any> }> {
-  return new Promise((resolve, reject) => {
-    const safeUrl = normalizePublicHttpUrl(url);
-    if (!safeUrl) {
-      reject(new Error('URL must be a public http(s) URL'));
-      return;
-    }
+export async function curlFetch(url: string, _accept: string, timeoutSec: number, ua?: string): Promise<{ ok: boolean; status: number; text: () => Promise<string>; json: () => Promise<any> }> {
+  const safeUrl = await normalizePublicHttpUrlWithDns(url);
+  if (!safeUrl) throw new Error('URL must be a public http(s) URL');
 
+  return new Promise((resolve, reject) => {
     const safeTimeout = Math.max(1, Math.min(timeoutSec, 60));
     const effectiveUA = ua || BROWSER_UA;
     const args = [
-      '-s', '-L', '--compressed', '--max-time', String(safeTimeout),
+      '-s', '--compressed', '--max-time', String(safeTimeout),
       '-H', `User-Agent: ${effectiveUA}`,
       '-H', `Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8`,
       '-H', 'Accept-Language: en-US,en;q=0.9,vi;q=0.8',
@@ -133,7 +130,7 @@ export interface BrowserFetchOptions {
 }
 
 export async function browserFetch(url: string, timeoutMs: number = 30000, rawTextOrOptions: boolean | BrowserFetchOptions = false): Promise<string> {
-  const safeUrl = normalizePublicHttpUrl(url);
+  const safeUrl = await normalizePublicHttpUrlWithDns(url);
   if (!safeUrl) throw new Error('URL must be a public http(s) URL');
 
   const options: BrowserFetchOptions = typeof rawTextOrOptions === 'boolean' ? { rawText: rawTextOrOptions } : rawTextOrOptions;
@@ -146,17 +143,24 @@ export async function browserFetch(url: string, timeoutMs: number = 30000, rawTe
       Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
       (window as any).chrome = { runtime: {} };
     });
-    if (options.blockHeavyResources) {
-      await page.setRequestInterception(true);
-      page.on('request', (request: any) => {
+    await page.setRequestInterception(true);
+    page.on('request', async (request: any) => {
+      try {
         const resourceType = request.resourceType();
-        if (['image', 'font', 'media', 'stylesheet'].includes(resourceType)) {
-          request.abort();
+        if (options.blockHeavyResources && ['image', 'font', 'media', 'stylesheet'].includes(resourceType)) {
+          await request.abort();
           return;
         }
-        request.continue();
-      });
-    }
+        const safeRequestUrl = await normalizePublicHttpUrlWithDns(request.url(), false);
+        if (!safeRequestUrl) {
+          await request.abort();
+          return;
+        }
+        await request.continue();
+      } catch {
+        try { await request.abort(); } catch {}
+      }
+    });
     await page.setUserAgent(options.userAgent || BROWSER_UA);
     await page.setExtraHTTPHeaders({ 'Accept-Language': 'en-US,en;q=0.9' });
     await page.setViewport({ width: 1920, height: 1080 });
@@ -301,7 +305,7 @@ export async function playwrightFetch(
   url: string,
   options: PlaywrightFetchOptions = {},
 ): Promise<string> {
-  const safeUrl = normalizePublicHttpUrl(url);
+  const safeUrl = await normalizePublicHttpUrlWithDns(url);
   if (!safeUrl) throw new Error('URL must be a public http(s) URL');
 
   const browser = await getPlaywrightBrowser();
@@ -321,18 +325,25 @@ export async function playwrightFetch(
     // ── Stealth: block automation signals before any script runs ─────────────
     await page.addInitScript(stealthEvasionScript);
 
-    // ── Block heavy resources (images, fonts, media) to speed up ───────────
-    if (options.blockHeavyResources) {
-      await page.route('**/*', (route) => {
+    // ── Block unsafe redirects/subresources and optionally heavy resources ──
+    await page.route('**/*', async (route) => {
+      try {
         const req = route.request();
         const type = req.resourceType();
-        if (['image', 'font', 'media', 'stylesheet'].includes(type)) {
-          route.abort();
-        } else {
-          route.continue();
+        if (options.blockHeavyResources && ['image', 'font', 'media', 'stylesheet'].includes(type)) {
+          await route.abort();
+          return;
         }
-      });
-    }
+        const safeRequestUrl = await normalizePublicHttpUrlWithDns(req.url(), false);
+        if (!safeRequestUrl) {
+          await route.abort();
+          return;
+        }
+        await route.continue();
+      } catch {
+        try { await route.abort(); } catch {}
+      }
+    });
 
     // ── Click cookie banners if present ────────────────────────────────────
     page.on('dialog', async (dialog) => {
@@ -444,7 +455,7 @@ export async function workerProxyFetch(
     throw new WorkerProxyUnavailableError(`Domain skipped per WORKER_PROXY_SKIP_DOMAINS: ${url}`);
   }
 
-  const safeUrl = normalizePublicHttpUrl(url);
+  const safeUrl = await normalizePublicHttpUrlWithDns(url);
   if (!safeUrl) throw new Error('URL must be a public http(s) URL');
 
   const proxyUrl = `${WORKER_PROXY_URL.replace(/\/+$/, '')}/?url=${encodeURIComponent(safeUrl)}`;
@@ -498,7 +509,7 @@ export async function cookieAwareFetch(
   url: string,
   options: { timeoutMs?: number; userAgent?: string; maxRedirects?: number } = {},
 ): Promise<{ ok: boolean; status: number; body: string; finalUrl: string }> {
-  const safeUrl = normalizePublicHttpUrl(url);
+  const safeUrl = await normalizePublicHttpUrlWithDns(url);
   if (!safeUrl) throw new Error('URL must be a public http(s) URL');
 
   const timeoutMs = options.timeoutMs ?? 15000;
@@ -541,7 +552,7 @@ export async function cookieAwareFetch(
         const body = await res.text();
         return { ok: false, status: res.status, body, finalUrl: currentUrl };
       }
-      const nextUrl = normalizePublicHttpUrl(new URL(location, currentUrl).toString());
+      const nextUrl = await normalizePublicHttpUrlWithDns(new URL(location, currentUrl).toString());
       if (!nextUrl) throw new Error('Redirect to non-public URL blocked');
       currentUrl = nextUrl;
       continue;

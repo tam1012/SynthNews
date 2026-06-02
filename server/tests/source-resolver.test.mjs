@@ -31,6 +31,9 @@ function loadTsModule(relativePath, stubs = {}) {
 }
 
 const resolverStubs = {
+  './utils.js': {
+    normalizePublicHttpUrlWithDns: async (url) => new URL(url).toString(),
+  },
   '../services/fetchers/sitemap-discovery.js': {
     buildSitemapCandidates: (url) => [`${new URL(url).origin}/sitemap.xml`],
     parseSitemapIndexUrls: () => [],

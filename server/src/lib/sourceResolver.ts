@@ -1,4 +1,5 @@
 import { buildSitemapCandidates, parseSitemapIndexUrls, parseSitemapUrls } from '../services/fetchers/sitemap-discovery.js';
+import { normalizePublicHttpUrlWithDns } from './utils.js';
 
 type SourceType = 'rss' | 'web';
 
@@ -29,7 +30,11 @@ export type ResolveFetch = (url: string, init?: RequestInit) => Promise<ResolveF
 
 const COMMON_FEED_PATHS = ['/feed', '/rss', '/rss.xml', '/atom.xml', '/index.xml'];
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
-const defaultFetch: ResolveFetch = (url, init) => fetch(url, init);
+const defaultFetch: ResolveFetch = async (url, init) => {
+  const safeUrl = await normalizePublicHttpUrlWithDns(url, false);
+  if (!safeUrl) throw new Error('url must be a public http(s) URL');
+  return fetch(safeUrl, init);
+};
 
 // Heuristic: a 200 response that is actually an anti-bot challenge page.
 function looksBlocked(status: number, body: string): boolean {
@@ -50,22 +55,26 @@ function looksBlocked(status: number, body: string): boolean {
 // browser/proxy stack. Returns a ResolveFetchResponse-compatible object.
 async function fallbackResolveFetch(url: string, init?: RequestInit): Promise<ResolveFetchResponse> {
   const httpUtils = await import('../services/fetchers/http-utils.js');
+  const safeUrl = await normalizePublicHttpUrlWithDns(url, false);
+  if (!safeUrl) {
+    return { ok: false, status: 400, url, headers: { get: () => 'text/plain' }, text: async () => '' };
+  }
 
   // Native first.
   try {
-    const res = await fetch(url, init);
+    const res = await fetch(safeUrl, init);
     const text = await res.text();
     if (res.ok && !looksBlocked(res.status, text)) {
-      return { ok: true, status: res.status, url: res.url || url, headers: res.headers, text: async () => text };
+      return { ok: true, status: res.status, url: res.url || safeUrl, headers: res.headers, text: async () => text };
     }
   } catch {}
 
   // Worker proxy (skips CF-protected domains per WORKER_PROXY_SKIP_DOMAINS).
-  if (httpUtils.isWorkerProxyConfigured() && !httpUtils.shouldSkipWorkerProxy(url)) {
+  if (httpUtils.isWorkerProxyConfigured() && !httpUtils.shouldSkipWorkerProxy(safeUrl)) {
     try {
-      const result = await httpUtils.workerProxyFetch(url, { timeoutMs: 25000 });
+      const result = await httpUtils.workerProxyFetch(safeUrl, { timeoutMs: 25000 });
       if (result.ok) {
-        return { ok: true, status: 200, url, headers: { get: () => 'text/html' }, text: async () => result.body };
+        return { ok: true, status: 200, url: safeUrl, headers: { get: () => 'text/html' }, text: async () => result.body };
       }
     } catch {}
   }
@@ -73,13 +82,13 @@ async function fallbackResolveFetch(url: string, init?: RequestInit): Promise<Re
   // Scrapling stealth (last resort; solves Cloudflare where possible).
   try {
     const { scraplingFetch } = await import('../services/fetchers/scrapling-fetch.js');
-    const html = await scraplingFetch(url, { mode: 'stealth', blockResources: true, waitMs: 1000, timeoutMs: 60000 });
+    const html = await scraplingFetch(safeUrl, { mode: 'stealth', blockResources: true, waitMs: 1000, timeoutMs: 60000 });
     if (html && !looksBlocked(200, html)) {
-      return { ok: true, status: 200, url, headers: { get: () => 'text/html' }, text: async () => html };
+      return { ok: true, status: 200, url: safeUrl, headers: { get: () => 'text/html' }, text: async () => html };
     }
   } catch {}
 
-  return { ok: false, status: 403, url, headers: { get: () => 'text/plain' }, text: async () => '' };
+  return { ok: false, status: 403, url: safeUrl, headers: { get: () => 'text/plain' }, text: async () => '' };
 }
 
 export { fallbackResolveFetch };

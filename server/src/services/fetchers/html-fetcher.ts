@@ -1,5 +1,5 @@
 import * as cheerio from 'cheerio';
-import { normalizePublicHttpUrl, truncate, sleep } from '../../lib/utils.js';
+import { normalizePublicHttpUrl, normalizePublicHttpUrlWithDns, truncate, sleep } from '../../lib/utils.js';
 import { matchPromoKeyword } from '../../lib/promoFilter.js';
 import { browserHeaders, isBlockedHtml, randomUA, playwrightFetch, workerProxyFetch, isWorkerProxyConfigured, shouldSkipWorkerProxy, WorkerProxyUnavailableError, cookieAwareFetch } from './http-utils.js';
 import { scraplingFetchWithFallback } from './scrapling-fetch.js';
@@ -134,7 +134,7 @@ export const htmlFetcher: SourceFetcher = {
     // scoring (collectHeuristicArticleLinks) and/or sitemap discovery. A bare
     // URL like https://www.reuters.com/world/ is enough to start crawling.
 
-    const sourceUrl = normalizePublicHttpUrl(source.url, false);
+    const sourceUrl = await normalizePublicHttpUrlWithDns(source.url, false);
     if (!sourceUrl) throw new Error('Source URL must be a public http(s) URL');
 
     let html = '';
@@ -234,6 +234,8 @@ export const htmlFetcher: SourceFetcher = {
   },
   async fetchArticle(job, source) {
     const config = source.parser_config || {};
+    const jobUrl = await normalizePublicHttpUrlWithDns(job.url, false);
+    if (!jobUrl) throw new Error('Article URL must be a public http(s) URL');
 
     await sleep(500);
     // Try native fetch first, then worker proxy, then Scrapling stealth fallback
@@ -243,7 +245,7 @@ export const htmlFetcher: SourceFetcher = {
     // the host isn't on the proactive allowlist. Genuine errors don't escalate.
     let sawBlock = false;
     try {
-      const articleRes = await fetch(job.url, {
+      const articleRes = await fetch(jobUrl, {
         headers: browserHeaders(randomUA()),
         signal: AbortSignal.timeout(15000),
       });
@@ -259,7 +261,7 @@ export const htmlFetcher: SourceFetcher = {
       // gate the article behind a 302 + Set-Cookie that plain fetch() drops.
       if (!fetchOk) {
         try {
-          const result = await cookieAwareFetch(job.url, { timeoutMs: 20000, userAgent: randomUA() });
+          const result = await cookieAwareFetch(jobUrl, { timeoutMs: 20000, userAgent: randomUA() });
           if (result.ok) {
             articleHtml = result.body;
             fetchOk = true;
@@ -267,13 +269,13 @@ export const htmlFetcher: SourceFetcher = {
             sawBlock = true;
           }
         } catch (cookieErr: any) {
-          console.warn(`html-fetcher: cookie-aware fetch failed for ${job.url}: ${cookieErr.message}`);
+          console.warn(`html-fetcher: cookie-aware fetch failed for ${jobUrl}: ${cookieErr.message}`);
         }
       }
-      if (!fetchOk && isWorkerProxyConfigured() && !shouldSkipWorkerProxy(job.url)) {
+      if (!fetchOk && isWorkerProxyConfigured() && !shouldSkipWorkerProxy(jobUrl)) {
         try {
-          console.warn(`html-fetcher: native fetch failed for ${job.url}, trying Worker proxy: ${firstErr.message}`);
-          const result = await workerProxyFetch(job.url, { timeoutMs: 25000 });
+          console.warn(`html-fetcher: native fetch failed for ${jobUrl}, trying Worker proxy: ${firstErr.message}`);
+          const result = await workerProxyFetch(jobUrl, { timeoutMs: 25000 });
           if (result.ok) {
             articleHtml = result.body;
             fetchOk = true;
@@ -282,14 +284,14 @@ export const htmlFetcher: SourceFetcher = {
           }
         } catch (proxyErr: any) {
           if (!(proxyErr instanceof WorkerProxyUnavailableError)) {
-            console.warn(`html-fetcher: worker proxy failed for ${job.url}: ${proxyErr.message}`);
+            console.warn(`html-fetcher: worker proxy failed for ${jobUrl}: ${proxyErr.message}`);
           }
         }
       }
       if (!fetchOk) {
-        console.warn(`html-fetcher: native+proxy failed for ${job.url}, falling back to Scrapling: ${firstErr.message}`);
+        console.warn(`html-fetcher: native+proxy failed for ${jobUrl}, falling back to Scrapling: ${firstErr.message}`);
         try {
-          articleHtml = await scraplingFetchWithFallback(job.url, {
+          articleHtml = await scraplingFetchWithFallback(jobUrl, {
             mode: 'stealth',
             blockResources: false,
             waitMs: 1000,
@@ -304,9 +306,9 @@ export const htmlFetcher: SourceFetcher = {
         } catch (scrErr: any) {
           // Last resort: hosted fetch (ScrapingAnt -> Scrape.do -> Firecrawl).
           // Fires for allowlist hosts OR any host blocked by anti-bot along the way.
-          if (hasHostedFetchKey() && (shouldUseHostedFetch(job.url) || sawBlock)) {
-            const { html, provider } = await hostedFetch(job.url, 60000);
-            console.warn(`html-fetcher: scrapling failed for ${job.url}, used hosted fetch (${provider})${sawBlock ? ' (block-triggered)' : ''}: ${scrErr.message}`);
+          if (hasHostedFetchKey() && (shouldUseHostedFetch(jobUrl) || sawBlock)) {
+            const { html, provider } = await hostedFetch(jobUrl, 60000);
+            console.warn(`html-fetcher: scrapling failed for ${jobUrl}, used hosted fetch (${provider})${sawBlock ? ' (block-triggered)' : ''}: ${scrErr.message}`);
             articleHtml = html;
           } else {
             throw scrErr;
@@ -315,14 +317,14 @@ export const htmlFetcher: SourceFetcher = {
       }
     }
 
-    const aiExtraction = await extractWithAiSelector(articleHtml, job.url, getDefaultTimezoneForLanguage(source.language));
+    const aiExtraction = await extractWithAiSelector(articleHtml, jobUrl, getDefaultTimezoneForLanguage(source.language));
     if (aiExtraction) {
       const { extraction, matchedSelector, sourceProfileId } = aiExtraction;
       const title = extraction.title || job.title;
       const excerpt = truncate(extraction.content, 500);
       return {
         source,
-        url: job.url,
+        url: jobUrl,
         title,
         publishedAt: extraction.publishedAt || job.published_at,
         rawExcerpt: excerpt,
@@ -347,7 +349,7 @@ export const htmlFetcher: SourceFetcher = {
       getMetaContent($article, 'meta[name="twitter:image"]');
     if (imgSrc) {
       try {
-        imageUrl = normalizePublicHttpUrl(new URL(imgSrc, job.url).toString());
+        imageUrl = normalizePublicHttpUrl(new URL(imgSrc, jobUrl).toString());
       } catch {}
     }
 
@@ -382,7 +384,7 @@ export const htmlFetcher: SourceFetcher = {
 
     return {
       source,
-      url: job.url,
+      url: jobUrl,
       title,
       publishedAt,
       rawExcerpt: excerpt,

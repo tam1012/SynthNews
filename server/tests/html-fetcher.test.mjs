@@ -48,6 +48,7 @@ const baseStubs = {
   cheerio,
   '../../lib/utils.js': {
     normalizePublicHttpUrl: (value) => new URL(value).toString(),
+    normalizePublicHttpUrlWithDns: async (value) => new URL(value).toString(),
     truncate: (value, length) => value.slice(0, length),
     sleep: async () => {},
   },

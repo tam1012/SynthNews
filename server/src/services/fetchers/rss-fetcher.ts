@@ -3,7 +3,7 @@ import * as cheerio from 'cheerio';
 import { decodeHTML } from 'entities';
 import { Readability } from '@mozilla/readability';
 import { JSDOM } from 'jsdom';
-import { normalizePublicHttpUrl, truncate, sleep } from '../../lib/utils.js';
+import { normalizePublicHttpUrl, normalizePublicHttpUrlWithDns, truncate, sleep } from '../../lib/utils.js';
 import { matchPromoKeyword } from '../../lib/promoFilter.js';
 import { BROWSER_UA, GOOGLEBOT_UA, browserHeaders, randomUA, playwrightFetch, isBlockedHtml, workerProxyFetch, isWorkerProxyConfigured, shouldSkipWorkerProxy, WorkerProxyUnavailableError, cookieAwareFetch } from './http-utils.js';
 import { scraplingFetchWithFallback } from './scrapling-fetch.js';
@@ -333,6 +333,9 @@ async function extractWithAiSelector(html: string, pageUrl: string, defaultTimez
 }
 
 async function fetchFullArticle(jobUrl: string, policy = getRssDomainPolicy(jobUrl), defaultTimezone: string = 'Z'): Promise<{ title: string; content: string; imageUrl: string | null; publishedAt: string | null; metadata?: any }> {
+  const safeJobUrl = await normalizePublicHttpUrlWithDns(jobUrl, false);
+  if (!safeJobUrl) throw new Error('Article URL must be a public http(s) URL');
+
   let fetchError: Error | null = null;
   let browserError: Error | null = null;
   // Track whether the free layers failed because of anti-bot blocking (vs. a
@@ -347,7 +350,7 @@ async function fetchFullArticle(jobUrl: string, policy = getRssDomainPolicy(jobU
   // ── Attempt 1: native fetch with random browser UA + full headers ────────
   try {
     const ua = randomUA();
-    const response = await fetch(jobUrl, {
+    const response = await fetch(safeJobUrl, {
       headers: browserHeaders(ua),
       signal: AbortSignal.timeout(15000),
     });
@@ -355,7 +358,7 @@ async function fetchFullArticle(jobUrl: string, policy = getRssDomainPolicy(jobU
 
     const html = await response.text();
     if (isBlockedHtml(html)) { sawBlock = true; throw new Error('blocked HTML'); }
-    const article = await extractArticleFromHtml(html, jobUrl, 'fetch', defaultTimezone);
+    const article = await extractArticleFromHtml(html, safeJobUrl, 'fetch', defaultTimezone);
     if (article.content.length >= MIN_ARTICLE_TEXT_LENGTH) return article;
     fetchError = new Error(`fetch extraction too short (${article.content.length} characters)`);
   } catch (err: any) {
@@ -364,8 +367,8 @@ async function fetchFullArticle(jobUrl: string, policy = getRssDomainPolicy(jobU
 
   // ── Attempt 2: native fetch with Googlebot UA ────────────────────────────────
   try {
-    console.warn(`Retrying RSS article with Googlebot UA ${jobUrl}: ${fetchError?.message || 'short content'}`);
-    const response = await fetch(jobUrl, {
+    console.warn(`Retrying RSS article with Googlebot UA ${safeJobUrl}: ${fetchError?.message || 'short content'}`);
+    const response = await fetch(safeJobUrl, {
       headers: browserHeaders(GOOGLEBOT_UA),
       signal: AbortSignal.timeout(15000),
     });
@@ -373,7 +376,7 @@ async function fetchFullArticle(jobUrl: string, policy = getRssDomainPolicy(jobU
 
     const html = await response.text();
     if (isBlockedHtml(html)) { sawBlock = true; throw new Error('blocked HTML'); }
-    const article = await extractArticleFromHtml(html, jobUrl, 'fetch:googlebot', defaultTimezone);
+    const article = await extractArticleFromHtml(html, safeJobUrl, 'fetch:googlebot', defaultTimezone);
     if (article.content.length >= MIN_ARTICLE_TEXT_LENGTH) return article;
     fetchError = new Error(`googlebot extraction too short (${article.content.length} characters)`);
   } catch (err: any) {
@@ -385,9 +388,9 @@ async function fetchFullArticle(jobUrl: string, policy = getRssDomainPolicy(jobU
   // fetch() drops across the redirect, leaving a ~400-char cookie page. Replaying
   // the cookie across hops yields the full article without spending any credits.
   try {
-    const result = await cookieAwareFetch(jobUrl, { timeoutMs: 20000, userAgent: randomUA() });
+    const result = await cookieAwareFetch(safeJobUrl, { timeoutMs: 20000, userAgent: randomUA() });
     if (!result.ok) { noteBlock(result.status, result.body); throw new Error(`cookie-aware fetch status ${result.status}`); }
-    const article = await extractArticleFromHtml(result.body, jobUrl, 'fetch:cookie', defaultTimezone);
+    const article = await extractArticleFromHtml(result.body, safeJobUrl, 'fetch:cookie', defaultTimezone);
     if (article.content.length >= MIN_ARTICLE_TEXT_LENGTH) return article;
     fetchError = new Error(`cookie-aware extraction too short (${article.content.length} characters)`);
   } catch (err: any) {
@@ -395,12 +398,12 @@ async function fetchFullArticle(jobUrl: string, policy = getRssDomainPolicy(jobU
   }
 
   // ── Attempt 3: Cloudflare Worker proxy (better IP reputation than Oracle datacenter) ──
-  if (isWorkerProxyConfigured() && !shouldSkipWorkerProxy(jobUrl)) {
+  if (isWorkerProxyConfigured() && !shouldSkipWorkerProxy(safeJobUrl)) {
     try {
-      console.warn(`Retrying RSS article via Worker proxy ${jobUrl}`);
-      const result = await workerProxyFetch(jobUrl, { timeoutMs: 25000 });
+      console.warn(`Retrying RSS article via Worker proxy ${safeJobUrl}`);
+      const result = await workerProxyFetch(safeJobUrl, { timeoutMs: 25000 });
       if (!result.ok) { noteBlock(result.upstreamStatus, result.body); throw new Error(`worker proxy upstream ${result.upstreamStatus}`); }
-      const article = await extractArticleFromHtml(result.body, jobUrl, 'worker-proxy', defaultTimezone);
+      const article = await extractArticleFromHtml(result.body, safeJobUrl, 'worker-proxy', defaultTimezone);
       if (article.content.length >= MIN_ARTICLE_TEXT_LENGTH) return article;
       fetchError = new Error(`worker proxy extraction too short (${article.content.length} characters)`);
     } catch (err: any) {
@@ -412,9 +415,9 @@ async function fetchFullArticle(jobUrl: string, policy = getRssDomainPolicy(jobU
 
   // ── Attempt 4: Scrapling stealth (replaces Playwright + host browser proxy) ──
   try {
-    console.warn(`Retrying RSS article with Scrapling stealth fetch ${jobUrl}`);
+    console.warn(`Retrying RSS article with Scrapling stealth fetch ${safeJobUrl}`);
     await sleep(1500);
-    const html = await scraplingFetchWithFallback(jobUrl, {
+    const html = await scraplingFetchWithFallback(safeJobUrl, {
       mode: 'stealth',
       blockResources: true,
       waitMs: 1000,
@@ -426,7 +429,7 @@ async function fetchFullArticle(jobUrl: string, policy = getRssDomainPolicy(jobU
       settleMs: 1000,
     });
     if (isBlockedHtml(html)) { sawBlock = true; throw new Error('blocked HTML'); }
-    const article = await extractArticleFromHtml(html, jobUrl, 'scrapling-stealth', defaultTimezone);
+    const article = await extractArticleFromHtml(html, safeJobUrl, 'scrapling-stealth', defaultTimezone);
     if (article.content.length >= MIN_ARTICLE_TEXT_LENGTH) return article;
     browserError = new Error(`scrapling extraction too short (${article.content.length} characters)`);
   } catch (err: any) {
@@ -436,11 +439,11 @@ async function fetchFullArticle(jobUrl: string, policy = getRssDomainPolicy(jobU
   // ── Attempt 5: Hosted fetch (ScrapingAnt -> Scrape.do -> Firecrawl) ──
   // Fires when the host is on the proactive allowlist OR the free layers were
   // blocked by anti-bot (sawBlock). Skipped for genuinely short/missing pages.
-  if (hasHostedFetchKey() && (shouldUseHostedFetch(jobUrl) || sawBlock)) {
+  if (hasHostedFetchKey() && (shouldUseHostedFetch(safeJobUrl) || sawBlock)) {
     try {
-      const { html, provider } = await hostedFetch(jobUrl, 60000);
-      console.warn(`Retrying RSS article via hosted fetch (${provider}) ${jobUrl}${sawBlock ? ' (block-triggered)' : ''}`);
-      const article = await extractArticleFromHtml(html, jobUrl, provider, defaultTimezone);
+      const { html, provider } = await hostedFetch(safeJobUrl, 60000);
+      console.warn(`Retrying RSS article via hosted fetch (${provider}) ${safeJobUrl}${sawBlock ? ' (block-triggered)' : ''}`);
+      const article = await extractArticleFromHtml(html, safeJobUrl, provider, defaultTimezone);
       if (article.content.length >= MIN_ARTICLE_TEXT_LENGTH) return article;
       browserError = new Error(`hosted fetch (${provider}) extraction too short (${article.content.length} characters)`);
     } catch (err: any) {
@@ -496,7 +499,7 @@ export const rssFetcher: SourceFetcher = {
   key: 'rss',
   canHandle: (source) => source.type === 'rss',
   async discover(source) {
-    const normalizedUrl = normalizePublicHttpUrl(source.url, false);
+    const normalizedUrl = await normalizePublicHttpUrlWithDns(source.url, false);
     const sourceUrl = normalizedUrl ? normalizeFeedUrl(normalizedUrl) : null;
     if (!sourceUrl) throw new Error('Source URL must be a public http(s) URL');
 
