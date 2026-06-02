@@ -250,6 +250,14 @@ export function isBlockedHtml(html: string): boolean {
     lowered.includes('awswafintegration') ||
     lowered.includes('awswafcookiedomainlist') ||
     lowered.includes('challenge-container') ||
+    // DataDome (Reuters, Bloomberg, etc.) — interstitial + JS challenge markers
+    lowered.includes('captcha-delivery.com') ||
+    lowered.includes('geo.captcha-delivery.com') ||
+    lowered.includes('datadome') ||
+    // PerimeterX / HUMAN
+    lowered.includes('_pxhd') ||
+    lowered.includes('px-captcha') ||
+    lowered.includes('perimeterx') ||
     lowered.includes("verify that you're not a robot");
 }
 
@@ -439,6 +447,80 @@ export async function workerProxyFetch(
     upstreamStatus,
     body,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Cookie-aware redirect fetch
+// ---------------------------------------------------------------------------
+// Some sites (e.g. qdnd.vn) answer the first request with a 302 + Set-Cookie and
+// only serve the full article to a client that replays that cookie on the
+// redirect target. Node's global fetch follows redirects but does NOT carry
+// Set-Cookie across hops, so the app lands on a tiny cookie-gate page (~400
+// chars) that isn't an anti-bot block — it just looks like "content too short".
+// This helper walks redirects manually, accumulating cookies between hops.
+export async function cookieAwareFetch(
+  url: string,
+  options: { timeoutMs?: number; userAgent?: string; maxRedirects?: number } = {},
+): Promise<{ ok: boolean; status: number; body: string; finalUrl: string }> {
+  const safeUrl = normalizePublicHttpUrl(url);
+  if (!safeUrl) throw new Error('URL must be a public http(s) URL');
+
+  const timeoutMs = options.timeoutMs ?? 15000;
+  const maxRedirects = options.maxRedirects ?? 5;
+  const ua = options.userAgent || BROWSER_UA;
+  const cookieJar = new Map<string, string>();
+  const deadline = Date.now() + timeoutMs;
+
+  let currentUrl = safeUrl;
+  let lastStatus = 0;
+
+  for (let hop = 0; hop <= maxRedirects; hop++) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) throw new Error('cookieAwareFetch timed out');
+
+    const headers: Record<string, string> = { ...browserHeaders(ua) };
+    if (cookieJar.size > 0) {
+      headers.Cookie = Array.from(cookieJar.entries()).map(([k, v]) => `${k}=${v}`).join('; ');
+    }
+
+    const res = await fetch(currentUrl, {
+      headers,
+      redirect: 'manual',
+      signal: AbortSignal.timeout(remaining),
+    });
+    lastStatus = res.status;
+
+    const setCookies = typeof (res.headers as any).getSetCookie === 'function'
+      ? (res.headers as any).getSetCookie() as string[]
+      : [];
+    for (const sc of setCookies) {
+      const pair = sc.split(';')[0];
+      const eq = pair.indexOf('=');
+      if (eq > 0) cookieJar.set(pair.slice(0, eq).trim(), pair.slice(eq + 1).trim());
+    }
+
+    if (res.status >= 300 && res.status < 400) {
+      const location = res.headers.get('location');
+      if (!location) {
+        const body = await res.text();
+        return { ok: false, status: res.status, body, finalUrl: currentUrl };
+      }
+      const nextUrl = normalizePublicHttpUrl(new URL(location, currentUrl).toString());
+      if (!nextUrl) throw new Error('Redirect to non-public URL blocked');
+      currentUrl = nextUrl;
+      continue;
+    }
+
+    const body = await res.text();
+    return {
+      ok: res.ok && body.length > 100 && !isBlockedHtml(body),
+      status: res.status,
+      body,
+      finalUrl: currentUrl,
+    };
+  }
+
+  throw new Error(`cookieAwareFetch exceeded ${maxRedirects} redirects (last status ${lastStatus})`);
 }
 
 // ---------------------------------------------------------------------------

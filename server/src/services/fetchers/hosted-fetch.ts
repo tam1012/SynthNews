@@ -50,7 +50,14 @@ function looksBlockedOrEmpty(html: string): boolean {
   return lowered.includes('just a moment...') ||
     lowered.includes('challenges.cloudflare.com') ||
     lowered.includes('enable javascript and cookies') ||
-    lowered.includes('cf-browser-verification');
+    lowered.includes('cf-browser-verification') ||
+    // DataDome / PerimeterX challenge shells — ScrapingAnt & Scrape.do sometimes
+    // return these for Reuters/Bloomberg, so fall through to the next provider
+    // (Firecrawl is the strongest on DataDome).
+    lowered.includes('captcha-delivery.com') ||
+    lowered.includes('datadome') ||
+    lowered.includes('px-captcha') ||
+    lowered.includes('perimeterx');
 }
 
 interface HostedProvider {

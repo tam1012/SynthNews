@@ -1,6 +1,7 @@
 import * as cheerio from 'cheerio';
 import { normalizePublicHttpUrl } from '../../lib/utils.js';
 import { browserHeaders, randomUA } from './http-utils.js';
+import { normalizeDate as normalizeDateWithTz } from '../../lib/dateUtils.js';
 import type { DiscoveredArticle } from '../article-fetch-queue.js';
 import type { SourceRow } from './types.js';
 
@@ -46,19 +47,7 @@ const SITEMAP_CACHE_TTL_MS = (() => {
 const sitemapXmlCache = new Map<string, { xml: string; ts: number }>();
 
 function normalizeDate(value: string | null, defaultTimezone: string = 'Z'): string | null {
-  if (!value) return null;
-  let normalized = value.trim();
-  if (!normalized) return null;
-  // If datetime looks like ISO but has no timezone suffix, assume defaultTimezone
-  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(normalized)) {
-    normalized += defaultTimezone;
-  } else if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}(:\d{2})?$/.test(normalized)) {
-    normalized = normalized.replace(' ', 'T') + defaultTimezone;
-  } else if (/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
-    normalized += `T00:00:00${defaultTimezone}`;
-  }
-  const date = new Date(normalized);
-  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+  return normalizeDateWithTz(value, { defaultTimezone });
 }
 
 function isRecentEnough(value: string | null, options: SitemapParseOptions): boolean {

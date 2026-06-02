@@ -1,6 +1,7 @@
 import * as cheerio from 'cheerio';
 import { getOne, query } from '../../db/index.js';
 import { generateId, normalizePublicHttpUrl } from '../../lib/utils.js';
+import { normalizeDate as normalizeDateWithTz } from '../../lib/dateUtils.js';
 
 const DEFAULT_REMOVE_SELECTORS = 'script, style, noscript, iframe, svg, form, button, input, textarea, nav, header, footer, aside';
 const GENERIC_CONTENT_SELECTORS = new Set(['html', 'body', '*', 'main', 'article', '[role="main"]']);
@@ -179,19 +180,7 @@ function getMetaContent($: cheerio.CheerioAPI, selector: string): string {
 }
 
 function normalizeDate(value: string | null, defaultTimezone: string = 'Z'): string | null {
-  if (!value) return null;
-  let normalized = value.trim();
-  if (!normalized) return null;
-  // If datetime looks like ISO but has no timezone suffix, assume defaultTimezone
-  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(normalized)) {
-    normalized += defaultTimezone;
-  } else if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}(:\d{2})?$/.test(normalized)) {
-    normalized = normalized.replace(' ', 'T') + defaultTimezone;
-  } else if (/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
-    normalized += `T00:00:00${defaultTimezone}`;
-  }
-  const date = new Date(normalized);
-  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+  return normalizeDateWithTz(value, { defaultTimezone });
 }
 
 function extractJsonLdDate($: cheerio.CheerioAPI): string | null {
@@ -248,8 +237,11 @@ export function extractWithSelectorProfile(html: string, pageUrl: string, profil
   const publishedText = profile.publishedAtSelector
     ? ($(profile.publishedAtSelector).first().attr('datetime') || $(profile.publishedAtSelector).first().text().trim())
     : '';
-  const publishedAt = normalizeDate(
-    publishedText ||
+  // Try the profile selector first, but if its text doesn't normalize to a valid
+  // date (e.g. aljazeera's ".article-dates" yields "Published On 1 Jun 2026..."),
+  // fall through to the standard meta / <time> / JSON-LD chain instead of letting
+  // a junk selector value mask a clean machine-readable date elsewhere on the page.
+  const fallbackPublished =
     $('time[datetime]').first().attr('datetime') ||
     getMetaContent($, 'meta[property="article:published_time"]') ||
     getMetaContent($, 'meta[name="pubdate"]') ||
@@ -257,9 +249,9 @@ export function extractWithSelectorProfile(html: string, pageUrl: string, profil
     $('[itemprop="datePublished"]').first().attr('content') ||
     $('[itemprop="datePublished"]').first().attr('datetime') ||
     extractJsonLdDate($) ||
-    null,
-    defaultTimezone
-  );
+    null;
+  const publishedAt = normalizeDate(publishedText || null, defaultTimezone)
+    || normalizeDate(fallbackPublished, defaultTimezone);
 
   $(DEFAULT_REMOVE_SELECTORS).remove();
   for (const selector of profile.removeSelectors) $(selector).remove();

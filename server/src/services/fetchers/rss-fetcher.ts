@@ -5,7 +5,7 @@ import { Readability } from '@mozilla/readability';
 import { JSDOM } from 'jsdom';
 import { normalizePublicHttpUrl, truncate, sleep } from '../../lib/utils.js';
 import { matchPromoKeyword } from '../../lib/promoFilter.js';
-import { BROWSER_UA, GOOGLEBOT_UA, browserHeaders, randomUA, playwrightFetch, isBlockedHtml, workerProxyFetch, isWorkerProxyConfigured, shouldSkipWorkerProxy, WorkerProxyUnavailableError } from './http-utils.js';
+import { BROWSER_UA, GOOGLEBOT_UA, browserHeaders, randomUA, playwrightFetch, isBlockedHtml, workerProxyFetch, isWorkerProxyConfigured, shouldSkipWorkerProxy, WorkerProxyUnavailableError, cookieAwareFetch } from './http-utils.js';
 import { scraplingFetchWithFallback } from './scrapling-fetch.js';
 import { hostedFetch, shouldUseHostedFetch, hasHostedFetchKey, HostedFetchUnavailableError } from './hosted-fetch.js';
 import { insertArticleIfNew, MIN_ARTICLE_TEXT_LENGTH } from './article-writer.js';
@@ -376,6 +376,20 @@ async function fetchFullArticle(jobUrl: string, policy = getRssDomainPolicy(jobU
     const article = await extractArticleFromHtml(html, jobUrl, 'fetch:googlebot', defaultTimezone);
     if (article.content.length >= MIN_ARTICLE_TEXT_LENGTH) return article;
     fetchError = new Error(`googlebot extraction too short (${article.content.length} characters)`);
+  } catch (err: any) {
+    fetchError = err instanceof Error ? err : new Error(String(err));
+  }
+
+  // ── Attempt 2b: cookie-aware redirect fetch ──────────────────────────────────
+  // Sites like qdnd.vn gate the article behind a 302 + Set-Cookie that plain
+  // fetch() drops across the redirect, leaving a ~400-char cookie page. Replaying
+  // the cookie across hops yields the full article without spending any credits.
+  try {
+    const result = await cookieAwareFetch(jobUrl, { timeoutMs: 20000, userAgent: randomUA() });
+    if (!result.ok) { noteBlock(result.status, result.body); throw new Error(`cookie-aware fetch status ${result.status}`); }
+    const article = await extractArticleFromHtml(result.body, jobUrl, 'fetch:cookie', defaultTimezone);
+    if (article.content.length >= MIN_ARTICLE_TEXT_LENGTH) return article;
+    fetchError = new Error(`cookie-aware extraction too short (${article.content.length} characters)`);
   } catch (err: any) {
     fetchError = err instanceof Error ? err : new Error(String(err));
   }

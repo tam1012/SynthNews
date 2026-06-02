@@ -1,7 +1,7 @@
 import * as cheerio from 'cheerio';
 import { normalizePublicHttpUrl, truncate, sleep } from '../../lib/utils.js';
 import { matchPromoKeyword } from '../../lib/promoFilter.js';
-import { browserHeaders, isBlockedHtml, randomUA, playwrightFetch, workerProxyFetch, isWorkerProxyConfigured, shouldSkipWorkerProxy, WorkerProxyUnavailableError } from './http-utils.js';
+import { browserHeaders, isBlockedHtml, randomUA, playwrightFetch, workerProxyFetch, isWorkerProxyConfigured, shouldSkipWorkerProxy, WorkerProxyUnavailableError, cookieAwareFetch } from './http-utils.js';
 import { scraplingFetchWithFallback } from './scrapling-fetch.js';
 import { hostedFetch, shouldUseHostedFetch, hasHostedFetchKey } from './hosted-fetch.js';
 import { insertArticleIfNew } from './article-writer.js';
@@ -19,7 +19,7 @@ import {
   rowToSelectorProfile,
   saveSourceProfile,
 } from './selector-profile.js';
-import { getDefaultTimezoneForLanguage } from '../../lib/dateUtils.js';
+import { getDefaultTimezoneForLanguage, normalizeDate } from '../../lib/dateUtils.js';
 
 function parsePositiveInt(value: string | undefined, fallback: number): number {
   const parsed = parseInt(value || '', 10);
@@ -255,7 +255,22 @@ export const htmlFetcher: SourceFetcher = {
       if (isBlockedHtml(articleHtml)) { sawBlock = true; throw new Error('blocked HTML'); }
       fetchOk = true;
     } catch (firstErr: any) {
-      if (isWorkerProxyConfigured() && !shouldSkipWorkerProxy(job.url)) {
+      // Attempt 1b: cookie-aware redirect fetch — handles sites (qdnd.vn) that
+      // gate the article behind a 302 + Set-Cookie that plain fetch() drops.
+      if (!fetchOk) {
+        try {
+          const result = await cookieAwareFetch(job.url, { timeoutMs: 20000, userAgent: randomUA() });
+          if (result.ok) {
+            articleHtml = result.body;
+            fetchOk = true;
+          } else if ([401, 403, 429].includes(result.status) || isBlockedHtml(result.body)) {
+            sawBlock = true;
+          }
+        } catch (cookieErr: any) {
+          console.warn(`html-fetcher: cookie-aware fetch failed for ${job.url}: ${cookieErr.message}`);
+        }
+      }
+      if (!fetchOk && isWorkerProxyConfigured() && !shouldSkipWorkerProxy(job.url)) {
         try {
           console.warn(`html-fetcher: native fetch failed for ${job.url}, trying Worker proxy: ${firstErr.message}`);
           const result = await workerProxyFetch(job.url, { timeoutMs: 25000 });
@@ -341,9 +356,7 @@ export const htmlFetcher: SourceFetcher = {
       const dateText = $article(config.publishedAtSelector).attr('datetime') ||
         $article(config.publishedAtSelector).text().trim();
       if (dateText) {
-        try {
-          publishedAt = new Date(dateText).toISOString();
-        } catch {}
+        publishedAt = normalizeDate(dateText, { defaultTimezone: getDefaultTimezoneForLanguage(source.language) }) || publishedAt;
       }
     }
     if (!publishedAt) {
@@ -356,9 +369,7 @@ export const htmlFetcher: SourceFetcher = {
         $article('[itemprop="datePublished"]').first().attr('datetime') ||
         '';
       if (fallbackDate) {
-        try {
-          publishedAt = new Date(fallbackDate).toISOString();
-        } catch {}
+        publishedAt = normalizeDate(fallbackDate, { defaultTimezone: getDefaultTimezoneForLanguage(source.language) });
       }
     }
 

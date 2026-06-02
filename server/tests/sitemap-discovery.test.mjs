@@ -41,6 +41,22 @@ function loadTsModule(relativePath, stubs = {}, globals = {}) {
 const baseStubs = {
   cheerio,
   '../../lib/utils.js': { normalizePublicHttpUrl: (value) => new URL(value).toString() },
+  '../../lib/dateUtils.js': {
+    normalizeDate: (value, options = {}) => {
+      if (!value) return null;
+      let normalized = String(value).trim();
+      if (!normalized) return null;
+      const tz = options.defaultTimezone || 'Z';
+      if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(normalized)) normalized += tz;
+      else if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}(:\d{2})?$/.test(normalized)) normalized = normalized.replace(' ', 'T') + tz;
+      else if (/^\d{4}-\d{2}-\d{2}$/.test(normalized)) normalized += `T00:00:00${tz}`;
+      const date = new Date(normalized);
+      if (Number.isNaN(date.getTime())) return null;
+      const year = date.getUTCFullYear();
+      if (year < 2000 || year > new Date().getUTCFullYear() + 1) return null;
+      return date.toISOString();
+    },
+  },
   './http-utils.js': {
     browserHeaders: () => ({ 'User-Agent': 'test-ua', Accept: 'text/html' }),
     randomUA: () => 'test-ua',

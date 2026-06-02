@@ -16,6 +16,14 @@ export interface NormalizeDateOptions {
   defaultTimezone?: string;
 }
 
+// Plausible publish-date window. `new Date("...1 Jun 20261...")` happily yields
+// year 20261, whose ISO form ("+020261-...") is rejected by Postgres timestamptz
+// with "time zone displacement out of range". Bound the year so junk text from a
+// mis-learned selector (e.g. aljazeera's doubled "1 Jun 20261 Jun 2026") is
+// dropped to null instead of poisoning the insert.
+const MIN_PLAUSIBLE_YEAR = 2000;
+const MAX_PLAUSIBLE_YEAR = new Date().getUTCFullYear() + 1;
+
 export function normalizeDate(value: string | null | undefined, options: NormalizeDateOptions = {}): string | null {
   if (!value) return null;
   let normalized = value.trim();
@@ -35,5 +43,8 @@ export function normalizeDate(value: string | null | undefined, options: Normali
   }
 
   const date = new Date(normalized);
-  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+  if (Number.isNaN(date.getTime())) return null;
+  const year = date.getUTCFullYear();
+  if (year < MIN_PLAUSIBLE_YEAR || year > MAX_PLAUSIBLE_YEAR) return null;
+  return date.toISOString();
 }

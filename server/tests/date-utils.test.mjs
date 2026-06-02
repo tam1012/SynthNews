@@ -102,3 +102,22 @@ test('normalizeDate handles ISO datetime with milliseconds', () => {
     '2026-05-20T08:30:00.123Z'
   );
 });
+
+test('normalizeDate rejects out-of-range years that Postgres timestamptz refuses', () => {
+  // A mis-learned selector once grabbed "Published On 1 Jun 20261 Jun 2026",
+  // which new Date() parses as year 20261 → "+020261-..." → Postgres throws
+  // "time zone displacement out of range". Guard drops these to null.
+  assert.equal(normalizeDate('1 Jun 20261 Jun 2026'), null);
+  assert.equal(normalizeDate('20261-06-01'), null);
+  assert.equal(normalizeDate('0005-01-01'), null);
+});
+
+test('normalizeDate accepts years within the plausible window', () => {
+  assert.equal(normalizeDate('2000-01-01T00:00:00Z'), '2000-01-01T00:00:00.000Z');
+  // next year is still valid (timezone skew, pre-published embargoes)
+  const nextYear = new Date().getUTCFullYear() + 1;
+  assert.equal(
+    normalizeDate(`${nextYear}-01-01T00:00:00Z`),
+    `${nextYear}-01-01T00:00:00.000Z`
+  );
+});
