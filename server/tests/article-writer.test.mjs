@@ -111,6 +111,38 @@ test('build article insert row supports video content metadata', () => {
   assert.deepEqual(row.metadata, { videoId: 'video-123', channelId: 'channel-123' });
 });
 
+test('build article insert row replaces far future publish dates and keeps warning metadata', () => {
+  const { buildArticleInsertRow } = loadTsModule('../src/services/fetchers/article-writer.ts', {
+    '../../db/index.js': {
+      getOne: async () => null,
+      query: async () => ({ rowCount: 0 }),
+    },
+    '../../lib/utils.js': {
+      createContentHash: (value) => `hash:${value.slice(0, 8)}`,
+      generateId: (prefix) => `${prefix}_test`,
+      truncate: (value, max) => String(value).slice(0, max),
+    },
+    '../../lib/htmlEntities.js': { decodeHtmlEntities: decodeHTML },
+  });
+
+  const before = Date.now();
+  const row = buildArticleInsertRow({
+    source: { id: 'src_1', language: 'vi' },
+    url: 'https://example.com/future',
+    title: 'Future title',
+    publishedAt: '2999-01-01T00:00:00.000Z',
+    rawExcerpt: 'excerpt',
+    rawContent: 'content',
+    metadata: { source: 'test' },
+  });
+  const after = Date.now();
+
+  assert.ok(new Date(row.published_at || '').getTime() >= before);
+  assert.ok(new Date(row.published_at || '').getTime() <= after + 1000);
+  assert.equal(row.metadata.source, 'test');
+  assert.equal(row.metadata.publish_date_warning.original_published_at, '2999-01-01T00:00:00.000Z');
+});
+
 test('build article insert row decodes HTML entities in article text', () => {
   const { buildArticleInsertRow } = loadTsModule('../src/services/fetchers/article-writer.ts', {
     '../../db/index.js': {

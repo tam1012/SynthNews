@@ -34,7 +34,7 @@ services:
     environment:
       POSTGRES_DB: newstamhv
       POSTGRES_USER: newstamhv
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-newstamhv_secret}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
     volumes:
       - pgdata:/var/lib/postgresql/data
     ports:
@@ -63,13 +63,13 @@ services:
       PORT: 3000
       NODE_ENV: production
       PUBLIC_SITE_URL: ${PUBLIC_SITE_URL:-https://synthnews.site}
-      DATABASE_URL: postgresql://newstamhv:${DB_PASSWORD:-newstamhv_secret}@db:5432/newstamhv
+      DATABASE_URL: postgresql://newstamhv:${DB_PASSWORD:?DB_PASSWORD is required}@db:5432/newstamhv
       ADMIN_TOKEN: ${ADMIN_TOKEN:?ADMIN_TOKEN is required}
       SCRAPE_INTERVAL_HOURS: ${SCRAPE_INTERVAL_HOURS:-1}
       MAX_ARTICLES_PER_SOURCE: ${MAX_ARTICLES_PER_SOURCE:-50}
       MAX_AI_CALLS_PER_RUN: ${MAX_AI_CALLS_PER_RUN:-30}
       DIGEST_ARTICLE_LIMIT: ${DIGEST_ARTICLE_LIMIT:-100}
-      CORS_ORIGIN: ${CORS_ORIGIN:-*}
+      CORS_ORIGIN: ${CORS_ORIGIN:?CORS_ORIGIN is required}
       VOZ_MAX_THREAD_PAGES: ${VOZ_MAX_THREAD_PAGES:-15}
       FORUM_MAX_COMMENTS: ${FORUM_MAX_COMMENTS:-70}
       FORUM_MIN_COMMENTS: ${FORUM_MIN_COMMENTS:-10}

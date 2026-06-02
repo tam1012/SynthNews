@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { getMany, getOne, query } from '../db/index.js';
-import { LOCAL_DATE_SQL, LOCAL_DATE_TEXT_SQL, buildArticleListFilters, buildArticleListOrderBy, buildArticleSearchFilters } from '../lib/articleFilters.js';
+import { LOCAL_DATE_SQL, LOCAL_DATE_TEXT_SQL, PUBLIC_ARTICLE_FRESHNESS_SQL, buildArticleListFilters, buildArticleListOrderBy, buildArticleSearchFilters } from '../lib/articleFilters.js';
+import { hasValidAdminToken } from '../lib/auth.js';
 import { decodeArticleRows, decodeArticleTextFields } from '../lib/htmlEntities.js';
 import { generateId } from '../lib/utils.js';
 
@@ -45,10 +46,11 @@ articles.get('/search', async (c) => {
   const date = c.req.query('date');
   const sourceId = c.req.query('sourceId');
   const feedTab = c.req.query('feedTab');
+  const includeFuture = c.req.query('includeFuture') === '1' && hasValidAdminToken(c.req.header('Authorization'));
 
   let filters;
   try {
-    filters = buildArticleSearchFilters({ query: q, date, sourceId, feedTab });
+    filters = buildArticleSearchFilters({ query: q, date, sourceId, feedTab, includeFuture });
   } catch (err: any) {
     return c.json({ success: false, error: { code: 'VALIDATION', message: err.message } }, 400);
   }
@@ -77,9 +79,14 @@ articles.get('/tags', async (c) => {
   const feedTab = c.req.query('feedTab');
   const date = c.req.query('date');
 
+  const includeFuture = c.req.query('includeFuture') === '1' && hasValidAdminToken(c.req.header('Authorization'));
   let where = `WHERE a.summary_status = 'done'`;
   const params: any[] = [];
   let paramIndex = 1;
+
+  if (!includeFuture) {
+    where += ` AND ${PUBLIC_ARTICLE_FRESHNESS_SQL}`;
+  }
 
   if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
     where += ` AND ${LOCAL_DATE_SQL} = $${paramIndex++}`;
@@ -119,10 +126,15 @@ articles.get('/tags', async (c) => {
 // Danh sach ngay co bai viet (de UI hien date picker)
 articles.get('/dates', async (c) => {
   const sourceId = c.req.query('sourceId');
+  const includeFuture = c.req.query('includeFuture') === '1' && hasValidAdminToken(c.req.header('Authorization'));
 
   let where = 'WHERE 1=1';
   const params: any[] = [];
   let paramIndex = 1;
+
+  if (!includeFuture) {
+    where += ` AND ${PUBLIC_ARTICLE_FRESHNESS_SQL}`;
+  }
 
   if (sourceId) {
     where += ` AND a.source_id = $${paramIndex++}`;
@@ -155,11 +167,12 @@ articles.get('/', async (c) => {
   const sort = c.req.query('sort');
   const qualityIssue = c.req.query('qualityIssue');
   const includeFollowers = c.req.query('includeFollowers') === '1';
+  const includeFuture = c.req.query('includeFuture') === '1' && hasValidAdminToken(c.req.header('Authorization'));
   const offset = (page - 1) * limit;
 
   let filters;
   try {
-    filters = buildArticleListFilters({ sourceId, status, date, tag, minScore, feedTab, sort, qualityIssue, includeFollowers });
+    filters = buildArticleListFilters({ sourceId, status, date, tag, minScore, feedTab, sort, qualityIssue, includeFollowers, includeFuture });
   } catch (err: any) {
     return c.json({ success: false, error: { code: 'VALIDATION', message: err.message } }, 400);
   }

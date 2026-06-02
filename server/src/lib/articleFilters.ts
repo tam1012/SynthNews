@@ -1,5 +1,6 @@
 export const LOCAL_DATE_SQL = `DATE(COALESCE(a.published_at, a.created_at) AT TIME ZONE 'Asia/Ho_Chi_Minh')`;
 export const LOCAL_DATE_TEXT_SQL = `TO_CHAR(${LOCAL_DATE_SQL}, 'YYYY-MM-DD')`;
+export const PUBLIC_ARTICLE_FRESHNESS_SQL = `COALESCE(a.published_at, a.created_at) <= NOW() + INTERVAL '2 hours'`;
 
 const VALID_SUMMARY_STATUSES = ['pending', 'processing', 'done', 'failed', 'skipped'];
 const VALID_FEED_TABS = ['all', 'news', 'tech', 'voz', 'reddit'];
@@ -19,6 +20,7 @@ export interface ArticleListFilterInput {
   sort?: string;
   qualityIssue?: string;
   includeFollowers?: boolean;
+  includeFuture?: boolean;
 }
 
 export interface ArticleListFilters {
@@ -33,6 +35,7 @@ export interface ArticleSearchFilterInput {
   sourceId?: string;
   date?: string;
   feedTab?: string;
+  includeFuture?: boolean;
 }
 
 export interface ArticleSearchFilters {
@@ -101,6 +104,10 @@ export function buildArticleListFilters(input: ArticleListFilterInput): ArticleL
   const clauses = ['1=1'];
   let paramIndex = 1;
 
+  if (!input.includeFuture) {
+    clauses.push(PUBLIC_ARTICLE_FRESHNESS_SQL);
+  }
+
   if (input.sourceId) {
     clauses.push(`a.source_id = $${paramIndex++}`);
     params.push(input.sourceId);
@@ -165,6 +172,10 @@ export function buildArticleSearchFilters(input: ArticleSearchFilterInput): Arti
     `(a.title ILIKE $1 OR a.summary_short ILIKE $1 OR a.tldr ILIKE $1)`,
   ];
   let paramIndex = 2;
+
+  if (!input.includeFuture) {
+    clauses.push(PUBLIC_ARTICLE_FRESHNESS_SQL);
+  }
 
   if (input.date) {
     clauses.push(`${LOCAL_DATE_SQL} = $${paramIndex++}`);

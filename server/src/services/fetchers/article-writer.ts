@@ -17,6 +17,7 @@ interface ArticleWriterSource {
 }
 
 export const MIN_ARTICLE_TEXT_LENGTH = parseInt(typeof process !== 'undefined' ? process.env.MIN_ARTICLE_TEXT_LENGTH || '500' : '500', 10);
+const FUTURE_PUBLISHED_AT_TOLERANCE_MS = 2 * 60 * 60 * 1000;
 
 export class ArticleContentTooShortError extends Error {
   constructor(length: number, minLength: number) {
@@ -27,6 +28,38 @@ export class ArticleContentTooShortError extends Error {
 
 function normalizeTextLength(value: string): number {
   return value.replace(/\s+/g, ' ').trim().length;
+}
+
+export function sanitizePublishedAtForInsert(
+  publishedAt: string | null | undefined,
+  now: Date = new Date()
+): { publishedAt: string; warning: { original_published_at: string; replacement_published_at: string; tolerance_hours: number } | null } {
+  const fallback = now.toISOString();
+  if (!publishedAt) return { publishedAt: fallback, warning: null };
+
+  const parsed = Date.parse(publishedAt);
+  if (!Number.isFinite(parsed)) return { publishedAt, warning: null };
+  if (parsed <= now.getTime() + FUTURE_PUBLISHED_AT_TOLERANCE_MS) {
+    return { publishedAt, warning: null };
+  }
+
+  return {
+    publishedAt: fallback,
+    warning: {
+      original_published_at: publishedAt,
+      replacement_published_at: fallback,
+      tolerance_hours: 2,
+    },
+  };
+}
+
+function mergeMetadataWithPublishDateWarning(metadata: any, warning: ReturnType<typeof sanitizePublishedAtForInsert>['warning']): any {
+  if (!warning) return metadata || null;
+  if (!metadata) return { publish_date_warning: warning };
+  if (typeof metadata === 'object' && !Array.isArray(metadata)) {
+    return { ...metadata, publish_date_warning: warning };
+  }
+  return { original_metadata: metadata, publish_date_warning: warning };
 }
 
 export function validateArticleContent(input: ArticleInsertInput): void {
@@ -85,6 +118,7 @@ export function buildArticleInsertRow(input: ArticleInsertInput): ArticleInsertR
   const rawExcerpt = truncate(fullRawExcerpt, input.excerptMaxLength || 500);
   const rawContent = truncate(fullRawContent, input.contentMaxLength || 30000);
   const seed = input.contentHashSeed || `${title}${fullRawExcerpt || fullRawContent || ''}`;
+  const publishDate = sanitizePublishedAtForInsert(input.publishedAt);
 
   return {
     id: generateId('art'),
@@ -93,14 +127,14 @@ export function buildArticleInsertRow(input: ArticleInsertInput): ArticleInsertR
     url: input.url,
     title,
     author: input.author || null,
-    published_at: input.publishedAt || new Date().toISOString(),
+    published_at: publishDate.publishedAt,
     content_type: input.contentType || 'article',
     language: input.source.language,
     raw_excerpt: rawExcerpt,
     raw_content: rawContent,
     content_hash: createContentHash(seed),
     image_url: input.imageUrl || null,
-    metadata: input.metadata || null,
+    metadata: mergeMetadataWithPublishDateWarning(input.metadata, publishDate.warning),
     summary_status: 'pending',
     retry_count: 0,
     last_summary_error: null,

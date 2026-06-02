@@ -77,6 +77,17 @@ sources.get('/', async (c) => {
   return c.json({ success: true, data: rows });
 });
 
+// Public reader-safe source list. Keep this before /:id so "public" is not
+// treated as a source id.
+sources.get('/public', async (c) => {
+  const rows = await getMany(
+    `SELECT id, type, name, is_enabled, feed_category
+     FROM sources
+     ORDER BY created_at DESC`
+  );
+  return c.json({ success: true, data: rows });
+});
+
 // Lay 1 source theo id
 sources.get('/:id', async (c) => {
   const { id } = c.req.param();

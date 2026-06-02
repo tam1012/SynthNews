@@ -99,6 +99,15 @@ test('article filters expose latest and hot ordering modes', () => {
   assert.match(buildArticleListOrderBy('hot'), /published_at/);
 });
 
+test('article filters hide future-dated articles unless admin explicitly includes them', () => {
+  const { buildArticleListFilters, buildArticleSearchFilters, PUBLIC_ARTICLE_FRESHNESS_SQL } = loadTsModule('../src/lib/articleFilters.ts');
+
+  assert.match(buildArticleListFilters({ status: 'done' }).where, /NOW\(\) \+ INTERVAL '2 hours'/);
+  assert.match(buildArticleSearchFilters({ query: 'ai' }).where, /NOW\(\) \+ INTERVAL '2 hours'/);
+  assert.equal(buildArticleListFilters({ includeFuture: true }).where.includes(PUBLIC_ARTICLE_FRESHNESS_SQL), false);
+  assert.equal(buildArticleSearchFilters({ query: 'ai', includeFuture: true }).where.includes(PUBLIC_ARTICLE_FRESHNESS_SQL), false);
+});
+
 test('article filters add quality issue predicates for admin review', () => {
   const { buildArticleListFilters } = loadTsModule('../src/lib/articleFilters.ts');
 

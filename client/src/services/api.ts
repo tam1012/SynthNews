@@ -91,6 +91,7 @@ export const api = {
 
   // Sources
   getSources: () => request<any>('/sources'),
+  getPublicSources: () => request<any>('/sources/public'),
   getSource: (id: string) => request<any>(`/sources/${id}`),
   createSource: (data: any) => request<any>('/sources', { method: 'POST', body: JSON.stringify(data) }),
   updateSource: (id: string, data: any) => request<any>(`/sources/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),

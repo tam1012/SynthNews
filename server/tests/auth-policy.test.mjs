@@ -32,5 +32,9 @@ test('settings routes require admin token even for GET', () => {
   assert.equal(requiresAdminTokenForRequest('GET', '/api/settings/prompt'), true);
   assert.equal(requiresAdminTokenForRequest('PATCH', '/api/settings/prompt'), true);
   assert.equal(requiresAdminTokenForRequest('GET', '/api/articles'), false);
+  assert.equal(requiresAdminTokenForRequest('GET', '/api/articles/fetch-jobs'), true);
+  assert.equal(requiresAdminTokenForRequest('GET', '/api/sources'), true);
+  assert.equal(requiresAdminTokenForRequest('GET', '/api/sources/src_1'), true);
+  assert.equal(requiresAdminTokenForRequest('GET', '/api/sources/public'), false);
   assert.equal(requiresAdminTokenForRequest('GET', '/api/health/live'), false);
 });

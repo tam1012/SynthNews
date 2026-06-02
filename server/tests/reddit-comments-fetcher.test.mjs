@@ -99,27 +99,22 @@ function redditJson({ selftext = 'Expanded Reddit post content with useful conte
 const usefulComment = 'This is a useful Reddit comment with enough detail to pass the length threshold.';
 
 test('Reddit comment fetcher uses configured proxy URL before RSS', async () => {
-  const curlCalls = [];
   const fetchCalls = [];
   const { fetchRedditCommentsForPost } = loadForumFetchers({
-    env: { REDDIT_PROXY_URL: 'https://worker.example/reddit' },
-    curlFetch: async (url) => {
-      curlCalls.push(url);
-      return { ok: true, json: async () => redditJson({ comments: [usefulComment] }) };
-    },
+    env: { REDDIT_PROXY_URL: 'https://worker.example/reddit', WORKER_PROXY_TOKEN: 'test-token' },
     globals: {
-      fetch: async (url) => {
-        fetchCalls.push(url);
-        return { ok: false, text: async () => '' };
+      fetch: async (url, options = {}) => {
+        fetchCalls.push({ url, options });
+        return { ok: true, json: async () => redditJson({ comments: [usefulComment] }) };
       },
     },
   });
 
   const result = await fetchRedditCommentsForPost('/r/test/comments/abc/title/', 'Initial content');
 
-  assert.equal(curlCalls.length, 1);
-  assert.equal(curlCalls[0], 'https://worker.example/reddit?path=%2Fr%2Ftest%2Fcomments%2Fabc%2Ftitle%2F.json&limit=30&sort=best&depth=3');
-  assert.equal(fetchCalls.length, 0);
+  assert.equal(fetchCalls.length, 1);
+  assert.equal(fetchCalls[0].url, 'https://worker.example/reddit?path=%2Fr%2Ftest%2Fcomments%2Fabc%2Ftitle%2F.json&limit=30&sort=best&depth=3');
+  assert.equal(fetchCalls[0].options.headers['X-Proxy-Token'], 'test-token');
   assert.equal(result.strategyUsed, 'proxy');
   assert.equal(result.outboundUrl, 'https://example.com/shared-link');
   assert.equal(result.discussionComments.length, 1);
@@ -127,7 +122,6 @@ test('Reddit comment fetcher uses configured proxy URL before RSS', async () => 
 });
 
 test('Reddit comment fetcher falls back to RSS when proxy has no comments', async () => {
-  const curlCalls = [];
   const fetchCalls = [];
   const { fetchRedditCommentsForPost } = loadForumFetchers({
     env: { REDDIT_PROXY_URL: 'https://worker.example/reddit' },
@@ -135,13 +129,12 @@ test('Reddit comment fetcher falls back to RSS when proxy has no comments', asyn
       { title: 'post item', contentSnippet: 'original post' },
       { author: 'rss-user', contentSnippet: usefulComment },
     ],
-    curlFetch: async (url) => {
-      curlCalls.push(url);
-      return { ok: true, json: async () => redditJson({ comments: [] }) };
-    },
     globals: {
       fetch: async (url) => {
         fetchCalls.push(url);
+        if (String(url).startsWith('https://worker.example/reddit')) {
+          return { ok: true, json: async () => redditJson({ comments: [] }) };
+        }
         return { ok: true, text: async () => '<rss />' };
       },
     },
@@ -149,8 +142,10 @@ test('Reddit comment fetcher falls back to RSS when proxy has no comments', asyn
 
   const result = await fetchRedditCommentsForPost('/r/test/comments/abc/title/', 'Initial content');
 
-  assert.equal(curlCalls.length, 1);
-  assert.deepEqual(fetchCalls, ['https://www.reddit.com/r/test/comments/abc/title/.rss']);
+  assert.deepEqual(fetchCalls, [
+    'https://worker.example/reddit?path=%2Fr%2Ftest%2Fcomments%2Fabc%2Ftitle%2F.json&limit=30&sort=best&depth=3',
+    'https://www.reddit.com/r/test/comments/abc/title/.rss',
+  ]);
   assert.equal(result.strategyUsed, 'rss');
   assert.equal(result.outboundUrl, null);
   assert.equal(result.discussionComments.length, 1);

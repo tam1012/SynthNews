@@ -874,9 +874,9 @@ Nếu dùng domain riêng (không phải domain mẫu trong repo), cập nhật 
 - Nếu dùng cache assets 1 năm, file build phải có hash như Vite mặc định. Không cache immutable cho HTML.
 - Nếu AI provider trả summary không có `<tldr>`, bài vẫn có summary nhưng list preview sẽ fallback sang excerpt/summary.
 - Nếu source Reddit/VOZ thiếu comment lúc mới scrape, forum rescrape và retry job sẽ có cơ hội cập nhật lại trong vài giờ đầu.
-- `reddit-proxy-worker.js` trong repo là Cloudflare Worker dùng bypass Reddit IP block. Deploy lên Cloudflare Workers rồi set `REDDIT_PROXY_URL` nếu cần.
+- `reddit-proxy-worker.js` trong repo là Cloudflare Worker dùng bypass Reddit IP block. Deploy lên Cloudflare Workers rồi set `REDDIT_PROXY_URL` nếu cần; Worker secret `PROXY_TOKEN` phải trùng với app env `WORKER_PROXY_TOKEN`.
 - `fetch-proxy-worker.js` là generic Cloudflare Worker proxy cho các domain bị block IP datacenter (Yahoo, NYT, Reuters, v.v.). Deploy rồi set `WORKER_PROXY_URL` và `WORKER_PROXY_TOKEN`.
-- `voz-proxy-worker.js` là Cloudflare Worker proxy cho VOZ (bypass Cloudflare-to-Cloudflare challenge).
-- `reuters-proxy-worker.js` là Cloudflare Worker proxy riêng cho Reuters.
+- `voz-proxy-worker.js` là Cloudflare Worker proxy cho VOZ (bypass Cloudflare-to-Cloudflare challenge); Worker secret `PROXY_TOKEN` phải trùng với app env `WORKER_PROXY_TOKEN`.
+- `reuters-proxy-worker.js` là Cloudflare Worker proxy riêng cho Reuters; Worker secret `PROXY_TOKEN` phải trùng với app env `WORKER_PROXY_TOKEN`.
 - **Hosted fetch chain** (`server/src/services/fetchers/hosted-fetch.ts`): tầng fetch cuối khi mọi tầng free bị anti-bot chặn. Thử lần lượt theo thứ tự nhiều credit free nhất trước: ScrapingAnt (~10k/tháng) → Scrape.do (~1k/tháng) → Firecrawl (~1k/tháng, mạnh nhất với DataDome như Reuters). Provider nào không có key hoặc chạm trần `*_MAX_PER_DAY` (rolling 24 giờ) thì bị bỏ qua; provider trả 429/lỗi/trang rỗng thì nhảy provider kế. Tên provider thắng được ghi vào `metadata.extractor` của bài. Thêm key mới chỉ cần set env, không phải sửa code.
 - **Blocklist**: quản lý URL/domain patterns bị chặn qua `/api/blocklist`. Bài từ URL match pattern sẽ bị skip ở bước discover và fetch.

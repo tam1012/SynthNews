@@ -135,8 +135,6 @@ export default {
     if (!fwdHeaders.has('Accept-Language')) {
       fwdHeaders.set('Accept-Language', 'en-US,en;q=0.9');
     }
-    fwdHeaders.set('Accept-Encoding', 'gzip');
-
     let upstream;
     try {
       upstream = await fetch(targetUrl.toString(), {

@@ -11,6 +11,7 @@ function lockKeyForName(name: string): number {
 export async function runWithJobLock<T>(name: string, fn: () => Promise<T>): Promise<T | null> {
   const client = await pool.connect();
   const lockKey = lockKeyForName(name);
+  let destroyClient = false;
 
   try {
     const lockResult = await client.query<{ locked: boolean }>('SELECT pg_try_advisory_lock($1) AS locked', [lockKey]);
@@ -22,9 +23,14 @@ export async function runWithJobLock<T>(name: string, fn: () => Promise<T>): Pro
     try {
       return await fn();
     } finally {
-      await client.query('SELECT pg_advisory_unlock($1)', [lockKey]);
+      try {
+        await client.query('SELECT pg_advisory_unlock($1)', [lockKey]);
+      } catch (err) {
+        destroyClient = true;
+        console.error(`Failed to release advisory lock for ${name}; destroying PostgreSQL client.`, err);
+      }
     }
   } finally {
-    client.release();
+    client.release(destroyClient);
   }
 }

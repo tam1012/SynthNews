@@ -7,7 +7,7 @@ export function getCachePolicy(path: string, options?: RequestInit): ApiCachePol
   if (method !== 'GET') return { cacheable: false };
 
   if (path.startsWith('/articles')) return { cacheable: true, ttlMs: 60_000 };
-  if (path === '/sources') return { cacheable: true, ttlMs: 300_000 };
+  if (path === '/sources/public') return { cacheable: true, ttlMs: 300_000 };
   if (path.startsWith('/digests/search')) return { cacheable: true, ttlMs: 60_000 };
   if (path.startsWith('/digests/latest')) return { cacheable: true, ttlMs: 60_000 };
 

@@ -188,10 +188,7 @@ export function Home() {
   const loadedArticleCount = articlePages.length;
   const totalArticleCount = raw?.meta?.total || loadedArticleCount;
 
-  // Unique sources for filter (fetch all sources to be safe, but since we are filtering by date, we might miss sources. Ideally we fetch from a sources list)
-  // We'll use api.getSources() for a full list, but for now we keep using the current articles if we don't have a separate fetch.
-  // Actually, to make filter work properly across dates, we should fetch /sources.
-  const { data: sourcesRaw } = useFetchRaw(() => api.getSources(), []);
+  const { data: sourcesRaw } = useFetchRaw(() => api.getPublicSources(), []);
   const sources = useMemo(() => (sourcesRaw?.data || []).filter((s: any) => s.is_enabled), [sourcesRaw]);
 
   // Fetch digest list for split-left panel when on digest tab

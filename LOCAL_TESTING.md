@@ -25,7 +25,26 @@ Copy-Item .env.local.example .env.local
 
 At minimum, set `ADMIN_TOKEN`. Keep `.env.local` uncommitted.
 
-5. Start local Postgres. Existing Docker Compose exposes DB at `127.0.0.1:5433`:
+5. Docker Compose now fails fast when required production-style variables are
+   missing. Create a local Compose env file before starting Postgres:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Set at least these local values in `.env`:
+
+```text
+DB_PASSWORD=newstamhv_secret
+ADMIN_TOKEN=change-me-local-admin-token
+PUBLIC_SITE_URL=https://synthnews.local
+CORS_ORIGIN=https://synthnews.local
+```
+
+Keep `.env` uncommitted. If you change `DB_PASSWORD`, also update
+`DATABASE_URL` in `.env.local` to use the same password.
+
+6. Start local Postgres. Existing Docker Compose exposes DB at `127.0.0.1:5433`:
 
 ```powershell
 docker compose up -d db

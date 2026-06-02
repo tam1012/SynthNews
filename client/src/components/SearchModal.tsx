@@ -63,7 +63,7 @@ export function SearchModal({ open, onClose }: SearchModalProps) {
   useEffect(() => {
     if (!open) return;
     let active = true;
-    api.getSources()
+    api.getPublicSources()
       .then((res) => {
         if (!active) return;
         setSources((res.data || []).filter((source: any) => source.is_enabled !== false));

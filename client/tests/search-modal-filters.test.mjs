@@ -24,7 +24,7 @@ test('search modal exposes date, source, and content type filters', () => {
   assert.match(source, /VOZ/);
   assert.match(source, /Reddit/);
   assert.match(source, /Bản tin/);
-  assert.match(source, /api\.getSources\(\)/);
+  assert.match(source, /api\.getPublicSources\(\)/);
   assert.match(css, /\.search-filters\s*\{/);
   assert.match(css, /@media \(max-width:\s*640px\)[\s\S]*\.search-filters/);
 });

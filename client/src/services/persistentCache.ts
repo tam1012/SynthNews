@@ -1,7 +1,7 @@
 const STORAGE_PREFIX = 'synthnews:api-cache:';
 
 function isCacheablePath(path: string): boolean {
-  return path.startsWith('/articles') || path === '/sources' || path.startsWith('/digests/latest');
+  return path.startsWith('/articles') || path === '/sources/public' || path.startsWith('/digests/latest');
 }
 
 export function savePersistentApiCache(path: string, data: unknown): void {

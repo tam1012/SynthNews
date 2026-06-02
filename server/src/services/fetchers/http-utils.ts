@@ -91,19 +91,37 @@ export function curlFetch(url: string, _accept: string, timeoutSec: number, ua?:
 // Puppeteer core browser fetch (legacy – kept for compatibility)
 // ---------------------------------------------------------------------------
 let pupBrowserInstance: any = null;
+let pupBrowserPromise: Promise<any> | null = null;
 
 async function getPuppeteerBrowser(): Promise<any> {
   if (pupBrowserInstance && pupBrowserInstance.connected) return pupBrowserInstance;
-  pupBrowserInstance = await puppeteer.launch({
-    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium-browser',
-    headless: true,
-    args: [
-      '--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu',
-      '--disable-blink-features=AutomationControlled',
-      '--window-size=1920,1080',
-    ],
-  });
-  return pupBrowserInstance;
+  if (pupBrowserInstance && !pupBrowserInstance.connected) {
+    pupBrowserInstance = null;
+    pupBrowserPromise = null;
+  }
+  if (!pupBrowserPromise) {
+    pupBrowserPromise = puppeteer.launch({
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium-browser',
+      headless: true,
+      args: [
+        '--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu',
+        '--disable-blink-features=AutomationControlled',
+        '--window-size=1920,1080',
+      ],
+    }).then((browser) => {
+      pupBrowserInstance = browser;
+      browser.on?.('disconnected', () => {
+        if (pupBrowserInstance === browser) pupBrowserInstance = null;
+        pupBrowserPromise = null;
+      });
+      return browser;
+    }).catch((err) => {
+      pupBrowserInstance = null;
+      pupBrowserPromise = null;
+      throw err;
+    });
+  }
+  return pupBrowserPromise;
 }
 
 export interface BrowserFetchOptions {
@@ -164,26 +182,44 @@ export async function browserFetch(url: string, timeoutMs: number = 30000, rawTe
 // ---------------------------------------------------------------------------
 
 let pwBrowser: ChromiumBrowser | null = null;
+let pwBrowserPromise: Promise<ChromiumBrowser> | null = null;
 
 async function getPlaywrightBrowser(): Promise<ChromiumBrowser> {
   if (pwBrowser && pwBrowser.isConnected()) return pwBrowser;
+  if (pwBrowser && !pwBrowser.isConnected()) {
+    pwBrowser = null;
+    pwBrowserPromise = null;
+  }
 
   const execPath = process.env.PLAYWRIGHT_CHROMIUM_PATH || process.env.PUPPETEER_EXECUTABLE_PATH || undefined;
 
-  pwBrowser = await chromium.launch({
-    executablePath: execPath,
-    headless: true,
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-gpu',
-      '--disable-blink-features=AutomationControlled',
-      '--window-size=1920,1080',
-      '--lang=en-US,en',
-    ],
-  });
-  return pwBrowser;
+  if (!pwBrowserPromise) {
+    pwBrowserPromise = chromium.launch({
+      executablePath: execPath,
+      headless: true,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+        '--disable-blink-features=AutomationControlled',
+        '--window-size=1920,1080',
+        '--lang=en-US,en',
+      ],
+    }).then((browser) => {
+      pwBrowser = browser;
+      browser.on('disconnected', () => {
+        if (pwBrowser === browser) pwBrowser = null;
+        pwBrowserPromise = null;
+      });
+      return browser;
+    }).catch((err) => {
+      pwBrowser = null;
+      pwBrowserPromise = null;
+      throw err;
+    });
+  }
+  return pwBrowserPromise;
 }
 
 export interface PlaywrightFetchOptions {

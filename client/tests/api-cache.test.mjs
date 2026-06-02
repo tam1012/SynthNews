@@ -30,8 +30,8 @@ test('public GET endpoints are cacheable for short in-app reuse', () => {
   assert.equal(getCachePolicy('/articles?limit=100').cacheable, true);
   assert.equal(getCachePolicy('/articles?limit=100').ttlMs, 60000);
   assert.equal(getCachePolicy('/articles/dates?sourceId=src_1').cacheable, true);
-  assert.equal(getCachePolicy('/sources').cacheable, true);
-  assert.equal(getCachePolicy('/sources').ttlMs, 300000);
+  assert.equal(getCachePolicy('/sources/public').cacheable, true);
+  assert.equal(getCachePolicy('/sources/public').ttlMs, 300000);
   assert.equal(getCachePolicy('/digests/latest?lang=vi').cacheable, true);
   assert.equal(getCachePolicy('/digests/latest?lang=vi').ttlMs, 60000);
 });
@@ -41,4 +41,5 @@ test('mutating and admin endpoints bypass the client cache', () => {
 
   assert.equal(getCachePolicy('/articles/abc/reset-summary', { method: 'POST' }).cacheable, false);
   assert.equal(getCachePolicy('/ai-providers').cacheable, false);
+  assert.equal(getCachePolicy('/sources').cacheable, false);
 });

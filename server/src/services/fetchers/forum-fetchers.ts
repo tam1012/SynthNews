@@ -46,6 +46,7 @@ const REDDIT_USERNAME = process.env.REDDIT_USERNAME || '';
 const REDDIT_PASSWORD = process.env.REDDIT_PASSWORD || '';
 const REDDIT_PROXY_URL = process.env.REDDIT_PROXY_URL || '';
 const VOZ_PROXY_URL = process.env.BROWSER_PROXY_URL || process.env.VOZ_PROXY_URL || '';
+const WORKER_PROXY_TOKEN = process.env.WORKER_PROXY_TOKEN || '';
 let redditToken: { access_token: string; expires_at: number } | null = null;
 
 function hasRedditOAuth(): boolean {
@@ -260,7 +261,13 @@ export async function fetchRedditCommentsForPost(postPath: string, initialPostCo
     try {
       markRedditStrategy(stats, 'proxy', false);
       const proxyUrl = `${REDDIT_PROXY_URL}?path=${encodeURIComponent(postPath + '.json')}&limit=${REDDIT_COMMENT_LIMIT}&sort=best&depth=${REDDIT_COMMENT_DEPTH}`;
-      const proxyRes = await curlFetch(proxyUrl, 'application/json', 15);
+      const proxyRes = await fetch(proxyUrl, {
+        headers: {
+          Accept: 'application/json',
+          ...(WORKER_PROXY_TOKEN ? { 'X-Proxy-Token': WORKER_PROXY_TOKEN } : {}),
+        },
+        signal: AbortSignal.timeout(15000),
+      });
       if (proxyRes.ok) {
         const parsed = parseRedditJsonComments(await proxyRes.json(), initialPostContent);
         if (parsed && parsed.discussionComments.length > 0) {
@@ -790,7 +797,10 @@ async function fetchVozViaProxy(targetUrl: string, accept: string, timeoutMs: nu
   try {
     const proxyUrl = buildVozProxyUrl(targetUrl);
     const proxyRes = await fetch(proxyUrl, {
-      headers: { Accept: accept },
+      headers: {
+        Accept: accept,
+        ...(WORKER_PROXY_TOKEN ? { 'X-Proxy-Token': WORKER_PROXY_TOKEN } : {}),
+      },
       signal: AbortSignal.timeout(timeoutMs),
     });
     const proxyText = await proxyRes.text();

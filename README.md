@@ -302,8 +302,9 @@ docker compose logs -f app
 To bypass IP-based scraping blockades on sites like Reddit, VOZ, or Reuters, deploy the helper workers located at the root of the project to your Cloudflare account:
 
 1.  **Generic Proxy**: `fetch-proxy-worker.js` (used to scrape restricted news outlets). Configure `WORKER_PROXY_URL` and `WORKER_PROXY_TOKEN` in your env.
-2.  **Reddit API Worker**: `reddit-proxy-worker.js`. Configure `REDDIT_PROXY_URL`.
-3.  **VOZ Worker**: `voz-proxy-worker.js`. Evades Cloudflare-to-Cloudflare loops.
+2.  **Reddit API Worker**: `reddit-proxy-worker.js`. Configure `REDDIT_PROXY_URL`; set Worker secret `PROXY_TOKEN` to the same value as app env `WORKER_PROXY_TOKEN`.
+3.  **VOZ Worker**: `voz-proxy-worker.js`. Evades Cloudflare-to-Cloudflare loops; set Worker secret `PROXY_TOKEN` to the same value as `WORKER_PROXY_TOKEN`.
+4.  **Reuters Worker**: `reuters-proxy-worker.js`. Set Worker secret `PROXY_TOKEN` to the same value as `WORKER_PROXY_TOKEN`.
 
 ---
 
