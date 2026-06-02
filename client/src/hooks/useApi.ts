@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 export const FONT_SIZES = [12, 14, 16, 18, 20] as const;
 const DEFAULT_FONT_SIZE = 16;
@@ -11,21 +11,28 @@ export function useFetch<T>(fetcher: () => Promise<{ data: T }>, deps: any[] = [
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const latestRequestRef = useRef(0);
 
   const load = useCallback(async () => {
+    const requestId = ++latestRequestRef.current;
     setLoading(true);
     setError(null);
     try {
       const result = await fetcher();
+      if (latestRequestRef.current !== requestId) return;
       setData(result.data);
     } catch (err: any) {
+      if (latestRequestRef.current !== requestId) return;
       setError(err.message);
     } finally {
-      setLoading(false);
+      if (latestRequestRef.current === requestId) setLoading(false);
     }
   }, deps);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+    return () => { latestRequestRef.current += 1; };
+  }, [load]);
   return { data, loading, error, reload: load };
 }
 
@@ -33,21 +40,28 @@ export function useFetchRaw<T>(fetcher: () => Promise<T>, deps: any[] = []) {
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const latestRequestRef = useRef(0);
 
   const load = useCallback(async () => {
+    const requestId = ++latestRequestRef.current;
     setLoading(true);
     setError(null);
     try {
       const result = await fetcher();
+      if (latestRequestRef.current !== requestId) return;
       setData(result);
     } catch (err: any) {
+      if (latestRequestRef.current !== requestId) return;
       setError(err.message);
     } finally {
-      setLoading(false);
+      if (latestRequestRef.current === requestId) setLoading(false);
     }
   }, deps);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+    return () => { latestRequestRef.current += 1; };
+  }, [load]);
   return { data, loading, error, reload: load };
 }
 

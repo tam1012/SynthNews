@@ -12,6 +12,62 @@
   width: 100%;
 }
 
+.admin-header {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.admin-auth-panel {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-bg-card);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 560px;
+  padding: 18px;
+}
+
+.admin-auth-panel h2 {
+  font-size: 1rem;
+  margin: 0 0 6px;
+}
+
+.admin-auth-panel p {
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.admin-auth-row {
+  display: flex;
+  gap: 8px;
+}
+
+.admin-auth-row input {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  color: var(--color-text);
+  flex: 1;
+  min-width: 0;
+  padding: 9px 10px;
+}
+
+.admin-auth-message {
+  font-size: 0.85rem;
+}
+
+.admin-auth-message.is-error {
+  color: var(--color-error);
+}
+
+.admin-auth-message.is-success {
+  color: var(--color-success);
+}
+
 .admin-tabs {
   display: flex;
   gap: 6px;
@@ -30,4 +86,14 @@
   min-height: 36px; /* Tăng touch target */
 }
 
+@media (max-width: 520px) {
+  .admin-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .admin-auth-row {
+    flex-direction: column;
+  }
+}
 

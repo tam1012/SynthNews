@@ -133,6 +133,21 @@ test('admin trigger actions expose immediate status feedback', () => {
   assert.match(overviewSource, /actionMessage\.message/);
 });
 
+test('admin shell uses an explicit login panel instead of browser prompt auth', () => {
+  const adminSource = readFileSync(resolve(__dirname, '../src/pages/Admin.tsx'), 'utf8');
+  const apiSource = readFileSync(resolve(__dirname, '../src/services/api.ts'), 'utf8');
+
+  assert.match(apiSource, /export function setAdminToken/);
+  assert.match(apiSource, /export function clearAdminToken/);
+  assert.doesNotMatch(apiSource, /window\.prompt/);
+  assert.match(adminSource, /AdminAuthPanel/);
+  assert.match(adminSource, /type="password"/);
+  assert.match(adminSource, /setAdminToken\(nextToken\)/);
+  assert.match(adminSource, /clearAdminToken\(\)/);
+  assert.match(adminSource, /Đăng xuất/);
+  assert.match(adminSource, /Cần token admin/);
+});
+
 test('admin work items are sorted by operational severity', () => {
   const { buildAdminWorkItems } = loadTsModule('../src/pages/admin/adminHelpers.ts');
 

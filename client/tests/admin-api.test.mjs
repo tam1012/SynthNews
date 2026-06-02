@@ -17,16 +17,22 @@ function loadApiModule(fetchImpl) {
     },
   });
   const moduleContext = { exports: {} };
+  const storage = new Map([['admin_token', 'admin-token']]);
+  const prompts = [];
   vm.runInNewContext(outputText, {
     exports: moduleContext.exports,
     module: moduleContext,
     fetch: fetchImpl,
     localStorage: {
-      getItem: () => 'admin-token',
-      setItem: () => {},
+      getItem: (key) => storage.get(key) || '',
+      setItem: (key, value) => storage.set(key, String(value)),
+      removeItem: (key) => storage.delete(key),
     },
     window: {
-      prompt: () => '',
+      prompt: () => {
+        prompts.push('prompted');
+        return '';
+      },
     },
     URLSearchParams,
     require: (name) => {
@@ -46,7 +52,7 @@ function loadApiModule(fetchImpl) {
       throw new Error(`Unexpected require ${name}`);
     },
   });
-  return moduleContext.exports;
+  return { ...moduleContext.exports, storage, prompts };
 }
 
 test('admin API can trigger article fetch worker', async () => {
@@ -135,4 +141,26 @@ test('digest search API serializes query, date, and limit', async () => {
   assert.equal(url.searchParams.get('q'), 'bản tin');
   assert.equal(url.searchParams.get('date'), '2026-05-29');
   assert.equal(url.searchParams.get('limit'), '10');
+});
+
+test('admin API exposes explicit token helpers', () => {
+  const { getAdminToken, setAdminToken, clearAdminToken, storage } = loadApiModule(async () => ({
+    json: async () => ({ success: true }),
+  }));
+
+  assert.equal(getAdminToken(), 'admin-token');
+  setAdminToken('next-token');
+  assert.equal(storage.get('admin_token'), 'next-token');
+  assert.equal(getAdminToken(), 'next-token');
+  clearAdminToken();
+  assert.equal(getAdminToken(), '');
+});
+
+test('admin API does not open a prompt on unauthorized responses', async () => {
+  const { api, prompts } = loadApiModule(async () => ({
+    json: async () => ({ success: false, error: { code: 'UNAUTHORIZED', message: 'Invalid or missing token' } }),
+  }));
+
+  await assert.rejects(() => api.getHealth(), /Invalid or missing token/);
+  assert.equal(prompts.length, 0);
 });

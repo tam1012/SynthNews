@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { api } from '../services/api';
+import { api, clearAdminToken, getAdminToken, setAdminToken } from '../services/api';
 import { useFetch } from '../hooks/useApi';
 import { AiProvidersTab } from './admin/AiProvidersTab';
 import { FetchJobsTab } from './admin/FetchJobsTab';
@@ -28,6 +28,14 @@ const ADMIN_ACTION_SUCCESS_MESSAGES: Record<string, string> = {
   digest: 'Đã gửi lệnh tạo bản tin. Số liệu sẽ cập nhật sau ít giây.',
 };
 
+type AdminAuthPanelProps = {
+  tokenInput: string;
+  message: string;
+  error: string | null;
+  onTokenInputChange: (value: string) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+};
+
 function slugToTab(slug?: string): AdminTab {
   if (!slug) return 'overview';
   const found = TAB_SLUGS.find(t => t.slug === slug);
@@ -38,13 +46,54 @@ function tabToSlug(tab: AdminTab): string {
   return TAB_SLUGS.find(t => t.tab === tab)?.slug || 'overview';
 }
 
+function isAdminAuthError(error: string | null): boolean {
+  if (!error) return false;
+  const normalized = error.toLowerCase();
+  return normalized.includes('token') || normalized.includes('unauthorized') || normalized.includes('missing');
+}
+
+function AdminAuthPanel({ tokenInput, message, error, onTokenInputChange, onSubmit }: AdminAuthPanelProps) {
+  return (
+    <form className="admin-auth-panel" onSubmit={onSubmit}>
+      <div>
+        <h2>Cần token admin</h2>
+        <p>Nhập token để mở các thao tác vận hành và dữ liệu nội bộ.</p>
+      </div>
+      <div className="admin-auth-row">
+        <input
+          type="password"
+          value={tokenInput}
+          onChange={(event) => onTokenInputChange(event.target.value)}
+          placeholder="Admin token"
+          autoComplete="current-password"
+          aria-label="Admin token"
+        />
+        <button type="submit" className="btn btn-primary">
+          Đăng nhập
+        </button>
+      </div>
+      {(error || message) && (
+        <div className={`admin-auth-message ${error ? 'is-error' : 'is-success'}`}>
+          {error || message}
+        </div>
+      )}
+    </form>
+  );
+}
+
 export function Admin() {
   const navigate = useNavigate();
   const { tab: tabParam } = useParams<{ tab?: string }>();
   const initialTab = slugToTab(tabParam);
 
+  const [adminToken, setAdminTokenState] = useState(() => getAdminToken());
+  const [tokenInput, setTokenInput] = useState('');
+  const [authMessage, setAuthMessage] = useState('');
   const [tab, setTab] = useState<AdminTab>(initialTab);
-  const { data: health, loading, error, reload } = useFetch<AdminHealth>(() => api.getHealth());
+  const { data: health, loading, error, reload } = useFetch<AdminHealth>(
+    () => adminToken ? api.getHealth() : Promise.reject(new Error('Cần token admin để xem trang quản trị.')),
+    [adminToken]
+  );
   const [actionLoading, setActionLoading] = useState('');
   const [actionMessage, setActionMessage] = useState<AdminActionMessage | null>(null);
   const [queueFilter, setQueueFilter] = useState<SummaryQueueStatus>('failed');
@@ -74,6 +123,28 @@ export function Admin() {
     navigateToTab('quality');
   };
 
+  const handleLogin = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const nextToken = tokenInput.trim();
+    if (!nextToken) {
+      setAuthMessage('Token admin không được để trống.');
+      return;
+    }
+    setAdminToken(nextToken);
+    setAdminTokenState(nextToken);
+    setTokenInput('');
+    setAuthMessage('Đã lưu token admin. Đang tải lại trạng thái...');
+    setActionMessage(null);
+  };
+
+  const handleLogout = () => {
+    clearAdminToken();
+    setAdminTokenState('');
+    setTokenInput('');
+    setAuthMessage('Đã đăng xuất khỏi admin.');
+    setActionMessage(null);
+  };
+
   const trigger = async (action: string, fn: () => Promise<unknown>) => {
     setActionLoading(action);
     setActionMessage({ type: 'pending', message: 'Đang gửi lệnh vận hành...' });
@@ -90,12 +161,30 @@ export function Admin() {
     }
   };
 
+  const authError = isAdminAuthError(error) ? error : null;
+  const needsAuthPanel = !adminToken || Boolean(authError);
+
   return (
     <div className="admin-container">
-      <div className="page-header">
+      <div className="page-header admin-header">
         <h1 className="page-title">Quản trị hệ thống</h1>
+        {adminToken && (
+          <button className="btn btn-sm" onClick={handleLogout}>
+            Đăng xuất
+          </button>
+        )}
       </div>
 
+      {needsAuthPanel ? (
+        <AdminAuthPanel
+          tokenInput={tokenInput}
+          message={authMessage}
+          error={authError}
+          onTokenInputChange={setTokenInput}
+          onSubmit={handleLogin}
+        />
+      ) : (
+        <>
       <div className="admin-tabs">
         {TAB_SLUGS.map(t => (
           <button
@@ -128,6 +217,8 @@ export function Admin() {
       {tab === 'ai' && <AiProvidersTab />}
       {tab === 'prompt' && <PromptConfigTab />}
       {tab === 'blocklist' && <BlocklistTab />}
+        </>
+      )}
 
     </div>
   );

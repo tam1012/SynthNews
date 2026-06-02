@@ -2,6 +2,7 @@ import { getCachePolicy, makeApiCacheKey } from './apiCache';
 import type { AdminHealth } from '../pages/admin/adminHelpers';
 
 const API_BASE = '/api';
+const ADMIN_TOKEN_STORAGE_KEY = 'admin_token';
 const responseCache = new Map<string, { expiresAt: number; data: unknown }>();
 const inFlightRequests = new Map<string, Promise<unknown>>();
 
@@ -17,8 +18,27 @@ type DigestSearchOptions = {
   date?: string;
 };
 
+function clearClientRequestState() {
+  responseCache.clear();
+  inFlightRequests.clear();
+}
+
+export function getAdminToken(): string {
+  return localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY) || '';
+}
+
+export function setAdminToken(token: string) {
+  localStorage.setItem(ADMIN_TOKEN_STORAGE_KEY, token.trim());
+  clearClientRequestState();
+}
+
+export function clearAdminToken() {
+  localStorage.removeItem(ADMIN_TOKEN_STORAGE_KEY);
+  clearClientRequestState();
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  let token = localStorage.getItem('admin_token') || '';
+  const token = getAdminToken();
   const cachePolicy = getCachePolicy(path, options);
   const cacheKey = makeApiCacheKey(path);
 
@@ -47,23 +67,14 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   };
 
   const run = async () => {
-    let data = await doFetch(token);
-
-    if (!data.success && data.error?.code === 'UNAUTHORIZED') {
-      token = window.prompt('Admin token required:') || '';
-      if (token) {
-        localStorage.setItem('admin_token', token);
-        data = await doFetch(token);
-      }
-    }
+    const data = await doFetch(token);
 
     if (!data.success) {
       throw new Error(data.error?.message || data.message || 'API request failed');
     }
 
     if (!cachePolicy.cacheable) {
-      responseCache.clear();
-      inFlightRequests.clear();
+      clearClientRequestState();
     }
 
     if (cachePolicy.cacheable) {
