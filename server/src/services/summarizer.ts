@@ -215,6 +215,36 @@ export async function summarizeArticle(article: ArticleForSummary, promptConfig?
   }
 }
 
+// Contrastive few-shot examples that target the failure modes of weaker models
+// (MiniMax-M3, Qwen, DeepSeek, Mimo): leaving English terms inline mid-sentence,
+// English-then-parenthetical-Vietnamese quotes, and stiff word-by-word renders.
+// Weak models imitate concrete WRONG→RIGHT pairs far better than abstract rules.
+function buildTranslationStyleExamples(config: PromptConfig): string {
+  if (!/viet|việt/i.test(config.output_language)) return '';
+  return `
+TRANSLATION STYLE — STUDY THESE WRONG vs RIGHT EXAMPLES CAREFULLY:
+You MUST write smooth, native Vietnamese. The most common mistakes (avoid them) are: (a) leaving an English term inline when a natural Vietnamese phrase exists, (b) quoting the English original then adding Vietnamese in parentheses, (c) word-by-word literal translation that reads stiffly.
+
+Example 1 — do NOT leave English terms inline:
+  WRONG: "Công ty sẽ vận hành với vai trò technology platform kết nối người dùng."
+  RIGHT: "Công ty sẽ vận hành như một nền tảng công nghệ kết nối người dùng."
+
+Example 2 — do NOT keep an English label in quotes when it has a clean Vietnamese form:
+  WRONG: 'Họ theo mô hình "platform kết nối" để thu phí.'
+  RIGHT: 'Họ theo mô hình nền tảng trung gian để thu phí.'
+
+Example 3 — translate quotes fully; do NOT write English-then-parenthetical-Vietnamese:
+  WRONG: CEO nói: "We are de-risking our balance sheet" (Chúng tôi đang giảm rủi ro bảng cân đối kế toán).
+  RIGHT: CEO cho biết công ty "đang giảm rủi ro cho bảng cân đối kế toán".
+
+Example 4 — avoid stiff word-by-word translation:
+  WRONG: "Động thái này được kỳ vọng sẽ giảm thiểu một cách đáng kể các rủi ro tín dụng có liên quan."
+  RIGHT: "Động thái này được kỳ vọng giúp giảm mạnh rủi ro tín dụng."
+
+The ONLY things that stay in English: proper nouns, brand/product names, ticker symbols, code, metrics, hashtags, and specialist dev terms with no good Vietnamese equivalent. Everything else must read as if originally written in Vietnamese.
+`;
+}
+
 function buildSummaryRepairPrompt(rawOutput: string, config: PromptConfig): string {
   return `Convert the following AI summary into exactly one valid JSON object. Do not add facts, do not wrap the JSON in markdown fences, and preserve the original meaning. Write in natural Vietnamese when the output language is Vietnamese. Translate or paraphrase foreign-language sentences into ${config.output_language}; do not copy full foreign-language sentences verbatim. Preserve proper nouns, product names, code, metrics, and specialist terms.
 
@@ -343,7 +373,7 @@ Original language: ${article.language || 'unknown'}
 <raw_data>
 ${truncate(content, 28000)}
 </raw_data>
-
+${buildTranslationStyleExamples(config)}
 ${buildStructuredOutputContract(config)}`;
 }
 
@@ -408,7 +438,7 @@ Source: ${article.source_name}
 <raw_data>
 ${truncate(content, 32000)}
 </raw_data>
-
+${buildTranslationStyleExamples(config)}
 ${buildStructuredOutputContract(config)}`;
 }
 
