@@ -35,6 +35,7 @@ test('build discovered article job row with normalized public URL and discovered
       generateId: (prefix) => `${prefix}_test`,
       normalizePublicHttpUrl: (url) => new URL(url).toString(),
     },
+    '../lib/promoFilter.js': { matchPromoKeyword: () => null },
     '../db/index.js': {},
   });
 
@@ -60,6 +61,7 @@ test('build discovered article job row with normalized public URL and discovered
 test('claim pending article fetch jobs uses FOR UPDATE SKIP LOCKED', () => {
   const { buildClaimArticleFetchJobsSql } = loadTsModule('../src/services/article-fetch-queue.ts', {
     '../lib/utils.js': {},
+    '../lib/promoFilter.js': { matchPromoKeyword: () => null },
     '../db/index.js': {},
   });
   const statement = buildClaimArticleFetchJobsSql(7);
@@ -73,6 +75,7 @@ test('claim pending article fetch jobs uses FOR UPDATE SKIP LOCKED', () => {
 test('reset retryable article fetch jobs respects retry cap', () => {
   const { buildResetRetryableArticleFetchJobsSql, MAX_ARTICLE_FETCH_RETRIES } = loadTsModule('../src/services/article-fetch-queue.ts', {
     '../lib/utils.js': {},
+    '../lib/promoFilter.js': { matchPromoKeyword: () => null },
     '../db/index.js': {},
   });
   const statement = buildResetRetryableArticleFetchJobsSql(15);
@@ -87,6 +90,7 @@ test('reset retryable article fetch jobs respects retry cap', () => {
 test('short-content rescue query targets skipped RSS and web articles only', () => {
   const { buildFindShortContentArticlesSql } = loadTsModule('../src/services/article-fetch-queue.ts', {
     '../lib/utils.js': {},
+    '../lib/promoFilter.js': { matchPromoKeyword: () => null },
     '../db/index.js': {},
   });
   const statement = buildFindShortContentArticlesSql(15, 500);
@@ -123,6 +127,7 @@ test('requeue short-content articles stores rescue article id in fetch job paylo
       generateId: (prefix) => `${prefix}_test`,
       normalizePublicHttpUrl: (url) => url,
     },
+    '../lib/promoFilter.js': { matchPromoKeyword: () => null },
   });
 
   const result = await requeueShortContentArticles(15, 500);

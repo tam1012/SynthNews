@@ -23,8 +23,7 @@ const FALLBACK_DOMAINS: string[] = [
   'jakartaglobe.id', 'boston25news.com', 'latimes.com', 'axios.com', 'wsj.com',
   'bloomberg.com', 'ft.com', 'economist.com', 'barrons.com', 'businessinsider.com',
   'seekingalpha.com', 'nikkei.com', 'washingtonpost.com', 'thetimes.com', 'thetimes.co.uk',
-  'telegraph.co.uk', 'scmp.com', 'theglobeandmail.com', 'theatlantic.com', 'newyorker.com',
-  'medium.com', 'towardsdatascience.com', 'wired.com', 'technologyreview.com', 'hbr.org',
+  'telegraph.co.uk', 'scmp.com', 'theglobeandmail.com', 'hbr.org',
   'reuters.com', 'qdnd.vn', 'usni.org', 'gothamist.com', 'gizmodo.com',
   'seattletimes.com', 'centerforpolitics.org',
 ];

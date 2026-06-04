@@ -24,7 +24,10 @@ const PROMO_TITLE_PATTERNS: RegExp[] = [
   // Deal / coupon language — allow words between "best/top/..." and "deals"
   /\b(best|top|daily|today'?s|this week'?s)\s+[a-z0-9][a-z0-9 -]{0,40}\s+deal[s]?\b/i,
   /\bdeal[s]?\s+(of the day|under \$\d+|for less|on sale)\b/i,
-  /\b(coupon|promo code|discount code|voucher)\b/i,
+  // Plural-safe: "Promo Codes", "Coupons", "Coupon Codes" all slipped past the
+  // old trailing \b (no boundary between "code" and "s"), letting affiliate
+  // roundups like "Top Valvoline Coupons and Promo Codes" through.
+  /\b(coupons?|promo codes?|discount codes?|coupon codes?|vouchers?)\b/i,
   /\b(clearance|doorbuster)\b/i,
 
   // Call-to-action

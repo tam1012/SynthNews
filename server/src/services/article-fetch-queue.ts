@@ -1,5 +1,6 @@
 import { getMany, query } from '../db/index.js';
 import { generateId, normalizePublicHttpUrl } from '../lib/utils.js';
+import { matchPromoKeyword } from '../lib/promoFilter.js';
 
 export const MAX_ARTICLE_FETCH_RETRIES = 3;
 
@@ -163,6 +164,15 @@ export async function enqueueDiscoveredArticles(items: DiscoveredArticle[]): Pro
   let inserted = 0;
 
   for (const item of items) {
+    // Drop promo/deal articles before they ever become a fetch job. The keyword
+    // check is title-only and free; catching it here saves a full article fetch +
+    // DB insert + AI classify that would otherwise end in a summarize-time skip.
+    const matchedKeyword = matchPromoKeyword(item.title);
+    if (matchedKeyword) {
+      console.log(`[promo-filter] Skipped at enqueue "${item.title}" (matched: "${matchedKeyword}")`);
+      continue;
+    }
+
     const row = buildArticleFetchJobRow(item);
     const result = await query(
       `INSERT INTO article_fetch_jobs (id, source_id, url, title, external_id, published_at, payload_json, status, retry_count, last_error)
