@@ -4,10 +4,15 @@
 // residential proxy pool + real-browser rendering, so they return clean HTML
 // where the self-hosted stack only gets a challenge page.
 //
-// Providers are tried in order, most-abundant free credits first:
-//   1. ScrapingAnt  (~10k credits/month free)
-//   2. Scrape.do    (~1k credits/month free)
-//   3. Firecrawl    (~1k credits/month free, strongest on DataDome e.g. Reuters)
+// Providers are tried in a per-URL order (see providerChainFor):
+//   - Normal hosts, most-abundant free credits first:
+//       1. ScrapingAnt datacenter  (~10k credits/month free)
+//       2. Scrape.do               (~1k credits/month free)
+//       3. Firecrawl               (~1k credits/month free)
+//   - DataDome-hard hosts (Reuters/Bloomberg): ScrapingAnt datacenter ALWAYS
+//     returns a challenge shell against DataDome, so it's skipped. Order is
+//     Scrape.do -> Firecrawl -> ScrapingAnt *residential* (defeats DataDome but
+//     ~25x the credit cost, so it's a tightly-capped last resort).
 // A provider is skipped when it has no key or has hit its rolling-24h cap; on
 // error/429/empty it falls through to the next. The first usable HTML wins.
 //
@@ -20,10 +25,13 @@
 //
 // Env (all optional — a provider with no key is simply skipped):
 //   SCRAPINGANT_API_KEY=...        SCRAPINGANT_MAX_PER_DAY=300
+//   SCRAPINGANT_RESIDENTIAL_MAX_PER_DAY=15   (residential is ~25x cost; cap tight)
 //   SCRAPEDO_API_KEY=...           SCRAPEDO_MAX_PER_DAY=30
 //   FIRECRAWL_API_KEY=fc-...       FIRECRAWL_MAX_PER_DAY=30
 //   FIRECRAWL_API_URL=https://api.firecrawl.dev
 //   HOSTED_FETCH_DOMAINS=reuters.com,bloomberg.com   (legacy: FIRECRAWL_DOMAINS)
+//   DATADOME_DOMAINS=reuters.com,bloomberg.com   (hosts that defeat ScrapingAnt
+//     datacenter — skip it, end the chain with residential)
 
 function parsePositiveInt(value: string | undefined, fallback: number): number {
   const parsed = parseInt(value || '', 10);
@@ -34,6 +42,29 @@ const PROACTIVE_DOMAINS = (process.env.HOSTED_FETCH_DOMAINS || process.env.FIREC
   .split(',')
   .map((d) => d.trim().toLowerCase())
   .filter(Boolean);
+
+// Hosts protected by DataDome (Reuters, Bloomberg, …). ScrapingAnt's datacenter
+// proxy can never clear these — it returns a ~1.5KB challenge shell every time —
+// so for these hosts we skip datacenter and end the chain with the (pricey)
+// residential pool instead. Defaults cover the known-hard hosts; override via env.
+const DATADOME_DOMAINS = (process.env.DATADOME_DOMAINS || 'reuters.com,bloomberg.com')
+  .split(',')
+  .map((d) => d.trim().toLowerCase())
+  .filter(Boolean);
+
+function hostnameOf(targetUrl: string): string {
+  try {
+    return new URL(targetUrl).hostname.replace(/^www\./, '').toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
+function isDataDomeHost(targetUrl: string): boolean {
+  const host = hostnameOf(targetUrl);
+  if (!host) return false;
+  return DATADOME_DOMAINS.some((d) => host === d || host.endsWith('.' + d));
+}
 
 export class HostedFetchUnavailableError extends Error {
   constructor(message: string) {
@@ -82,18 +113,23 @@ function withinBudget(p: HostedProvider): boolean {
 }
 
 // ── Provider: ScrapingAnt ──────────────────────────────────────────────────
+// proxyType 'datacenter' is the cheap default; 'residential' (~25x credits) is
+// the only ScrapingAnt mode that clears DataDome (Reuters/Bloomberg).
 const SCRAPINGANT_API_KEY = process.env.SCRAPINGANT_API_KEY || '';
-async function scrapingAntFetch(url: string, timeoutMs: number): Promise<string> {
-  const endpoint = `https://api.scrapingant.com/v2/general?url=${encodeURIComponent(url)}&x-api-key=${SCRAPINGANT_API_KEY}&browser=true`;
-  let res: Response;
-  try {
-    res = await fetch(endpoint, { signal: AbortSignal.timeout(timeoutMs + 5000) });
-  } catch (err: any) {
-    throw new HostedFetchUnavailableError(`ScrapingAnt unreachable: ${err.message}`);
-  }
-  if (res.status === 429) throw new HostedFetchUnavailableError('ScrapingAnt rate limited (429)');
-  if (!res.ok) throw new HostedFetchUnavailableError(`ScrapingAnt HTTP ${res.status}`);
-  return res.text();
+function scrapingAntFetcher(proxyType: 'datacenter' | 'residential') {
+  return async function scrapingAntFetch(url: string, timeoutMs: number): Promise<string> {
+    const proxyParam = proxyType === 'residential' ? '&proxy_type=residential' : '';
+    const endpoint = `https://api.scrapingant.com/v2/general?url=${encodeURIComponent(url)}&x-api-key=${SCRAPINGANT_API_KEY}&browser=true${proxyParam}`;
+    let res: Response;
+    try {
+      res = await fetch(endpoint, { signal: AbortSignal.timeout(timeoutMs + 5000) });
+    } catch (err: any) {
+      throw new HostedFetchUnavailableError(`ScrapingAnt unreachable: ${err.message}`);
+    }
+    if (res.status === 429) throw new HostedFetchUnavailableError('ScrapingAnt rate limited (429)');
+    if (!res.ok) throw new HostedFetchUnavailableError(`ScrapingAnt HTTP ${res.status}`);
+    return res.text();
+  };
 }
 
 // ── Provider: Scrape.do ────────────────────────────────────────────────────
@@ -134,47 +170,65 @@ async function firecrawlFetchRaw(url: string, timeoutMs: number): Promise<string
   return data.data?.rawHtml || data.data?.html || '';
 }
 
-const PROVIDERS: HostedProvider[] = [
-  {
-    name: 'scrapingant',
-    hasKey: () => Boolean(SCRAPINGANT_API_KEY),
-    fetch: scrapingAntFetch,
-    cap: parsePositiveInt(process.env.SCRAPINGANT_MAX_PER_DAY, 300),
-    windowStart: Date.now(),
-    used: 0,
-  },
-  {
-    name: 'scrapedo',
-    hasKey: () => Boolean(SCRAPEDO_API_KEY),
-    fetch: scrapeDoFetch,
-    cap: parsePositiveInt(process.env.SCRAPEDO_MAX_PER_DAY, 30),
-    windowStart: Date.now(),
-    used: 0,
-  },
-  {
-    name: 'firecrawl',
-    hasKey: () => Boolean(FIRECRAWL_API_KEY),
-    fetch: firecrawlFetchRaw,
-    cap: parsePositiveInt(process.env.FIRECRAWL_MAX_PER_DAY, 30),
-    windowStart: Date.now(),
-    used: 0,
-  },
-];
+// Each provider tracks its own rolling-24h budget independently. ScrapingAnt's
+// datacenter and residential modes share one API key but are budgeted separately
+// because residential burns ~25x the credits.
+const scrapingAntDatacenter: HostedProvider = {
+  name: 'scrapingant',
+  hasKey: () => Boolean(SCRAPINGANT_API_KEY),
+  fetch: scrapingAntFetcher('datacenter'),
+  cap: parsePositiveInt(process.env.SCRAPINGANT_MAX_PER_DAY, 300),
+  windowStart: Date.now(),
+  used: 0,
+};
+const scrapingAntResidential: HostedProvider = {
+  name: 'scrapingant-residential',
+  hasKey: () => Boolean(SCRAPINGANT_API_KEY),
+  fetch: scrapingAntFetcher('residential'),
+  cap: parsePositiveInt(process.env.SCRAPINGANT_RESIDENTIAL_MAX_PER_DAY, 15),
+  windowStart: Date.now(),
+  used: 0,
+};
+const scrapeDo: HostedProvider = {
+  name: 'scrapedo',
+  hasKey: () => Boolean(SCRAPEDO_API_KEY),
+  fetch: scrapeDoFetch,
+  cap: parsePositiveInt(process.env.SCRAPEDO_MAX_PER_DAY, 30),
+  windowStart: Date.now(),
+  used: 0,
+};
+const firecrawl: HostedProvider = {
+  name: 'firecrawl',
+  hasKey: () => Boolean(FIRECRAWL_API_KEY),
+  fetch: firecrawlFetchRaw,
+  cap: parsePositiveInt(process.env.FIRECRAWL_MAX_PER_DAY, 30),
+  windowStart: Date.now(),
+  used: 0,
+};
+
+const ALL_PROVIDERS: HostedProvider[] = [scrapingAntDatacenter, scrapingAntResidential, scrapeDo, firecrawl];
+
+// Normal hosts: cheap datacenter first, then the two strong-but-scarce providers.
+const DEFAULT_CHAIN: HostedProvider[] = [scrapingAntDatacenter, scrapeDo, firecrawl];
+// DataDome hosts: ScrapingAnt datacenter can't clear them, so lead with Scrape.do
+// and Firecrawl (both pass cheaply) and keep residential as the capped last resort.
+const DATADOME_CHAIN: HostedProvider[] = [scrapeDo, firecrawl, scrapingAntResidential];
+
+function providerChainFor(targetUrl: string): HostedProvider[] {
+  return isDataDomeHost(targetUrl) ? DATADOME_CHAIN : DEFAULT_CHAIN;
+}
 
 // True when at least one provider has a key — enough for block-triggered escalation.
 export function hasHostedFetchKey(): boolean {
-  return PROVIDERS.some((p) => p.hasKey());
+  return ALL_PROVIDERS.some((p) => p.hasKey());
 }
 
 // True when this host is on the proactive allowlist (skip straight to hosted fetch).
 export function shouldUseHostedFetch(targetUrl: string): boolean {
   if (!hasHostedFetchKey() || PROACTIVE_DOMAINS.length === 0) return false;
-  try {
-    const host = new URL(targetUrl).hostname.replace(/^www\./, '').toLowerCase();
-    return PROACTIVE_DOMAINS.some((d) => host === d || host.endsWith('.' + d));
-  } catch {
-    return false;
-  }
+  const host = hostnameOf(targetUrl);
+  if (!host) return false;
+  return PROACTIVE_DOMAINS.some((d) => host === d || host.endsWith('.' + d));
 }
 
 // Returns {html, provider} for the first provider that yields usable HTML, or
@@ -183,7 +237,7 @@ export async function hostedFetch(url: string, timeoutMs = 60000): Promise<{ htm
   const errors: string[] = [];
   let anyAttempted = false;
 
-  for (const provider of PROVIDERS) {
+  for (const provider of providerChainFor(url)) {
     if (!provider.hasKey()) continue;
     if (!withinBudget(provider)) {
       errors.push(`${provider.name}: daily cap reached (${provider.cap}/24h)`);

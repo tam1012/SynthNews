@@ -7,7 +7,7 @@ import { normalizePublicHttpUrl, normalizePublicHttpUrlWithDns, truncate, sleep 
 import { matchPromoKeyword } from '../../lib/promoFilter.js';
 import { BROWSER_UA, GOOGLEBOT_UA, browserHeaders, randomUA, playwrightFetch, isBlockedHtml, workerProxyFetch, isWorkerProxyConfigured, shouldSkipWorkerProxy, WorkerProxyUnavailableError, cookieAwareFetch } from './http-utils.js';
 import { scraplingFetchWithFallback } from './scrapling-fetch.js';
-import { hostedFetch, shouldUseHostedFetch, hasHostedFetchKey, HostedFetchUnavailableError } from './hosted-fetch.js';
+import { hostedFetch, shouldUseHostedFetch, hasHostedFetchKey } from './hosted-fetch.js';
 import { insertArticleIfNew, MIN_ARTICLE_TEXT_LENGTH } from './article-writer.js';
 import { SourceFetcher } from './types.js';
 import { learnSelectorProfileFromHtml } from './selector-learning.js';
@@ -447,9 +447,10 @@ async function fetchFullArticle(jobUrl: string, policy = getRssDomainPolicy(jobU
       if (article.content.length >= MIN_ARTICLE_TEXT_LENGTH) return article;
       browserError = new Error(`hosted fetch (${provider}) extraction too short (${article.content.length} characters)`);
     } catch (err: any) {
-      if (!(err instanceof HostedFetchUnavailableError)) {
-        browserError = err instanceof Error ? err : new Error(String(err));
-      }
+      // Surface the hosted-fetch reason (all providers capped / blocked / errored)
+      // instead of letting the stale scrapling "blocked HTML" error mask it — that
+      // mix-up made 14 Reuters failures look like a Scrapling bug, not a cap.
+      browserError = err instanceof Error ? err : new Error(String(err));
     }
   }
 
