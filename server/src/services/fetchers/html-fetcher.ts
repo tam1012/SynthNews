@@ -4,6 +4,7 @@ import { matchPromoKeyword } from '../../lib/promoFilter.js';
 import { browserHeaders, isBlockedHtml, randomUA, playwrightFetch, workerProxyFetch, isWorkerProxyConfigured, shouldSkipWorkerProxy, WorkerProxyUnavailableError, cookieAwareFetch } from './http-utils.js';
 import { scraplingFetchWithFallback } from './scrapling-fetch.js';
 import { hostedFetch, shouldUseHostedFetch, hasHostedFetchKey } from './hosted-fetch.js';
+import { extractStructuredArticle } from './structured-data.js';
 import { insertArticleIfNew } from './article-writer.js';
 import type { DiscoveredArticle } from '../article-fetch-queue.js';
 import { SourceFetcher } from './types.js';
@@ -379,7 +380,27 @@ export const htmlFetcher: SourceFetcher = {
       for (const sel of config.removeSelectors) $article(sel).remove();
     }
 
-    const content = $article(config.contentSelector || 'article').text().replace(/\s+/g, ' ').trim();
+    let content = $article(config.contentSelector || 'article').text().replace(/\s+/g, ' ').trim();
+
+    // Structured-data fallback: soft-paywall sites (Wired/Condé Nast, many
+    // Next.js sites) ship the full article in JSON-LD articleBody or a
+    // __NEXT_DATA__/__PRELOADED_STATE__ blob even when CSS hides it. Prefer it
+    // when longer than the selector scrape — no extra request, no paid credit.
+    let structuredImageUrl: string | null = null;
+    let structuredPublishedAt: string | null = null;
+    const structured = extractStructuredArticle(articleHtml);
+    if (structured) {
+      if (structured.articleBody.length > content.length) content = structured.articleBody;
+      if (structured.imageUrl) {
+        try { structuredImageUrl = normalizePublicHttpUrl(new URL(structured.imageUrl, jobUrl).toString()); } catch {}
+      }
+      structuredPublishedAt = structured.datePublished;
+    }
+    if (!imageUrl && structuredImageUrl) imageUrl = structuredImageUrl;
+    if (!publishedAt && structuredPublishedAt) {
+      publishedAt = normalizeDate(structuredPublishedAt, { defaultTimezone: getDefaultTimezoneForLanguage(source.language) });
+    }
+
     const excerpt = truncate(content, 500);
 
     return {

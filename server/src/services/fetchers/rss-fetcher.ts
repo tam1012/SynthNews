@@ -8,6 +8,8 @@ import { matchPromoKeyword } from '../../lib/promoFilter.js';
 import { BROWSER_UA, GOOGLEBOT_UA, browserHeaders, randomUA, playwrightFetch, isBlockedHtml, workerProxyFetch, isWorkerProxyConfigured, shouldSkipWorkerProxy, WorkerProxyUnavailableError, cookieAwareFetch } from './http-utils.js';
 import { scraplingFetchWithFallback } from './scrapling-fetch.js';
 import { hostedFetch, shouldUseHostedFetch, hasHostedFetchKey } from './hosted-fetch.js';
+import { extractStructuredArticle } from './structured-data.js';
+import { archiveTodayFetch, shouldUseArchiveFallback } from './archive-fetch.js';
 import { insertArticleIfNew, MIN_ARTICLE_TEXT_LENGTH } from './article-writer.js';
 import { SourceFetcher } from './types.js';
 import { learnSelectorProfileFromHtml } from './selector-learning.js';
@@ -290,12 +292,36 @@ async function extractArticleFromHtml(html: string, jobUrl: string, extractor: s
     }
   }
 
+  // Structured-data fallback: soft-paywall sites (Wired/Condé Nast, many Next.js
+  // sites) hide the full article behind a CSS overlay but still ship the entire
+  // text in JSON-LD articleBody or a __NEXT_DATA__/__PRELOADED_STATE__ blob. When
+  // that body is longer than what selectors+readability scraped, prefer it — it's
+  // the un-truncated article, fetched without any extra request or paid credit.
+  let usedStructured = false;
+  const structured = extractStructuredArticle(html);
+  if (structured && structured.articleBody.length > content.length) {
+    content = structured.articleBody;
+    usedStructured = true;
+  }
+
+  const resolvedPublishedAt = publishedAt || (structured?.datePublished ?? null);
+  const resolvedImageUrl = imageUrl || structured?.imageUrl || null;
+
+  let extractorTag: string;
+  if (usedStructured) {
+    extractorTag = `${extractor}:structured-data`;
+  } else if (content.length >= MIN_ARTICLE_TEXT_LENGTH && selectorContentLength < MIN_ARTICLE_TEXT_LENGTH) {
+    extractorTag = `${extractor}:readability`;
+  } else {
+    extractorTag = `${extractor}:selectors`;
+  }
+
   return {
-    title,
+    title: title || structured?.title || '',
     content,
-    imageUrl: imageUrl ? normalizePublicHttpUrl(new URL(imageUrl, jobUrl).toString()) : null,
-    publishedAt: normalizeDate(publishedAt, defaultTimezone),
-    metadata: { extractor: content.length >= MIN_ARTICLE_TEXT_LENGTH && selectorContentLength < MIN_ARTICLE_TEXT_LENGTH ? `${extractor}:readability` : `${extractor}:selectors` },
+    imageUrl: resolvedImageUrl ? normalizePublicHttpUrl(new URL(resolvedImageUrl, jobUrl).toString()) : null,
+    publishedAt: normalizeDate(resolvedPublishedAt, defaultTimezone),
+    metadata: { extractor: extractorTag },
   };
 }
 
@@ -450,6 +476,27 @@ async function fetchFullArticle(jobUrl: string, policy = getRssDomainPolicy(jobU
       // Surface the hosted-fetch reason (all providers capped / blocked / errored)
       // instead of letting the stale scrapling "blocked HTML" error mask it — that
       // mix-up made 14 Reuters failures look like a Scrapling bug, not a cap.
+      browserError = err instanceof Error ? err : new Error(String(err));
+    }
+  }
+
+  // ── Attempt 6: archive.today (hard paywalls: Economist/WSJ/FT) ───────────────
+  // Last resort for publishers that ship only a lede to non-subscribers, so there
+  // is no hidden articleBody to recover. Gated to PAYWALL_ARCHIVE_DOMAINS and
+  // routed through the Scrapling browser (+ residential proxy when configured),
+  // since archive.today CAPTCHAs bare datacenter IPs.
+  if (shouldUseArchiveFallback(safeJobUrl)) {
+    try {
+      console.warn(`Retrying RSS article via archive.today ${safeJobUrl}`);
+      const html = await archiveTodayFetch(safeJobUrl, 60000);
+      if (html) {
+        const article = await extractArticleFromHtml(html, safeJobUrl, 'archive-today', defaultTimezone);
+        if (article.content.length >= MIN_ARTICLE_TEXT_LENGTH) return article;
+        browserError = new Error(`archive.today extraction too short (${article.content.length} characters)`);
+      } else {
+        browserError = new Error('archive.today returned no usable snapshot');
+      }
+    } catch (err: any) {
       browserError = err instanceof Error ? err : new Error(String(err));
     }
   }

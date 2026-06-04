@@ -67,6 +67,7 @@ const baseStubs = {
     hasHostedFetchKey: () => false,
     HostedFetchUnavailableError: class HostedFetchUnavailableError extends Error {},
   },
+  './structured-data.js': { extractStructuredArticle: () => null },
   './selector-profile.js': {
     extractWithSelectorProfile: () => ({ title: '', content: '', imageUrl: null, publishedAt: null, matchedSelector: null }),
     getDomainFromUrl: () => null,
