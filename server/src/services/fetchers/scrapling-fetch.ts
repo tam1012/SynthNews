@@ -64,15 +64,21 @@ export async function scraplingFetch(url: string, options: ScraplingFetchOptions
   const autoProxy = getScraplingProxyForUrl(url);
   const proxy = options.proxy ?? autoProxy;
 
-  // Domains that only reach the proxy via auto-gating (Bloomberg, ...) are
-  // behind a bot wall (PerimeterX) that ONLY clears with a real browser which
-  // loads JS and runs the challenge over the residential IP. The default fetch
-  // profile (block_resources=true, short timeout, no CF solve) starves that:
-  // blocking resources stops the challenge JS, and the residential round-trip +
-  // solve runs ~35s — well past the 60s default once the page is heavy. So when
-  // the proxy is auto-applied, force the heavy profile regardless of caller opts.
+  // Domains that only reach the proxy via auto-gating (Bloomberg, ...) sit behind
+  // a PerimeterX bot wall that clears simply by loading the page in a real browser
+  // over a residential IP — there is NO Cloudflare challenge to solve. The default
+  // fetch profile (block_resources=true, short timeout) starves that: blocking
+  // resources stops the page JS, and a full residential render runs ~60s, past the
+  // 60s default. So when the proxy is auto-applied, force the heavy profile: full
+  // resources + a long timeout.
+  //
+  // Critically, do NOT enable solve_cloudflare here. Bloomberg is PerimeterX, not
+  // Cloudflare; turning it on makes Scrapling hunt for a CF challenge that never
+  // appears, looping "No Cloudflare challenge found" until it times out at 120s —
+  // which then forces a needless escalation to the paid hosted-fetch layer. With
+  // solve off, the same fetch returns the full article in ~60s, every time.
   const isHardProxiedDomain = Boolean(autoProxy) && !options.proxy;
-  const solveCloudflare = isHardProxiedDomain ? true : (options.solveCloudflare ?? false);
+  const solveCloudflare = options.solveCloudflare ?? false;
   const blockResources = isHardProxiedDomain ? false : (options.blockResources ?? true);
   const waitMs = isHardProxiedDomain ? Math.max(options.waitMs ?? 0, 3000) : options.waitMs;
   const effectiveTimeout = isHardProxiedDomain ? Math.max(timeout, 120000) : timeout;
