@@ -54,6 +54,36 @@ function getHostname(url: string): string {
   }
 }
 
+// URLs that are never a readable text article — media players, ticker/market-data
+// pages, newsletter signup shells. Google News `site:bloomberg.com` surfaces a lot
+// of these (videos/audio/quote/markets/professional/newsletters), and each one that
+// reaches the fetch chain burns a paid residential credit on a page with no body —
+// starving the genuine articles of the tiny daily hosted-fetch budget. Skip them at
+// discovery so they never enter the queue.
+function isJunkArticleUrl(url: string): boolean {
+  let host: string;
+  let path: string;
+  try {
+    const u = new URL(url);
+    host = u.hostname.replace(/^www\./, '').toLowerCase();
+    path = u.pathname.toLowerCase();
+  } catch {
+    return false;
+  }
+
+  // Universal: media-player / podcast pages carry no article text on any site.
+  if (/\/(videos?|audio|podcasts?)\//.test(path)) return true;
+
+  // Bloomberg: keep only real article/feature/opinion-article paths; everything
+  // else it exposes via Google News is a data shell with nothing to summarize.
+  if (host === 'bloomberg.com' || host.endsWith('.bloomberg.com')) {
+    if (/^\/(quote|markets|professional)\b/.test(path)) return true;
+    if (/\/newsletters\//.test(path)) return true;
+  }
+
+  return false;
+}
+
 function getRssDomainPolicy(url: string): RssDomainPolicy {
   const hostname = getHostname(url);
   const policy: RssDomainPolicy = {
@@ -631,6 +661,13 @@ export const rssFetcher: SourceFetcher = {
         continue;
       }
 
+      // Drop non-article shells (video/audio/quote/markets/newsletter) before they
+      // enter the queue and waste a paid residential fetch credit on an empty page.
+      if (isJunkArticleUrl(url)) {
+        console.log(`[junk-url] Skipped non-article "${item.title}" (${url})`);
+        continue;
+      }
+
       const rawExcerpt = item.contentSnippet || item.content || '';
       const rawContent = item.content || rawItem['content:encoded'] || '';
       let imageUrl: string | null = null;
@@ -695,6 +732,14 @@ export const rssFetcher: SourceFetcher = {
     if (blockMatch) {
       recordBlocklistHit(blockMatch.id).catch(() => {});
       console.log(`[blocklist] Skipped queued job for ${articleUrl} (pattern=${blockMatch.pattern})`);
+      return null;
+    }
+
+    // Second gate (the discover-time filter is the first): catches jobs queued
+    // before this filter existed, and Google-News URLs that only resolve to a
+    // bloomberg.com/videos|quote|… path here, after decoding.
+    if (isJunkArticleUrl(articleUrl)) {
+      console.log(`[junk-url] Skipped queued non-article job ${articleUrl}`);
       return null;
     }
 
