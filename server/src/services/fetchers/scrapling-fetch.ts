@@ -61,7 +61,22 @@ export async function scraplingFetch(url: string, options: ScraplingFetchOptions
   }
 
   const timeout = options.timeoutMs || 60000;
-  const proxy = options.proxy ?? getScraplingProxyForUrl(url);
+  const autoProxy = getScraplingProxyForUrl(url);
+  const proxy = options.proxy ?? autoProxy;
+
+  // Domains that only reach the proxy via auto-gating (Bloomberg, ...) are
+  // behind a bot wall (PerimeterX) that ONLY clears with a real browser which
+  // loads JS and runs the challenge over the residential IP. The default fetch
+  // profile (block_resources=true, short timeout, no CF solve) starves that:
+  // blocking resources stops the challenge JS, and the residential round-trip +
+  // solve runs ~35s — well past the 60s default once the page is heavy. So when
+  // the proxy is auto-applied, force the heavy profile regardless of caller opts.
+  const isHardProxiedDomain = Boolean(autoProxy) && !options.proxy;
+  const solveCloudflare = isHardProxiedDomain ? true : (options.solveCloudflare ?? false);
+  const blockResources = isHardProxiedDomain ? false : (options.blockResources ?? true);
+  const waitMs = isHardProxiedDomain ? Math.max(options.waitMs ?? 0, 3000) : options.waitMs;
+  const effectiveTimeout = isHardProxiedDomain ? Math.max(timeout, 120000) : timeout;
+
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (SCRAPLING_SERVICE_TOKEN) headers['X-Sidecar-Token'] = SCRAPLING_SERVICE_TOKEN;
 
@@ -75,15 +90,15 @@ export async function scraplingFetch(url: string, options: ScraplingFetchOptions
         mode: options.mode || 'stealth',
         options: {
           wait_selector: options.waitSelector,
-          wait_ms: options.waitMs,
-          block_resources: options.blockResources ?? true,
+          wait_ms: waitMs,
+          block_resources: blockResources,
           raw_text: options.rawText ?? false,
-          timeout_ms: timeout,
-          solve_cloudflare: options.solveCloudflare ?? false,
+          timeout_ms: effectiveTimeout,
+          solve_cloudflare: solveCloudflare,
           proxy: proxy || undefined,
         },
       }),
-      signal: AbortSignal.timeout(timeout + 5000),
+      signal: AbortSignal.timeout(effectiveTimeout + 5000),
     });
   } catch (err: any) {
     throw new ScraplingUnavailableError(`Scrapling service unreachable: ${err.message}`);
