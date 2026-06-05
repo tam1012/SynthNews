@@ -77,8 +77,10 @@ function isJunkArticleUrl(url: string): boolean {
   // Bloomberg: keep only real article/feature/opinion-article paths; everything
   // else it exposes via Google News is a data shell with nothing to summarize.
   if (host === 'bloomberg.com' || host.endsWith('.bloomberg.com')) {
-    if (/^\/(quote|markets|professional)\b/.test(path)) return true;
+    if (/^\/(quote|markets|professional|profile)\b/.test(path)) return true;
     if (/\/newsletters\//.test(path)) return true;
+    // /graphics/ pages are interactive data viz (no readable article body).
+    if (/^\/graphics\//.test(path)) return true;
   }
 
   return false;
