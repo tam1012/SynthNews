@@ -2,7 +2,7 @@ import * as cheerio from 'cheerio';
 import { normalizePublicHttpUrl, normalizePublicHttpUrlWithDns, truncate, sleep } from '../../lib/utils.js';
 import { matchPromoKeyword } from '../../lib/promoFilter.js';
 import { browserHeaders, isBlockedHtml, randomUA, playwrightFetch, workerProxyFetch, isWorkerProxyConfigured, shouldSkipWorkerProxy, WorkerProxyUnavailableError, cookieAwareFetch } from './http-utils.js';
-import { scraplingFetchWithFallback } from './scrapling-fetch.js';
+import { scraplingFetchWithFallback, getScraplingProxyForUrl, isResidentialProxyConfigured } from './scrapling-fetch.js';
 import { hostedFetch, shouldUseHostedFetch, hasHostedFetchKey } from './hosted-fetch.js';
 import { extractStructuredArticle } from './structured-data.js';
 import { insertArticleIfNew } from './article-writer.js';
@@ -305,14 +305,41 @@ export const htmlFetcher: SourceFetcher = {
           if (isBlockedHtml(articleHtml)) { sawBlock = true; throw new Error('blocked HTML'); }
           fetchOk = true;
         } catch (scrErr: any) {
-          // Last resort: hosted fetch (ScrapingAnt -> Scrape.do -> Firecrawl).
+          // Escalation 1: Scrapling THROUGH the paid residential proxy, when the
+          // free pass was anti-bot blocked and the host isn't already proxied by
+          // allowlist. One paid proxy covers any blocked site, and runs before the
+          // metered hosted-fetch providers (free quota exhausted).
+          if (sawBlock && isResidentialProxyConfigured() && !getScraplingProxyForUrl(jobUrl)) {
+            try {
+              const proxied = await scraplingFetchWithFallback(jobUrl, {
+                mode: 'stealth',
+                forceProxy: true,
+                timeoutMs: 120000,
+              }, {
+                rawText: false,
+                blockHeavyResources: false,
+                settleMs: 1500,
+                userAgent: randomUA(),
+              });
+              if (!isBlockedHtml(proxied)) {
+                console.warn(`html-fetcher: scrapling+residential proxy recovered ${jobUrl} (block-triggered)`);
+                articleHtml = proxied;
+                fetchOk = true;
+              }
+            } catch (proxyErr: any) {
+              console.warn(`html-fetcher: scrapling+proxy failed for ${jobUrl}: ${proxyErr.message}`);
+            }
+          }
+          // Escalation 2: hosted fetch (ScrapingAnt -> Scrape.do -> Firecrawl).
           // Fires for allowlist hosts OR any host blocked by anti-bot along the way.
-          if (hasHostedFetchKey() && (shouldUseHostedFetch(jobUrl) || sawBlock)) {
-            const { html, provider } = await hostedFetch(jobUrl, 60000);
-            console.warn(`html-fetcher: scrapling failed for ${jobUrl}, used hosted fetch (${provider})${sawBlock ? ' (block-triggered)' : ''}: ${scrErr.message}`);
-            articleHtml = html;
-          } else {
-            throw scrErr;
+          if (!fetchOk) {
+            if (hasHostedFetchKey() && (shouldUseHostedFetch(jobUrl) || sawBlock)) {
+              const { html, provider } = await hostedFetch(jobUrl, 60000);
+              console.warn(`html-fetcher: scrapling failed for ${jobUrl}, used hosted fetch (${provider})${sawBlock ? ' (block-triggered)' : ''}: ${scrErr.message}`);
+              articleHtml = html;
+            } else {
+              throw scrErr;
+            }
           }
         }
       }

@@ -6,7 +6,7 @@ import { JSDOM } from 'jsdom';
 import { normalizePublicHttpUrl, normalizePublicHttpUrlWithDns, truncate, sleep } from '../../lib/utils.js';
 import { matchPromoKeyword } from '../../lib/promoFilter.js';
 import { BROWSER_UA, GOOGLEBOT_UA, browserHeaders, randomUA, playwrightFetch, isBlockedHtml, workerProxyFetch, isWorkerProxyConfigured, shouldSkipWorkerProxy, WorkerProxyUnavailableError, cookieAwareFetch } from './http-utils.js';
-import { scraplingFetchWithFallback } from './scrapling-fetch.js';
+import { scraplingFetchWithFallback, getScraplingProxyForUrl, isResidentialProxyConfigured } from './scrapling-fetch.js';
 import { hostedFetch, shouldUseHostedFetch, hasHostedFetchKey } from './hosted-fetch.js';
 import { extractStructuredArticle } from './structured-data.js';
 import { archiveTodayFetch, shouldUseArchiveFallback } from './archive-fetch.js';
@@ -492,6 +492,38 @@ async function fetchFullArticle(jobUrl: string, policy = getRssDomainPolicy(jobU
     browserError = new Error(`scrapling extraction too short (${article.content.length} characters)`);
   } catch (err: any) {
     browserError = err instanceof Error ? err : new Error(String(err));
+  }
+
+  // ── Attempt 4b: Scrapling stealth THROUGH the paid residential proxy ─────────
+  // Fires when the free Scrapling pass was anti-bot blocked AND the host isn't
+  // already on the proxy allowlist (those used the proxy in Attempt 4 already).
+  // One paid residential proxy thus covers ANY blocked site — not just the
+  // SCRAPLING_PROXY_DOMAINS list — and runs BEFORE the metered hosted-fetch
+  // providers (whose free quota is exhausted), so it's the cheaper escalation.
+  // Skipped for genuinely short/missing pages so we don't spend bandwidth on them.
+  if (sawBlock && isResidentialProxyConfigured() && !getScraplingProxyForUrl(safeJobUrl)) {
+    try {
+      console.warn(`Retrying RSS article via Scrapling + residential proxy (block-triggered) ${safeJobUrl}`);
+      const html = await scraplingFetchWithFallback(safeJobUrl, {
+        mode: 'stealth',
+        forceProxy: true,
+        timeoutMs: 120000,
+      }, {
+        ...(policy.browserOptions || {}),
+        userAgent: randomUA(),
+        blockHeavyResources: false,
+        settleMs: 1500,
+      });
+      if (!isBlockedHtml(html)) {
+        const article = await extractArticleFromHtml(html, safeJobUrl, 'scrapling-proxy', defaultTimezone);
+        if (article.content.length >= MIN_ARTICLE_TEXT_LENGTH) return article;
+        browserError = new Error(`scrapling+proxy extraction too short (${article.content.length} characters)`);
+      } else {
+        browserError = new Error('scrapling+proxy still blocked');
+      }
+    } catch (err: any) {
+      browserError = err instanceof Error ? err : new Error(String(err));
+    }
   }
 
   // ── Attempt 5: Hosted fetch (ScrapingAnt -> Scrape.do -> Firecrawl) ──

@@ -3,11 +3,16 @@ import { playwrightFetch, type PlaywrightFetchOptions } from './http-utils.js';
 const SCRAPLING_SERVICE_URL = process.env.SCRAPLING_SERVICE_URL || '';
 const SCRAPLING_SERVICE_TOKEN = process.env.SCRAPLING_SERVICE_TOKEN || '';
 
-// Residential/rotating proxy applied ONLY to hard-blocked domains (Reuters,
-// Bloomberg, ...) so we don't burn paid proxy bandwidth on sites that work from
-// the datacenter IP. SCRAPLING_PROXY_URL is the proxy connection string
-// (http://user:pass@host:port); SCRAPLING_PROXY_DOMAINS is a comma-separated
-// allowlist of hostnames that should route through it.
+// Residential/rotating proxy applied to hard-blocked domains so we don't burn
+// paid proxy bandwidth on sites that work from the datacenter IP. Two ways a
+// fetch routes through it:
+//   1. Proactive allowlist (SCRAPLING_PROXY_DOMAINS): known-hard hosts like
+//      bloomberg.com always use the proxy.
+//   2. Block-triggered (forceProxy option): ANY host that the free layers found
+//      blocked (4xx / challenge page) gets the proxy on the Scrapling attempt —
+//      no allowlist edit needed. This lets one paid residential proxy cover every
+//      anti-bot site instead of maintaining a per-domain list.
+// SCRAPLING_PROXY_URL is the proxy connection string (http://user:pass@host:port).
 const SCRAPLING_PROXY_URL = process.env.SCRAPLING_PROXY_URL || '';
 const SCRAPLING_PROXY_DOMAINS = (process.env.SCRAPLING_PROXY_DOMAINS || '')
   .split(',')
@@ -23,6 +28,10 @@ export function getScraplingProxyForUrl(targetUrl: string): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+export function isResidentialProxyConfigured(): boolean {
+  return Boolean(SCRAPLING_PROXY_URL);
 }
 
 export class ScraplingUnavailableError extends Error {
@@ -42,6 +51,13 @@ export interface ScraplingFetchOptions {
   solveCloudflare?: boolean;
   /** Override proxy. When omitted, a domain-gated residential proxy is auto-applied. */
   proxy?: string;
+  /**
+   * Force the configured residential proxy even when the host isn't on the
+   * SCRAPLING_PROXY_DOMAINS allowlist. Set by callers after the free fetch layers
+   * were blocked, so one paid proxy covers any anti-bot site without a per-domain
+   * allowlist. Applies the same heavy render profile as an allowlisted domain.
+   */
+  forceProxy?: boolean;
 }
 
 interface ScraplingResponse {
@@ -62,22 +78,26 @@ export async function scraplingFetch(url: string, options: ScraplingFetchOptions
 
   const timeout = options.timeoutMs || 60000;
   const autoProxy = getScraplingProxyForUrl(url);
-  const proxy = options.proxy ?? autoProxy;
+  // forceProxy: caller hit an anti-bot block on a host not on the allowlist, so
+  // route this attempt through the configured residential proxy anyway.
+  const forcedProxy = options.forceProxy && SCRAPLING_PROXY_URL ? SCRAPLING_PROXY_URL : undefined;
+  const proxy = options.proxy ?? autoProxy ?? forcedProxy;
 
-  // Domains that only reach the proxy via auto-gating (Bloomberg, ...) sit behind
-  // a PerimeterX bot wall that clears simply by loading the page in a real browser
-  // over a residential IP — there is NO Cloudflare challenge to solve. The default
-  // fetch profile (block_resources=true, short timeout) starves that: blocking
-  // resources stops the page JS, and a full residential render runs ~60s, past the
-  // 60s default. So when the proxy is auto-applied, force the heavy profile: full
-  // resources + a long timeout.
+  // A host reaches the residential proxy either by allowlist (autoProxy) or by
+  // block-triggered escalation (forcedProxy). Both sit behind a bot wall
+  // (PerimeterX, generic IP-rep, ...) that clears simply by rendering the page in
+  // a real browser over a residential IP. The default fetch profile
+  // (block_resources=true, short timeout) starves that: blocking resources stops
+  // the page JS, and a full residential render runs ~60s, past the 60s default.
+  // So whenever the proxy is applied (and not an explicit caller override), force
+  // the heavy profile: full resources + a long timeout.
   //
   // Critically, do NOT enable solve_cloudflare here. Bloomberg is PerimeterX, not
   // Cloudflare; turning it on makes Scrapling hunt for a CF challenge that never
   // appears, looping "No Cloudflare challenge found" until it times out at 120s —
   // which then forces a needless escalation to the paid hosted-fetch layer. With
   // solve off, the same fetch returns the full article in ~60s, every time.
-  const isHardProxiedDomain = Boolean(autoProxy) && !options.proxy;
+  const isHardProxiedDomain = (Boolean(autoProxy) || Boolean(forcedProxy)) && !options.proxy;
   const solveCloudflare = options.solveCloudflare ?? false;
   const blockResources = isHardProxiedDomain ? false : (options.blockResources ?? true);
   const waitMs = isHardProxiedDomain ? Math.max(options.waitMs ?? 0, 3000) : options.waitMs;
