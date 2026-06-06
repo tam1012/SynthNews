@@ -11,6 +11,8 @@ import { hostedFetch, shouldUseHostedFetch, hasHostedFetchKey, isDataDomeHost } 
 import { extractStructuredArticle } from './structured-data.js';
 import { archiveTodayFetch, shouldUseArchiveFallback } from './archive-fetch.js';
 import { insertArticleIfNew, MIN_ARTICLE_TEXT_LENGTH } from './article-writer.js';
+import { isMsnUrl } from './registry.js';
+import { fetchMsnArticleByUrl } from './msn-fetcher.js';
 import { SourceFetcher } from './types.js';
 import { learnSelectorProfileFromHtml } from './selector-learning.js';
 import {
@@ -393,6 +395,24 @@ async function extractWithAiSelector(html: string, pageUrl: string, defaultTimez
 async function fetchFullArticle(jobUrl: string, policy = getRssDomainPolicy(jobUrl), defaultTimezone: string = 'Z'): Promise<{ title: string; content: string; imageUrl: string | null; publishedAt: string | null; metadata?: any }> {
   const safeJobUrl = await normalizePublicHttpUrlWithDns(jobUrl, false);
   if (!safeJobUrl) throw new Error('Article URL must be a public http(s) URL');
+
+  // MSN is JS-rendered: every HTML layer below returns a ~75-char shell. It does
+  // expose a public Detail JSON API keyed by the `ar-...` id in the URL, so for
+  // MSN links (these arrive via Google News aggregated feeds) skip the HTML chain
+  // entirely and pull the full body from that API.
+  if (isMsnUrl(safeJobUrl)) {
+    const msnArticle = await fetchMsnArticleByUrl(safeJobUrl, defaultTimezone);
+    if (msnArticle && msnArticle.content.length >= MIN_ARTICLE_TEXT_LENGTH) {
+      return {
+        title: msnArticle.title,
+        content: msnArticle.content,
+        imageUrl: msnArticle.imageUrl,
+        publishedAt: msnArticle.publishedAt,
+        metadata: msnArticle.metadata,
+      };
+    }
+    throw new Error(`MSN Detail API returned no usable article for ${safeJobUrl}`);
+  }
 
   let fetchError: Error | null = null;
   let browserError: Error | null = null;

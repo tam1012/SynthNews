@@ -9,6 +9,23 @@ function isHost(url: string, hosts: string[]): boolean {
   }
 }
 
+// MSN is a JS-rendered aggregator served via its public JSON APIs (see
+// msn-fetcher.ts). Defined here, not in msn-fetcher, so the fetcher can import
+// it the same way reddit/voz do — and so this module stays import-free for the
+// vm-sandboxed registry test.
+export function isMsnUrl(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.replace(/^www\./, '').toLowerCase();
+    return host === 'msn.com' || host.endsWith('.msn.com');
+  } catch {
+    return false;
+  }
+}
+
+export function isMsnSource(source: Pick<SourceRow, 'type' | 'url'>): boolean {
+  return source.type === 'web' && isMsnUrl(source.url);
+}
+
 export function isRedditSource(source: Pick<SourceRow, 'url'>): boolean {
   return isHost(source.url, ['reddit.com', 'www.reddit.com']);
 }
@@ -30,6 +47,7 @@ export function isGitHubTrendingSource(source: Pick<SourceRow, 'type' | 'url'>):
 export function getFetcherKeyForSource(source: Pick<SourceRow, 'type' | 'url'>): string {
   if (isRedditSource(source)) return 'reddit';
   if (isVozSource(source)) return 'voz';
+  if (isMsnSource(source)) return 'msn';
   if (isGitHubTrendingSource(source)) return 'github-trending';
   if (source.type === 'rss') return 'rss';
   if (source.type === 'web') return 'html';
