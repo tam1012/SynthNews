@@ -691,13 +691,21 @@ export const rssFetcher: SourceFetcher = {
       }
       if (!xmlOk) {
         console.warn(`rss-fetcher: native+proxy failed for ${sourceUrl}, falling back to Scrapling: ${err.message}`);
+        // rawText MUST be false: a browser render wraps the feed in
+        // <html><body><rss>…</rss></body></html>, and the parseRssItems cheerio
+        // xmlMode fallback picks <item> out of that. rawText:true strips every
+        // tag, so the parser sees 0 items and throws "Feed not recognized as
+        // RSS 1 or 2" (same trap as the VOZ feed). timeoutMs is bounded to 30s
+        // so the full chain (native 15s + worker proxy 25s + this) stays under
+        // the 90s per-source scrape envelope instead of tripping a 90s timeout.
         xml = await scraplingFetchWithFallback(sourceUrl, {
           mode: 'stealth',
-          rawText: true,
+          rawText: false,
           blockResources: true,
           waitMs: 1500,
+          timeoutMs: 30000,
         }, {
-          rawText: true,
+          rawText: false,
           blockHeavyResources: true,
           settleMs: 1500,
           userAgent: randomUA(),
