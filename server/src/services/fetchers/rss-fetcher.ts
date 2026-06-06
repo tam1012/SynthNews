@@ -472,26 +472,36 @@ async function fetchFullArticle(jobUrl: string, policy = getRssDomainPolicy(jobU
   }
 
   // ── Attempt 4: Scrapling stealth (replaces Playwright + host browser proxy) ──
-  try {
-    console.warn(`Retrying RSS article with Scrapling stealth fetch ${safeJobUrl}`);
-    await sleep(1500);
-    const html = await scraplingFetchWithFallback(safeJobUrl, {
-      mode: 'stealth',
-      blockResources: true,
-      waitMs: 1000,
-      timeoutMs: 60000,
-    }, {
-      ...(policy.browserOptions || {}),
-      userAgent: randomUA(),
-      blockHeavyResources: true,
-      settleMs: 1000,
-    });
-    if (isBlockedHtml(html)) { sawBlock = true; throw new Error('blocked HTML'); }
-    const article = await extractArticleFromHtml(html, safeJobUrl, 'scrapling-stealth', defaultTimezone);
-    if (article.content.length >= MIN_ARTICLE_TEXT_LENGTH) return article;
-    browserError = new Error(`scrapling extraction too short (${article.content.length} characters)`);
-  } catch (err: any) {
-    browserError = err instanceof Error ? err : new Error(String(err));
+  // Skipped for DataDome hosts that aren't on the proxy allowlist (Reuters/WSJ):
+  // the datacenter-IP stealth render only ever returns the ~1.5KB captcha-delivery
+  // shell, so it's a guaranteed miss that wastes a scarce sidecar slot (only 2) and
+  // stalls the whole queue. Bloomberg IS a DataDome host but IS proxy-allowlisted,
+  // so getScraplingProxyForUrl returns its proxy and it still renders here (the
+  // 14s static-proxy path). Native Attempts 1-2 already set sawBlock via the 401/403,
+  // so archive + hosted-fetch downstream still fire for the skipped hosts.
+  const skipStealthForDataDome = isDataDomeHost(safeJobUrl) && !getScraplingProxyForUrl(safeJobUrl);
+  if (!skipStealthForDataDome) {
+    try {
+      console.warn(`Retrying RSS article with Scrapling stealth fetch ${safeJobUrl}`);
+      await sleep(1500);
+      const html = await scraplingFetchWithFallback(safeJobUrl, {
+        mode: 'stealth',
+        blockResources: true,
+        waitMs: 1000,
+        timeoutMs: 60000,
+      }, {
+        ...(policy.browserOptions || {}),
+        userAgent: randomUA(),
+        blockHeavyResources: true,
+        settleMs: 1000,
+      });
+      if (isBlockedHtml(html)) { sawBlock = true; throw new Error('blocked HTML'); }
+      const article = await extractArticleFromHtml(html, safeJobUrl, 'scrapling-stealth', defaultTimezone);
+      if (article.content.length >= MIN_ARTICLE_TEXT_LENGTH) return article;
+      browserError = new Error(`scrapling extraction too short (${article.content.length} characters)`);
+    } catch (err: any) {
+      browserError = err instanceof Error ? err : new Error(String(err));
+    }
   }
 
   // ── Attempt 4b: Scrapling stealth THROUGH the paid residential proxy ─────────

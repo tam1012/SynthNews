@@ -293,6 +293,17 @@ export const htmlFetcher: SourceFetcher = {
       if (!fetchOk) {
         console.warn(`html-fetcher: native+proxy failed for ${jobUrl}, falling back to Scrapling: ${firstErr.message}`);
         try {
+          // DataDome hosts NOT served by the proxy allowlist (Reuters/WSJ) only ever
+          // get the ~1.5KB captcha-delivery shell from a datacenter-IP scrapling
+          // render — it can never clear DataDome, so the render just burns a scarce
+          // sidecar slot. Skip it and drop straight into the escalation chain below
+          // (archive.today + hosted-fetch DATADOME_CHAIN, the only paths that work).
+          // Bloomberg is excluded because getScraplingProxyForUrl serves it via the
+          // residential proxy, where the stealth render DOES succeed.
+          if (isDataDomeHost(jobUrl) && !getScraplingProxyForUrl(jobUrl)) {
+            sawBlock = true;
+            throw new Error('skip scrapling stealth for DataDome host (datacenter IP cannot clear it)');
+          }
           articleHtml = await scraplingFetchWithFallback(jobUrl, {
             mode: 'stealth',
             blockResources: false,
