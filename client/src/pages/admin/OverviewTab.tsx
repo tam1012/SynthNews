@@ -370,7 +370,6 @@ export function OverviewTab({
                       ['Ít bài mới', health.sourceQualitySummary?.low_yield, 'var(--color-warning)'],
                       ['Đang lỗi', health.sourceQualitySummary?.failing, 'var(--color-error)'],
                       ['Lâu chưa thành công', health.sourceQualitySummary?.stale, 'var(--color-warning)'],
-                      ['Đã tắt', health.sourceQualitySummary?.disabled, 'var(--color-text-muted)'],
                     ].map(([label, value, color]) => (
                       <div key={String(label)} style={{ padding: '10px 12px', border: '1px solid var(--color-border-light)', borderRadius: 8 }}>
                         <div style={{ fontSize: '1.35rem', lineHeight: 1, fontWeight: 800, color: String(color) }}>{value || 0}</div>
@@ -381,7 +380,7 @@ export function OverviewTab({
 
                   <div style={{ display: 'grid', gap: 8 }}>
                     {health.sourceQuality
-                      .filter((source: AdminSourceQuality) => source.status !== 'healthy')
+                      .filter((source: AdminSourceQuality) => source.status !== 'healthy' && source.status !== 'disabled')
                       .slice(0, 8)
                       .map((source: AdminSourceQuality, i: number) => (
                         <div key={source.id} style={{ fontSize: '0.8rem', paddingTop: i === 0 ? 0 : 8, borderTop: i === 0 ? 'none' : '1px solid var(--color-border-light)' }}>
@@ -397,7 +396,7 @@ export function OverviewTab({
                           </div>
                         </div>
                       ))}
-                    {health.sourceQuality.filter((source: AdminSourceQuality) => source.status !== 'healthy').length === 0 && (
+                    {health.sourceQuality.filter((source: AdminSourceQuality) => source.status !== 'healthy' && source.status !== 'disabled').length === 0 && (
                       <div style={{ color: 'var(--color-text-muted)', fontSize: '0.82rem' }}>Tất cả nguồn đang ổn.</div>
                     )}
                   </div>
