@@ -41,6 +41,20 @@ class FetchOptions(BaseModel):
     timeout_ms: Optional[int] = None
     proxy: Optional[str] = None
     solve_cloudflare: Optional[bool] = False
+    # Light-render levers for residential-proxied hosts (Bloomberg). block_resources
+    # is all-or-nothing and strips websocket/beacon/stylesheet too — that kills the
+    # PerimeterX sensor channel and the challenge fails. These are surgical instead:
+    #   block_media  — abort only image/media/font requests via a page_setup route,
+    #                  keeping document/script/xhr/fetch/websocket/stylesheet so the
+    #                  challenge JS still runs. Cuts proxy bandwidth per article.
+    #   block_ads    — scrapling's built-in ~3500 ad/tracker domain blocklist.
+    #   network_idle — override the default. On PerimeterX/Cloudflare hosts the page
+    #                  never goes network-idle (beacons/long-poll stay open), so the
+    #                  default True waits until timeout. Set False to return as soon
+    #                  as the document settles instead of hanging ~250s.
+    block_media: Optional[bool] = False
+    block_ads: Optional[bool] = False
+    network_idle: Optional[bool] = None
 
 
 class FetchRequest(BaseModel):
@@ -233,9 +247,46 @@ def _stealth_fetch_sync(url: str, options: FetchOptions, timeout_ms: int) -> str
         # solve_cloudflare needs the page fully loaded — don't strip resources
         kwargs["disable_resources"] = False
     else:
-        # network_idle slows VOZ thread reads from 17s to 200s once Cloudflare
-        # is in the way; only enable it when the caller skips solve_cloudflare.
-        kwargs["network_idle"] = True
+        # network_idle waits for the network to fall quiet for 500ms. That never
+        # happens on anti-bot sites: PerimeterX/DataDome keep beacons + long-polls
+        # open after the article is painted, so the fetch stalls until it hits the
+        # timeout (the same trap noted for VOZ: 17s reads ballooning to 200s+).
+        # Default it on (safe for plain sites), but let the caller force it off for
+        # hard-proxied hosts where the body is present long before the net idles.
+        if options.network_idle is None:
+            kwargs["network_idle"] = True
+        else:
+            kwargs["network_idle"] = bool(options.network_idle)
+
+    # Block ~3,500 known ad/tracker domains. Cheap bandwidth win that never touches
+    # the document/script the anti-bot challenge needs, so it's always safe.
+    if options.block_ads:
+        kwargs["block_ads"] = True
+
+    # block_media is the surgical alternative to disable_resources: abort only
+    # image/media/font requests via a pre-navigation route, while letting
+    # document/script/xhr/fetch/websocket/stylesheet through. disable_resources is
+    # all-or-nothing and also drops websocket/beacon/stylesheet — which starves the
+    # PerimeterX sensor channel and made Bloomberg 504 on 2026-06-05. This keeps the
+    # challenge JS alive while still shedding the heavy bytes over a metered proxy.
+    if options.block_media:
+        _BLOCK_RESOURCE_TYPES = {"image", "media", "font"}
+
+        def _page_setup(page):
+            def _route_handler(route):
+                try:
+                    if route.request.resource_type in _BLOCK_RESOURCE_TYPES:
+                        route.abort()
+                    else:
+                        route.continue_()
+                except Exception:
+                    try:
+                        route.continue_()
+                    except Exception:
+                        pass
+            page.route("**/*", _route_handler)
+
+        kwargs["page_setup"] = _page_setup
 
     if options.wait_ms and options.wait_ms > 0:
         kwargs["wait"] = options.wait_ms

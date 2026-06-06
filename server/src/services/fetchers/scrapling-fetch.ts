@@ -58,6 +58,17 @@ export interface ScraplingFetchOptions {
    * allowlist. Applies the same heavy render profile as an allowlisted domain.
    */
   forceProxy?: boolean;
+  /** Block image/media/font requests via a page route, keeping document/script/
+   *  xhr/websocket/stylesheet (so PerimeterX sensor JS still runs). Cuts proxy
+   *  bandwidth on heavy pages. Auto-enabled for hard-proxied domains. */
+  blockMedia?: boolean;
+  /** Block ~3500 known ad/tracker domains (scrapling built-in). Auto-enabled for
+   *  hard-proxied domains. */
+  blockAds?: boolean;
+  /** Override network_idle wait. PerimeterX/Bloomberg keep beacons open so the
+   *  page never goes idle — waiting for it stalls the render to the timeout. Set
+   *  false for hard-proxied domains. Sidecar defaults to true when omitted. */
+  networkIdle?: boolean;
 }
 
 interface ScraplingResponse {
@@ -99,13 +110,24 @@ export async function scraplingFetch(url: string, options: ScraplingFetchOptions
   // solve off, the same fetch returns the full article in ~60s, every time.
   const isHardProxiedDomain = (Boolean(autoProxy) || Boolean(forcedProxy)) && !options.proxy;
   const solveCloudflare = options.solveCloudflare ?? false;
+  // Don't use the all-or-nothing disable_resources for hard-proxied domains: it
+  // also drops websocket/beacon/stylesheet, which kills the PerimeterX sensor JS
+  // (caused the 2026-06-05 Bloomberg 504s). Instead block only image/media/font
+  // via blockMedia below, which keeps the challenge channels alive.
   const blockResources = isHardProxiedDomain ? false : (options.blockResources ?? true);
   const waitMs = isHardProxiedDomain ? Math.max(options.waitMs ?? 0, 3000) : options.waitMs;
-  // A residential-proxied render (full resources over a rotating/static IP) runs
-  // ~120-150s. The old 120s floor let the client AbortSignal fire mid-render: the
-  // sidecar finished with HTTP 200 but no one was listening, so the job was marked
-  // failed and re-fetched on the next cron run — the same Bloomberg URL burning
-  // proxy bandwidth 3-4x. Raise the floor to 180s so one render satisfies the job.
+  // Light-render profile for hard-proxied (residential) domains: block image/
+  // media/font + ad/tracker domains to cut proxy bandwidth, and turn OFF
+  // network_idle. PerimeterX/Bloomberg hold beacons + long-polls open so the page
+  // NEVER goes network-idle — waiting for it stalled every Bloomberg render to the
+  // ~250s+ timeout (a single static IP made this fatal). Without the idle wait the
+  // page returns once the DOM + fixed wait settle. Callers can still override.
+  const blockMedia = options.blockMedia ?? isHardProxiedDomain;
+  const blockAds = options.blockAds ?? isHardProxiedDomain;
+  const networkIdle = options.networkIdle ?? (isHardProxiedDomain ? false : undefined);
+  // Static residential IPs render slower than rotating; keep a generous floor so a
+  // single render satisfies the job instead of being cut off and re-fetched (which
+  // burned the same Bloomberg URL's bandwidth 3-4x on the next cron run).
   const effectiveTimeout = isHardProxiedDomain ? Math.max(timeout, 180000) : timeout;
 
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -123,6 +145,9 @@ export async function scraplingFetch(url: string, options: ScraplingFetchOptions
           wait_selector: options.waitSelector,
           wait_ms: waitMs,
           block_resources: blockResources,
+          block_media: blockMedia,
+          block_ads: blockAds,
+          network_idle: networkIdle,
           raw_text: options.rawText ?? false,
           timeout_ms: effectiveTimeout,
           solve_cloudflare: solveCloudflare,
