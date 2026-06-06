@@ -101,7 +101,12 @@ export async function scraplingFetch(url: string, options: ScraplingFetchOptions
   const solveCloudflare = options.solveCloudflare ?? false;
   const blockResources = isHardProxiedDomain ? false : (options.blockResources ?? true);
   const waitMs = isHardProxiedDomain ? Math.max(options.waitMs ?? 0, 3000) : options.waitMs;
-  const effectiveTimeout = isHardProxiedDomain ? Math.max(timeout, 120000) : timeout;
+  // A residential-proxied render (full resources over a rotating/static IP) runs
+  // ~120-150s. The old 120s floor let the client AbortSignal fire mid-render: the
+  // sidecar finished with HTTP 200 but no one was listening, so the job was marked
+  // failed and re-fetched on the next cron run — the same Bloomberg URL burning
+  // proxy bandwidth 3-4x. Raise the floor to 180s so one render satisfies the job.
+  const effectiveTimeout = isHardProxiedDomain ? Math.max(timeout, 180000) : timeout;
 
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (SCRAPLING_SERVICE_TOKEN) headers['X-Sidecar-Token'] = SCRAPLING_SERVICE_TOKEN;

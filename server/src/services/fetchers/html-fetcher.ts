@@ -3,7 +3,7 @@ import { normalizePublicHttpUrl, normalizePublicHttpUrlWithDns, truncate, sleep 
 import { matchPromoKeyword } from '../../lib/promoFilter.js';
 import { browserHeaders, isBlockedHtml, randomUA, playwrightFetch, workerProxyFetch, isWorkerProxyConfigured, shouldSkipWorkerProxy, WorkerProxyUnavailableError, cookieAwareFetch } from './http-utils.js';
 import { scraplingFetchWithFallback, getScraplingProxyForUrl, isResidentialProxyConfigured } from './scrapling-fetch.js';
-import { hostedFetch, shouldUseHostedFetch, hasHostedFetchKey } from './hosted-fetch.js';
+import { hostedFetch, shouldUseHostedFetch, hasHostedFetchKey, isDataDomeHost } from './hosted-fetch.js';
 import { extractStructuredArticle } from './structured-data.js';
 import { insertArticleIfNew } from './article-writer.js';
 import type { DiscoveredArticle } from '../article-fetch-queue.js';
@@ -309,12 +309,12 @@ export const htmlFetcher: SourceFetcher = {
           // free pass was anti-bot blocked and the host isn't already proxied by
           // allowlist. One paid proxy covers any blocked site, and runs before the
           // metered hosted-fetch providers (free quota exhausted).
-          if (sawBlock && isResidentialProxyConfigured() && !getScraplingProxyForUrl(jobUrl)) {
+          if (sawBlock && isResidentialProxyConfigured() && !getScraplingProxyForUrl(jobUrl) && !isDataDomeHost(jobUrl)) {
             try {
               const proxied = await scraplingFetchWithFallback(jobUrl, {
                 mode: 'stealth',
                 forceProxy: true,
-                timeoutMs: 120000,
+                timeoutMs: 180000,
               }, {
                 rawText: false,
                 blockHeavyResources: false,

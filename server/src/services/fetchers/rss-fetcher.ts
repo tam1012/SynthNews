@@ -7,7 +7,7 @@ import { normalizePublicHttpUrl, normalizePublicHttpUrlWithDns, truncate, sleep 
 import { matchPromoKeyword } from '../../lib/promoFilter.js';
 import { BROWSER_UA, GOOGLEBOT_UA, browserHeaders, randomUA, playwrightFetch, isBlockedHtml, workerProxyFetch, isWorkerProxyConfigured, shouldSkipWorkerProxy, WorkerProxyUnavailableError, cookieAwareFetch } from './http-utils.js';
 import { scraplingFetchWithFallback, getScraplingProxyForUrl, isResidentialProxyConfigured } from './scrapling-fetch.js';
-import { hostedFetch, shouldUseHostedFetch, hasHostedFetchKey } from './hosted-fetch.js';
+import { hostedFetch, shouldUseHostedFetch, hasHostedFetchKey, isDataDomeHost } from './hosted-fetch.js';
 import { extractStructuredArticle } from './structured-data.js';
 import { archiveTodayFetch, shouldUseArchiveFallback } from './archive-fetch.js';
 import { insertArticleIfNew, MIN_ARTICLE_TEXT_LENGTH } from './article-writer.js';
@@ -501,13 +501,17 @@ async function fetchFullArticle(jobUrl: string, policy = getRssDomainPolicy(jobU
   // SCRAPLING_PROXY_DOMAINS list — and runs BEFORE the metered hosted-fetch
   // providers (whose free quota is exhausted), so it's the cheaper escalation.
   // Skipped for genuinely short/missing pages so we don't spend bandwidth on them.
-  if (sawBlock && isResidentialProxyConfigured() && !getScraplingProxyForUrl(safeJobUrl)) {
+  // DataDome hosts (Reuters) are excluded: residential proxy + browser still gets
+  // only the ~1.5KB captcha-delivery shell, so the full 120s+ render is pure waste.
+  // They skip straight to Attempt 5 hosted-fetch DATADOME_CHAIN — the only path
+  // that actually clears DataDome.
+  if (sawBlock && isResidentialProxyConfigured() && !getScraplingProxyForUrl(safeJobUrl) && !isDataDomeHost(safeJobUrl)) {
     try {
       console.warn(`Retrying RSS article via Scrapling + residential proxy (block-triggered) ${safeJobUrl}`);
       const html = await scraplingFetchWithFallback(safeJobUrl, {
         mode: 'stealth',
         forceProxy: true,
-        timeoutMs: 120000,
+        timeoutMs: 180000,
       }, {
         ...(policy.browserOptions || {}),
         userAgent: randomUA(),

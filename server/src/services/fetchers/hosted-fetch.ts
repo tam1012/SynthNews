@@ -60,7 +60,7 @@ function hostnameOf(targetUrl: string): string {
   }
 }
 
-function isDataDomeHost(targetUrl: string): boolean {
+export function isDataDomeHost(targetUrl: string): boolean {
   const host = hostnameOf(targetUrl);
   if (!host) return false;
   return DATADOME_DOMAINS.some((d) => host === d || host.endsWith('.' + d));
