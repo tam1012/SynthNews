@@ -530,29 +530,13 @@ async function fetchFullArticle(jobUrl: string, policy = getRssDomainPolicy(jobU
     }
   }
 
-  // ── Attempt 5: Hosted fetch (ScrapingAnt -> Scrape.do -> Firecrawl) ──
-  // Fires when the host is on the proactive allowlist OR the free layers were
-  // blocked by anti-bot (sawBlock). Skipped for genuinely short/missing pages.
-  if (hasHostedFetchKey() && (shouldUseHostedFetch(safeJobUrl) || sawBlock)) {
-    try {
-      const { html, provider } = await hostedFetch(safeJobUrl, 60000);
-      console.warn(`Retrying RSS article via hosted fetch (${provider}) ${safeJobUrl}${sawBlock ? ' (block-triggered)' : ''}`);
-      const article = await extractArticleFromHtml(html, safeJobUrl, provider, defaultTimezone);
-      if (article.content.length >= MIN_ARTICLE_TEXT_LENGTH) return article;
-      browserError = new Error(`hosted fetch (${provider}) extraction too short (${article.content.length} characters)`);
-    } catch (err: any) {
-      // Surface the hosted-fetch reason (all providers capped / blocked / errored)
-      // instead of letting the stale scrapling "blocked HTML" error mask it — that
-      // mix-up made 14 Reuters failures look like a Scrapling bug, not a cap.
-      browserError = err instanceof Error ? err : new Error(String(err));
-    }
-  }
-
-  // ── Attempt 6: archive.today (hard paywalls: Economist/WSJ/FT) ───────────────
-  // Last resort for publishers that ship only a lede to non-subscribers, so there
-  // is no hidden articleBody to recover. Gated to PAYWALL_ARCHIVE_DOMAINS and
-  // routed through the Scrapling browser (+ residential proxy when configured),
-  // since archive.today CAPTCHAs bare datacenter IPs.
+  // ── Attempt 5: archive.today (hard paywalls: Economist/WSJ/FT) ───────────────
+  // Runs BEFORE hosted-fetch for paywalled hosts: archive.today keeps full
+  // snapshots that defeat both the DataDome wall AND the paywall in one free
+  // request, whereas hosted-fetch providers burn a metered residential credit and
+  // often still return only the non-subscriber lede. So for PAYWALL_ARCHIVE_DOMAINS
+  // (WSJ/FT/Economist — all DataDome+paywall) try the free full-text mirror first
+  // and only fall through to the paid providers when no snapshot exists.
   if (shouldUseArchiveFallback(safeJobUrl)) {
     try {
       console.warn(`Retrying RSS article via archive.today ${safeJobUrl}`);
@@ -565,6 +549,25 @@ async function fetchFullArticle(jobUrl: string, policy = getRssDomainPolicy(jobU
         browserError = new Error('archive.today returned no usable snapshot');
       }
     } catch (err: any) {
+      browserError = err instanceof Error ? err : new Error(String(err));
+    }
+  }
+
+  // ── Attempt 6: Hosted fetch (ScrapingAnt -> Scrape.do -> Firecrawl) ──
+  // Fires when the host is on the proactive allowlist OR the free layers were
+  // blocked by anti-bot (sawBlock). Skipped for genuinely short/missing pages.
+  // For paywalled hosts this is the fallback after archive.today found no snapshot.
+  if (hasHostedFetchKey() && (shouldUseHostedFetch(safeJobUrl) || sawBlock)) {
+    try {
+      const { html, provider } = await hostedFetch(safeJobUrl, 60000);
+      console.warn(`Retrying RSS article via hosted fetch (${provider}) ${safeJobUrl}${sawBlock ? ' (block-triggered)' : ''}`);
+      const article = await extractArticleFromHtml(html, safeJobUrl, provider, defaultTimezone);
+      if (article.content.length >= MIN_ARTICLE_TEXT_LENGTH) return article;
+      browserError = new Error(`hosted fetch (${provider}) extraction too short (${article.content.length} characters)`);
+    } catch (err: any) {
+      // Surface the hosted-fetch reason (all providers capped / blocked / errored)
+      // instead of letting the stale scrapling "blocked HTML" error mask it — that
+      // mix-up made 14 Reuters failures look like a Scrapling bug, not a cap.
       browserError = err instanceof Error ? err : new Error(String(err));
     }
   }

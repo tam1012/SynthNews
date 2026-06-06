@@ -4,6 +4,7 @@ import { matchPromoKeyword } from '../../lib/promoFilter.js';
 import { browserHeaders, isBlockedHtml, randomUA, playwrightFetch, workerProxyFetch, isWorkerProxyConfigured, shouldSkipWorkerProxy, WorkerProxyUnavailableError, cookieAwareFetch } from './http-utils.js';
 import { scraplingFetchWithFallback, getScraplingProxyForUrl, isResidentialProxyConfigured } from './scrapling-fetch.js';
 import { hostedFetch, shouldUseHostedFetch, hasHostedFetchKey, isDataDomeHost } from './hosted-fetch.js';
+import { archiveTodayFetch, shouldUseArchiveFallback } from './archive-fetch.js';
 import { extractStructuredArticle } from './structured-data.js';
 import { insertArticleIfNew } from './article-writer.js';
 import type { DiscoveredArticle } from '../article-fetch-queue.js';
@@ -330,7 +331,23 @@ export const htmlFetcher: SourceFetcher = {
               console.warn(`html-fetcher: scrapling+proxy failed for ${jobUrl}: ${proxyErr.message}`);
             }
           }
-          // Escalation 2: hosted fetch (ScrapingAnt -> Scrape.do -> Firecrawl).
+          // Escalation 2: archive.today, BEFORE hosted-fetch for paywalled hosts.
+          // archive.today keeps full snapshots that clear both the DataDome wall
+          // AND the paywall in one free request, where hosted-fetch burns a metered
+          // residential credit and often returns only the non-subscriber lede.
+          if (!fetchOk && shouldUseArchiveFallback(jobUrl)) {
+            try {
+              const archived = await archiveTodayFetch(jobUrl, 60000);
+              if (archived) {
+                console.warn(`html-fetcher: archive.today recovered ${jobUrl}`);
+                articleHtml = archived;
+                fetchOk = true;
+              }
+            } catch (archiveErr: any) {
+              console.warn(`html-fetcher: archive.today failed for ${jobUrl}: ${archiveErr.message}`);
+            }
+          }
+          // Escalation 3: hosted fetch (ScrapingAnt -> Scrape.do -> Firecrawl).
           // Fires for allowlist hosts OR any host blocked by anti-bot along the way.
           if (!fetchOk) {
             if (hasHostedFetchKey() && (shouldUseHostedFetch(jobUrl) || sawBlock)) {
