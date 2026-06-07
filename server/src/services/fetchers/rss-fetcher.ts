@@ -294,6 +294,36 @@ function extractJsonLdDate($: cheerio.CheerioAPI): string | null {
   return null;
 }
 
+const DATELINE_MONTHS: Record<string, string> = {
+  january: '01', february: '02', march: '03', april: '04', may: '05', june: '06',
+  july: '07', august: '08', september: '09', october: '10', november: '11', december: '12',
+};
+const DATELINE_TZ_OFFSETS: Record<string, string> = {
+  JST: '+09:00', GMT: '+00:00', UTC: '+00:00', EST: '-05:00', EDT: '-04:00',
+  PST: '-08:00', PDT: '-07:00', HKT: '+08:00', SGT: '+08:00', CST: '+08:00',
+};
+
+// Last-resort publish-date recovery for sites (Nikkei Asia) that print the time
+// only as an in-body dateline — "…TAKERO MINAMIJune 5, 2026 06:15 JST TOKYO --"
+// — and ship NO JSON-LD / <time> / meta date to datacenter IPs. Requires the full
+// "Month D, YYYY HH:MM TZ" form so a bare date elsewhere in the article body can't
+// masquerade as the publish time; scoped to the lede where the dateline always sits.
+function extractDatelineDate(text: string): string | null {
+  if (!text) return null;
+  // No leading \b: Nikkei runs the author name straight into the month
+  // ("…TAKERO MINAMIJune 5, 2026…"), so a word boundary before the month never
+  // matches. The trailing date+time+TZ shape is specific enough on its own.
+  const m = text.slice(0, 4000).match(
+    /(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2}),\s*(\d{4})\s+(\d{1,2}):(\d{2})\s*(JST|GMT|UTC|EST|EDT|PST|PDT|HKT|SGT|CST)\b/i
+  );
+  if (!m) return null;
+  const month = DATELINE_MONTHS[m[1].toLowerCase()];
+  if (!month) return null;
+  const day = m[2].padStart(2, '0');
+  const offset = DATELINE_TZ_OFFSETS[m[6].toUpperCase()] || 'Z';
+  return `${m[3]}-${month}-${day}T${m[4].padStart(2, '0')}:${m[5]}:00${offset}`;
+}
+
 async function extractArticleFromHtml(html: string, jobUrl: string, extractor: string, defaultTimezone: string = 'Z'): Promise<{ title: string; content: string; imageUrl: string | null; publishedAt: string | null; metadata?: any }> {
   const aiExtraction = await extractWithAiSelector(html, jobUrl, defaultTimezone);
   if (aiExtraction) {
@@ -345,7 +375,7 @@ async function extractArticleFromHtml(html: string, jobUrl: string, extractor: s
     usedStructured = true;
   }
 
-  const resolvedPublishedAt = publishedAt || (structured?.datePublished ?? null);
+  const resolvedPublishedAt = publishedAt || (structured?.datePublished ?? null) || extractDatelineDate(content);
   const resolvedImageUrl = imageUrl || structured?.imageUrl || null;
 
   let extractorTag: string;
