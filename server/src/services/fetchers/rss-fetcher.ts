@@ -325,7 +325,53 @@ function extractDatelineDate(text: string): string | null {
   return `${m[3]}-${month}-${day}T${m[4].padStart(2, '0')}:${m[5]}:00${offset}`;
 }
 
+// Nikkei Asia (Next.js) ships only a ~3-paragraph lede in static HTML — full
+// body + machine-readable date live in the __NEXT_DATA__ blob, which native
+// fetch retrieves from the datacenter IP even for paywallState="paid" articles.
+// So pull title/body/date/image straight from props.pageProps.data instead of
+// scraping the DOM (which yields <500 chars and trips "extraction too short"),
+// and skip the costly browser/proxy fallbacks that Nikkei's paywall overlay
+// defeats anyway. `displayDate` is a Unix-seconds timestamp.
+function extractNikkeiFromNextData(html: string): { title: string; content: string; imageUrl: string | null; publishedAt: string | null } | null {
+  const $ = cheerio.load(html);
+  const raw = $('#__NEXT_DATA__').first().html();
+  if (!raw) return null;
+  let data: any;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  const article = data?.props?.pageProps?.data;
+  if (!article || typeof article !== 'object') return null;
+
+  const content = stripHtml(typeof article.body === 'string' ? article.body : '');
+  if (content.length < MIN_ARTICLE_TEXT_LENGTH) return null;
+
+  const title = decodeText(typeof article.headline === 'string' ? article.headline : '');
+  const imageUrl = typeof article.image?.imageUrl === 'string'
+    ? normalizePublicHttpUrl(article.image.imageUrl)
+    : null;
+
+  let publishedAt: string | null = null;
+  const ts = article.displayDate ?? article.createdDate;
+  if (typeof ts === 'number' && Number.isFinite(ts)) {
+    publishedAt = new Date(ts * 1000).toISOString();
+  } else if (typeof ts === 'string') {
+    publishedAt = normalizeDate(ts, 'Z');
+  }
+
+  return { title, content, imageUrl, publishedAt };
+}
+
 async function extractArticleFromHtml(html: string, jobUrl: string, extractor: string, defaultTimezone: string = 'Z'): Promise<{ title: string; content: string; imageUrl: string | null; publishedAt: string | null; metadata?: any }> {
+  if (getHostname(jobUrl).endsWith('nikkei.com')) {
+    const nikkei = extractNikkeiFromNextData(html);
+    if (nikkei) {
+      return { ...nikkei, metadata: { extractor: `${extractor}:nikkei-nextdata` } };
+    }
+  }
+
   const aiExtraction = await extractWithAiSelector(html, jobUrl, defaultTimezone);
   if (aiExtraction) {
     const { extraction, sourceProfileId } = aiExtraction;
