@@ -141,16 +141,36 @@ export const htmlFetcher: SourceFetcher = {
 
     let html = '';
     let discoverOk = false;
-    try {
-      const response = await fetch(sourceUrl, {
-        headers: browserHeaders(randomUA()),
-        signal: AbortSignal.timeout(15000),
-      });
-      if (!response.ok) throw new Error(`Status code ${response.status}`);
-      html = await response.text();
-      if (isBlockedHtml(html)) throw new Error('blocked HTML');
-      discoverOk = true;
-    } catch (err: any) {
+    let lastNativeErr: any = null;
+    // Landing pages (e.g. yahoo.com/news) ship their article links in static
+    // HTML, so a plain fetch is enough — but native fetch to big JS-heavy hosts
+    // flakes intermittently (~10% ETIMEDOUT). One miss used to escalate straight
+    // to a scrapling-stealth *render* of an 800KB+ page, which blows past the 90s
+    // scrape cap. Retrying native fetch (fresh UA each time) clears the transient
+    // flake in seconds and keeps us on the real page instead of a stealth render.
+    for (let attempt = 1; attempt <= 3 && !discoverOk; attempt++) {
+      try {
+        const response = await fetch(sourceUrl, {
+          headers: browserHeaders(randomUA()),
+          signal: AbortSignal.timeout(15000),
+        });
+        if (!response.ok) throw new Error(`Status code ${response.status}`);
+        const body = await response.text();
+        if (isBlockedHtml(body)) throw new Error('blocked HTML');
+        html = body;
+        discoverOk = true;
+      } catch (attemptErr: any) {
+        lastNativeErr = attemptErr;
+        // Don't waste retries on a hard block — that won't clear by retrying;
+        // let the worker-proxy / scrapling chain handle it. Only retry transient
+        // network failures (timeouts, resets, DNS hiccups).
+        const isBlock = /blocked HTML|Status code (401|403|429)/.test(attemptErr.message || '');
+        if (isBlock || attempt === 3) break;
+        await sleep(500 * attempt);
+      }
+    }
+    if (!discoverOk) {
+      const err = lastNativeErr || new Error('native discover failed');
       if (isWorkerProxyConfigured() && !shouldSkipWorkerProxy(sourceUrl)) {
         try {
           console.warn(`html-fetcher: native discover failed for ${sourceUrl}, trying Worker proxy: ${err.message}`);
@@ -167,10 +187,14 @@ export const htmlFetcher: SourceFetcher = {
       }
       if (!discoverOk) {
         console.warn(`html-fetcher: native+proxy discover failed for ${sourceUrl}, falling back to Scrapling: ${err.message}`);
+        // timeoutMs bounds the stealth render so a heavy landing page (yahoo.com
+        // /news is 800KB+) can't burn the whole 90s scrape envelope here — native
+        // 15s x3 retries + worker proxy 25s + this 30s still fits under 90s.
         html = await scraplingFetchWithFallback(sourceUrl, {
           mode: 'stealth',
           blockResources: true,
           waitMs: 1000,
+          timeoutMs: 30000,
         }, {
           rawText: false,
           blockHeavyResources: true,
@@ -210,6 +234,7 @@ export const htmlFetcher: SourceFetcher = {
         mode: 'stealth',
         blockResources: true,
         waitMs: 1000,
+        timeoutMs: 30000,
       }, {
         rawText: false,
         blockHeavyResources: true,
