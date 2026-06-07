@@ -12,14 +12,22 @@ export { isMsnUrl, isMsnSource };
 
 // MSN is a JavaScript-rendered aggregator: fetching the article HTML yields an
 // almost-empty shell (~75 chars), tripping "content too short". But MSN exposes
-// two public JSON endpoints used by its own web client:
+// public JSON endpoints used by its own web client:
 //   - Detail API  → full article body by id (no apikey needed)
 //   - channelfeed → a topic's article list (apikey required)
+//   - viewslayout → a "gem" page's underlying cards (apikey required)
 // We hit those directly instead of scraping HTML.
+//
+// "Gem" pages (URL id `gm-...`, uxmode=ruby) are Copilot-curated clusters: the
+// page has NO Detail entry of its own, but the viewslayout endpoint returns a
+// GemArticleElement seed card whose id is a comma-joined list of the ORIGINAL
+// publisher article ids (`AA...`). Each of those resolves through the normal
+// Detail API, so a gem URL is resolved to its top seed article's full text.
 
 const MSN_FEED_APIKEY = process.env.MSN_FEED_APIKEY || '0QfOX3Vn51YCzitbLaRkTTBadtWpgTN8NZLW0C1SEM';
 const MSN_DETAIL_BASE = 'https://assets.msn.com/content/view/v2/Detail';
 const MSN_FEED_BASE = 'https://assets.msn.com/service/news/feed/pages/channelfeed';
+const MSN_VIEWS_BASE = 'https://assets.msn.com/service/news/feed/pages/viewslayout';
 const MSN_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
 const DEFAULT_TOPIC = 'Top Stories';
 const DEFAULT_LOCALE = 'en-us';
@@ -34,6 +42,16 @@ function parsePositiveInt(value: unknown, fallback: number): number {
 // prefix cleanly isolates article ids.
 export function extractMsnArticleId(url: string): string | null {
   const match = url.match(/\/ar-([A-Za-z0-9]+)/);
+  return match ? match[1] : null;
+}
+
+// Gem/insight URLs end in `/gm-GMB104C401?gemSnapshotKey=...&uxmode=ruby`. These
+// are MSN's Copilot-curated pages: there's no Detail entry for the `gm-` id, but
+// the page is built from real publisher articles. The `viewslayout` API returns
+// those source article ids, which DO resolve via Detail. So we treat a gem as a
+// pointer to its seed articles, not as an article itself.
+export function extractMsnGemId(url: string): string | null {
+  const match = url.match(/\/gm-([A-Za-z0-9]+)/);
   return match ? match[1] : null;
 }
 
@@ -135,10 +153,87 @@ export async function fetchMsnDetailById(articleId: string, locale: string, defa
   };
 }
 
+// Optional snapshot pin from the gem URL (`?gemSnapshotKey=...`). Omitting it
+// makes viewslayout return the latest snapshot, which is fine for our purpose.
+function extractMsnGemSnapshotKey(url: string): string | null {
+  try {
+    return new URL(url).searchParams.get('gemSnapshotKey');
+  } catch {
+    return null;
+  }
+}
+
+// Walk the viewslayout card tree (sections[].cards[].subCards[], any depth) and
+// return every card matching `type`.
+function collectCardsByType(data: any, type: string): any[] {
+  const out: any[] = [];
+  const visit = (node: any) => {
+    if (!node || typeof node !== 'object') return;
+    if (node.type === type) out.push(node);
+    for (const key of ['sections', 'subSections', 'cards', 'subCards']) {
+      const arr = node[key];
+      if (Array.isArray(arr)) arr.forEach(visit);
+    }
+  };
+  visit(data);
+  return out;
+}
+
+// A gem's seed GemArticleElement carries the real publisher article ids it was
+// built from, comma-joined in its `id` (e.g. "AA24MgGo,AA24SV3m,..."). These DO
+// resolve via the Detail API. Returns them most-relevant-first.
+export async function fetchMsnGemSeedArticleIds(gemId: string, locale: string, snapshotKey?: string | null): Promise<string[]> {
+  const params = new URLSearchParams({
+    ocid: 'rubyvfp',
+    apikey: MSN_FEED_APIKEY,
+    cm: locale,
+    gemId,
+  });
+  if (snapshotKey) params.set('gemSnapshotKey', snapshotKey);
+
+  const data = await fetchMsnJson(`${MSN_VIEWS_BASE}?${params.toString()}`, 20000);
+  const elements = collectCardsByType(data, 'GemArticleElement');
+  if (elements.length === 0) return [];
+
+  // Prefer the seed element (the gem's primary source set); fall back to the
+  // first GemArticleElement otherwise.
+  const seed = elements.find((c) => c?.gemElementMetadata?.isSeedElement) || elements[0];
+  const ids = String(seed.id || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return ids;
+}
+
+// Resolve a gem/insight URL to a real article: pull its seed article ids, then
+// return the first one whose Detail body is long enough to summarize.
+export async function fetchMsnGemArticle(url: string, defaultTimezone = 'Z'): Promise<MsnArticleContent | null> {
+  const gemId = extractMsnGemId(url);
+  if (!gemId) return null;
+  const locale = extractMsnLocale(url);
+  const seedIds = await fetchMsnGemSeedArticleIds(gemId, locale, extractMsnGemSnapshotKey(url));
+
+  for (const articleId of seedIds) {
+    try {
+      const detail = await fetchMsnDetailById(articleId, locale, defaultTimezone);
+      if (detail && detail.content) {
+        return {
+          ...detail,
+          metadata: { ...detail.metadata, extractor: 'msn:gem-seed', gemId, seedArticleId: articleId },
+        };
+      }
+    } catch {
+      // try the next seed id
+    }
+  }
+  return null;
+}
+
 export async function fetchMsnArticleByUrl(url: string, defaultTimezone = 'Z'): Promise<MsnArticleContent | null> {
   const articleId = extractMsnArticleId(url);
-  if (!articleId) return null;
-  return fetchMsnDetailById(articleId, extractMsnLocale(url), defaultTimezone);
+  if (articleId) return fetchMsnDetailById(articleId, extractMsnLocale(url), defaultTimezone);
+  if (extractMsnGemId(url)) return fetchMsnGemArticle(url, defaultTimezone);
+  return null;
 }
 
 interface MsnFeedCard {

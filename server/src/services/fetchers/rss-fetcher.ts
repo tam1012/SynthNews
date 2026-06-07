@@ -12,7 +12,7 @@ import { extractStructuredArticle } from './structured-data.js';
 import { archiveTodayFetch, shouldUseArchiveFallback } from './archive-fetch.js';
 import { insertArticleIfNew, MIN_ARTICLE_TEXT_LENGTH } from './article-writer.js';
 import { isMsnUrl } from './registry.js';
-import { fetchMsnArticleByUrl } from './msn-fetcher.js';
+import { fetchMsnArticleByUrl, extractMsnArticleId, extractMsnGemId } from './msn-fetcher.js';
 import { SourceFetcher } from './types.js';
 import { learnSelectorProfileFromHtml } from './selector-learning.js';
 import {
@@ -75,6 +75,13 @@ function isJunkArticleUrl(url: string): boolean {
 
   // Universal: media-player / podcast pages carry no article text on any site.
   if (/\/(videos?|audio|podcasts?)\//.test(path)) return true;
+
+  // MSN: fetchable content comes either from the Detail API (an `ar-...` id) or
+  // from a gem/insight page (a `gm-...` id) that resolves to real publisher
+  // articles via the viewslayout API. An MSN URL with neither id — weather
+  // forecasts, channel landing pages, other CSR shells — has no retrievable body,
+  // so skip it instead of letting it rot in the queue as "content too short".
+  if (isMsnUrl(url) && !extractMsnArticleId(url) && !extractMsnGemId(url)) return true;
 
   // Bloomberg: keep only real article/feature/opinion-article paths; everything
   // else it exposes via Google News is a data shell with nothing to summarize.
