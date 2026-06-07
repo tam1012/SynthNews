@@ -310,11 +310,12 @@ const DATELINE_TZ_OFFSETS: Record<string, string> = {
 // masquerade as the publish time; scoped to the lede where the dateline always sits.
 function extractDatelineDate(text: string): string | null {
   if (!text) return null;
-  // No leading \b: Nikkei runs the author name straight into the month
-  // ("…TAKERO MINAMIJune 5, 2026…"), so a word boundary before the month never
-  // matches. The trailing date+time+TZ shape is specific enough on its own.
+  // No \b on either side: Nikkei runs the author name straight into the month
+  // ("…TAKERO MINAMIJune 5, 2026…") AND the TZ straight into the dateline city
+  // ("…01:14 JSTTOKYO --"), so a word boundary before the month or after the TZ
+  // never matches. The full date+time+TZ shape is specific enough on its own.
   const m = text.slice(0, 4000).match(
-    /(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2}),\s*(\d{4})\s+(\d{1,2}):(\d{2})\s*(JST|GMT|UTC|EST|EDT|PST|PDT|HKT|SGT|CST)\b/i
+    /(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2}),\s*(\d{4})\s+(\d{1,2}):(\d{2})\s*(JST|GMT|UTC|EST|EDT|PST|PDT|HKT|SGT|CST)/i
   );
   if (!m) return null;
   const month = DATELINE_MONTHS[m[1].toLowerCase()];
