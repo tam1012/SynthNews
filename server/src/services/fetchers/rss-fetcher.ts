@@ -701,7 +701,7 @@ export function parseRssItems(xml: string): RssParser.Item[] {
       title,
       link,
       guid: getText($item, 'guid') || link,
-      pubDate: getText($item, 'pubDate') || getText($item, 'published') || getText($item, 'updated'),
+      pubDate: getText($item, 'pubDate') || getText($item, 'dc\\:date') || getText($item, 'published') || getText($item, 'updated'),
       creator: getText($item, 'creator') || getText($item, 'dc\\:creator'),
       contentSnippet: stripHtml(getXmlChildHtml($item, 'description')),
       content: getXmlChildHtml($item, 'encoded') || getXmlChildHtml($item, 'content\\:encoded') || getXmlChildHtml($item, 'description'),
@@ -846,7 +846,10 @@ export const rssFetcher: SourceFetcher = {
         url,
         title: decodeText(item.title),
         externalId: item.guid || null,
-        publishedAt: normalizeDate(item.pubDate || null, getDefaultTimezoneForLanguage(source.language)),
+        // rss-parser maps RDF/Atom dates (<dc:date>, <published>) to isoDate, NOT
+        // pubDate — DW's RSS 1.0 feed leaves pubDate undefined, so read isoDate too
+        // or the precise feed timestamp is lost and we fall back to a scraped date.
+        publishedAt: normalizeDate(item.pubDate || (item as any).isoDate || null, getDefaultTimezoneForLanguage(source.language)),
         payload: {
           discovery: googleNewsUrl ? 'google-news-rss' : 'rss',
           author: item.creator || rawItem.author || null,
@@ -926,7 +929,12 @@ export const rssFetcher: SourceFetcher = {
       url: articleUrl,
       title: fullArticle?.title || job.title,
       author: payload.author || null,
-      publishedAt: fullArticle?.publishedAt || job.published_at,
+      // Feed date wins over the scraped HTML date: <pubDate>/<dc:date> is a
+      // machine-emitted publish timestamp, whereas the page date comes from a
+      // brittle selector/AI scrape that often yields a date-only value (midnight)
+      // or the wrong element (DW scraped to 00:00 while the feed had the exact
+      // time). HTML date is only the fallback when the feed supplies none (Nikkei).
+      publishedAt: job.published_at || fullArticle?.publishedAt || null,
       rawExcerpt,
       rawContent,
       contentHashSeed: `${fullArticle?.title || job.title}${rawContent || rssExcerpt}`,
