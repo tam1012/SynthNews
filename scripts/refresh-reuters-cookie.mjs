@@ -66,6 +66,12 @@ async function releaseLock() {
   await rm(LOCK_DIR, { recursive: true, force: true });
 }
 
+async function removeStaleChromiumLocks() {
+  await rm(path.join(PROFILE_DIR, 'SingletonLock'), { force: true }).catch(() => {});
+  await rm(path.join(PROFILE_DIR, 'SingletonCookie'), { force: true }).catch(() => {});
+  await rm(path.join(PROFILE_DIR, 'SingletonSocket'), { force: true }).catch(() => {});
+}
+
 async function assertCooldown() {
   const status = await readStatus().catch(() => null);
   if (!status?.updatedAt || status.status !== 'ok') return;
@@ -222,6 +228,7 @@ async function refreshReutersCookie() {
   const proxy = parseProxyUrl(process.env.SCRAPLING_PROXY_URL || '');
   const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || process.env.CHROMIUM_EXECUTABLE_PATH || '/usr/bin/chromium-browser';
 
+  await removeStaleChromiumLocks();
   await log(`refresh:start proxy=${proxy ? 'SET' : 'EMPTY'} dryRun=${DRY_RUN}`);
 
   const context = await chromium.launchPersistentContext(PROFILE_DIR, {
