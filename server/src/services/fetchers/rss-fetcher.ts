@@ -60,6 +60,15 @@ function envNameForCookieHost(host: string): string {
   return `FETCH_COOKIE_${host.replace(/[^a-z0-9]/gi, '_').toUpperCase()}`;
 }
 
+function decodeBase64EnvValue(value: string): string | null {
+  try {
+    const decoded = Buffer.from(value, 'base64').toString('utf8').trim();
+    return decoded || null;
+  } catch {
+    return null;
+  }
+}
+
 function getConfiguredCookieHeaderForUrl(targetUrl: string): string | null {
   const host = getHostname(targetUrl);
   if (!host) return null;
@@ -76,6 +85,12 @@ function getConfiguredCookieHeaderForUrl(targetUrl: string): string | null {
   for (const name of names) {
     const value = process.env[name]?.trim();
     if (value) return value;
+
+    const encodedValue = process.env[`${name}_B64`]?.trim();
+    if (encodedValue) {
+      const decoded = decodeBase64EnvValue(encodedValue);
+      if (decoded) return decoded;
+    }
   }
   return null;
 }
