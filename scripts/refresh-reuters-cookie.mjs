@@ -1,8 +1,11 @@
 #!/usr/bin/env node
-import { chromium } from 'playwright';
 import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import path from 'node:path';
+
+const requireFromServer = createRequire('/app/server/package.json');
+const { chromium } = requireFromServer('playwright');
 
 const REUTERS_HOME = 'https://www.reuters.com/';
 const DEFAULT_RUNTIME_DIR = process.env.REUTERS_COOKIE_RUNTIME_DIR || '/app/runtime/reuters-cookie';
