@@ -110,6 +110,52 @@ function buildCookieHeader(cookies) {
     .join('; ');
 }
 
+function cookieHeaderToContextCookies(cookieHeader) {
+  return String(cookieHeader || '')
+    .split(';')
+    .map((part) => part.trim())
+    .filter((part) => part.includes('='))
+    .map((part) => {
+      const eq = part.indexOf('=');
+      return {
+        name: part.slice(0, eq).trim(),
+        value: part.slice(eq + 1).trim(),
+        domain: '.reuters.com',
+        path: '/',
+        secure: true,
+        httpOnly: false,
+      };
+    })
+    .filter((cookie) => cookie.name && cookie.value);
+}
+
+async function readEncodedCookieFromFile(filePath) {
+  if (!filePath) return null;
+  try {
+    const encoded = (await readFile(filePath, 'utf8')).trim();
+    const decoded = Buffer.from(encoded, 'base64').toString('utf8').trim();
+    return decoded || null;
+  } catch {
+    return null;
+  }
+}
+
+async function readBootstrapCookieHeader() {
+  const fromFile = await readEncodedCookieFromFile(COOKIE_FILE);
+  if (fromFile) return fromFile;
+
+  const encoded = process.env.REUTERS_COOKIE_HEADER_B64?.trim();
+  if (encoded) {
+    try {
+      const decoded = Buffer.from(encoded, 'base64').toString('utf8').trim();
+      if (decoded) return decoded;
+    } catch {}
+  }
+
+  const plain = process.env.REUTERS_COOKIE_HEADER?.trim();
+  return plain || null;
+}
+
 function isBlockedHtml(html) {
   const lowered = String(html || '').toLowerCase();
   return lowered.includes('datadome') ||
@@ -166,6 +212,13 @@ async function refreshReutersCookie() {
   });
 
   try {
+    const bootstrapCookieHeader = await readBootstrapCookieHeader();
+    const bootstrapCookies = cookieHeaderToContextCookies(bootstrapCookieHeader);
+    if (bootstrapCookies.length > 0) {
+      await context.addCookies(bootstrapCookies);
+      await log(`refresh:bootstrap cookies=${bootstrapCookies.length}`);
+    }
+
     const page = context.pages()[0] || await context.newPage();
     await page.goto(REUTERS_HOME, { waitUntil: 'domcontentloaded', timeout: TIMEOUT_MS });
     await page.waitForTimeout(7000);
