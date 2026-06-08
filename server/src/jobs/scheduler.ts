@@ -180,6 +180,30 @@ function getDomainFromJobUrl(url: string): string {
   }
 }
 
+function parseTimeoutEnv(name: string): number | null {
+  const configured = Number(process.env[name] || 0);
+  if (Number.isFinite(configured) && configured >= 10_000) return configured;
+  return null;
+}
+
+export function getArticleFetchTimeoutMs(job: { url: string }): number {
+  const configured = parseTimeoutEnv('ARTICLE_FETCH_TIMEOUT_MS');
+  if (configured) return configured;
+
+  const domain = getDomainFromJobUrl(job.url);
+  const hardDomains = [
+    'reuters.com',
+    'wsj.com',
+    'bloomberg.com',
+    'ft.com',
+    'economist.com',
+  ];
+  const isHardDomain = hardDomains.some((hardDomain) => domain === hardDomain || domain.endsWith(`.${hardDomain}`));
+  if (isHardDomain) return parseTimeoutEnv('HARD_ARTICLE_FETCH_TIMEOUT_MS') || 360_000;
+
+  return 240_000;
+}
+
 async function runArticleFetchJob() {
   console.log(`[${new Date().toISOString()}] Starting article fetch job...`);
   const limit = parseInt(process.env.MAX_ARTICLE_FETCH_JOBS_PER_RUN || '30');
@@ -215,7 +239,11 @@ async function runArticleFetchJob() {
         throw new Error(`Fetcher ${fetcher.key} does not support article fetch jobs`);
       }
 
-      const articleInput = await fetcher.fetchArticle(job, source);
+      const articleInput = await withTimeout(
+        fetcher.fetchArticle(job, source),
+        getArticleFetchTimeoutMs(job),
+        `Article fetch ${job.url}`
+      );
       if (articleInput) {
         const rescueArticleId = typeof job.payload_json?.rescueArticleId === 'string' ? job.payload_json.rescueArticleId : null;
         if (rescueArticleId) {
