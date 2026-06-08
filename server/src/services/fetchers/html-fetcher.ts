@@ -65,6 +65,26 @@ function scoreArticleLink(url: string, title: string, sourceUrl: string): number
   }
 }
 
+function shouldSkipWebArticleUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.replace(/^www\./, '').toLowerCase();
+    const path = parsed.pathname.toLowerCase();
+
+    // CNN vertical/short videos expose no JSON-LD VideoObject caption URL, unlike
+    // standard CNN video pages. They consistently become 0-character fetch jobs.
+    if ((host === 'cnn.com' || host === 'edition.cnn.com') &&
+        /\/video\//.test(path) &&
+        /(?:^|-)vrtc(?:-|$)/.test(path)) {
+      return true;
+    }
+  } catch {
+    return false;
+  }
+
+  return false;
+}
+
 function collectHeuristicArticleLinks($: cheerio.CheerioAPI, sourceUrl: string, sourceId: string): { sourceId: string; url: string; title: string; payload: any }[] {
   const candidates: { sourceId: string; url: string; title: string; payload: any; score: number }[] = [];
 
@@ -74,6 +94,7 @@ function collectHeuristicArticleLinks($: cheerio.CheerioAPI, sourceUrl: string, 
     try {
       const publicUrl = normalizePublicHttpUrl(new URL(href, sourceUrl).toString());
       if (!publicUrl) return;
+      if (shouldSkipWebArticleUrl(publicUrl)) return;
       const title = $(el).text().replace(/\s+/g, ' ').trim();
       const score = scoreArticleLink(publicUrl, title, sourceUrl);
       if (score < 6) return;
@@ -313,6 +334,10 @@ export const htmlFetcher: SourceFetcher = {
     const config = source.parser_config || {};
     const jobUrl = await normalizePublicHttpUrlWithDns(job.url, false);
     if (!jobUrl) throw new Error('Article URL must be a public http(s) URL');
+    if (shouldSkipWebArticleUrl(jobUrl)) {
+      console.log(`[junk-url] Skipped queued non-article web job ${jobUrl}`);
+      return null;
+    }
 
     const articleBrowserPolicy = getArticleBrowserPolicy(jobUrl);
 

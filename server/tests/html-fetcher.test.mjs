@@ -157,6 +157,65 @@ test('HTML discover allows sitemap-only web sources', async () => {
   assert.equal(items[0].payload.discovery, 'sitemap');
 });
 
+test('HTML discover skips CNN vertical short videos but keeps captionable video URLs', async () => {
+  const { htmlFetcher } = loadTsModule('../src/services/fetchers/html-fetcher.ts', baseStubs, {
+    fetch: async () => ({
+      ok: true,
+      text: async () => `<html><body>
+        <a href="/2026/06/08/world/video/war-divides-lebanese-opinions-hezbollah-digvid-vrtc-lnd">Video War divides Lebanese opinions on Hezbollah 2:18</a>
+        <a href="/2026/06/08/world/video/100-days-war-iran-digvid">100 days in: Trump administration repeatedly vowed war's end is near 1:39</a>
+      </body></html>`,
+    }),
+  });
+
+  const items = await htmlFetcher.discover({
+    id: 'src_cnn',
+    type: 'web',
+    name: 'CNN',
+    url: 'https://edition.cnn.com/world',
+    language: 'en',
+    category: null,
+    fetch_interval_minutes: 60,
+    parser_config: null,
+  });
+
+  assert.equal(items.length, 1);
+  assert.equal(items[0].url, 'https://edition.cnn.com/2026/06/08/world/video/100-days-war-iran-digvid');
+});
+
+test('HTML fetchArticle skips queued CNN vertical short videos before fetch', async () => {
+  let fetchCalled = false;
+  const { htmlFetcher } = loadTsModule('../src/services/fetchers/html-fetcher.ts', baseStubs, {
+    fetch: async () => {
+      fetchCalled = true;
+      throw new Error('should not fetch');
+    },
+    console: { warn: () => {}, log: () => {} },
+  });
+
+  const article = await htmlFetcher.fetchArticle({
+    id: 'job_cnn_vrtc',
+    source_id: 'src_cnn',
+    url: 'https://edition.cnn.com/2026/06/08/world/video/war-divides-lebanese-opinions-hezbollah-digvid-vrtc-lnd',
+    title: 'Video War divides Lebanese opinions on Hezbollah 2:18',
+    external_id: null,
+    published_at: null,
+    payload_json: null,
+  }, {
+    id: 'src_cnn',
+    type: 'web',
+    name: 'CNN',
+    url: 'https://edition.cnn.com/world',
+    language: 'en',
+    category: null,
+    fetch_interval_minutes: 60,
+    parser_config: null,
+  });
+
+  assert.equal(article, null);
+  assert.equal(fetchCalled, false);
+});
+
 test('HTML fetchArticle uses domcontentloaded browser fallback for Yahoo articles', async () => {
   let fallbackOptions;
   const articleHtml = `<html><head>
