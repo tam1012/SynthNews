@@ -209,9 +209,26 @@ function decodeText(value: string): string {
     .trim();
 }
 
+function cleanFeedText(value: string): string {
+  return decodeText(value)
+    .replace(/^<!\[CDATA\[/, '')
+    .replace(/\]\]>$/, '')
+    .trim();
+}
+
 function stripHtml(html: string): string {
   const normalized = html.replace(/^<!\[CDATA\[/, '').replace(/\]\]>$/, '');
   return decodeText(cheerio.load(normalized).text());
+}
+
+function recoverArticleUrlFromFeedContent(link: string, rawContent: string, sourceUrl: string): string {
+  const sourceHost = getHostname(sourceUrl);
+  const shouldRecover = sourceHost === 'hnrss.org' || sourceHost.endsWith('.hnrss.org') || link.includes('news.ycombinator.com/item');
+  if (!shouldRecover || !rawContent) return link;
+
+  const match = stripHtml(rawContent).match(/Article URL:\s*(https?:\/\/\S+?)(?=\s+Comments URL:|\s+Points:|\s+# Comments:|$)/i);
+  const recovered = match ? normalizePublicHttpUrl(match[1]) : null;
+  return recovered || link;
 }
 
 function getText($item: cheerio.Cheerio<any>, selector: string): string {
@@ -803,7 +820,9 @@ export const rssFetcher: SourceFetcher = {
     for (const item of items) {
       const rawItem = item as RssParser.Item & Record<string, any>;
       if (!item.link || !item.title) continue;
-      let url = normalizePublicHttpUrl(item.link);
+      const rawExcerpt = item.contentSnippet || item.content || '';
+      const rawContent = item.content || rawItem['content:encoded'] || '';
+      let url = normalizePublicHttpUrl(recoverArticleUrlFromFeedContent(item.link, rawContent || rawExcerpt, sourceUrl));
       if (!url) continue;
       const googleNewsUrl = isGoogleNewsArticleUrl(url) ? url : null;
 
@@ -831,8 +850,6 @@ export const rssFetcher: SourceFetcher = {
         continue;
       }
 
-      const rawExcerpt = item.contentSnippet || item.content || '';
-      const rawContent = item.content || rawItem['content:encoded'] || '';
       let imageUrl: string | null = null;
       if (item.enclosure?.url) {
         imageUrl = item.enclosure.url;
@@ -844,7 +861,7 @@ export const rssFetcher: SourceFetcher = {
       results.push({
         sourceId: source.id,
         url,
-        title: decodeText(item.title),
+        title: cleanFeedText(item.title),
         externalId: item.guid || null,
         // rss-parser maps RDF/Atom dates (<dc:date>, <published>) to isoDate, NOT
         // pubDate — DW's RSS 1.0 feed leaves pubDate undefined, so read isoDate too
@@ -855,7 +872,7 @@ export const rssFetcher: SourceFetcher = {
           author: item.creator || rawItem.author || null,
           rawExcerpt: stripHtml(rawExcerpt),
           rawContent: stripHtml(rawContent),
-          contentHashSeed: decodeText(item.title) + rawExcerpt,
+          contentHashSeed: cleanFeedText(item.title) + rawExcerpt,
           imageUrl,
           googleNewsUrl,
         },

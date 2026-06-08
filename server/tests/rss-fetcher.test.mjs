@@ -37,6 +37,8 @@ function loadTsModule(relativePath, stubs = {}, globals = {}) {
             const httpUtils = stubs['./http-utils.js'];
             return httpUtils.playwrightFetch(url, playwrightOpts);
           },
+          getScraplingProxyForUrl: () => undefined,
+          isResidentialProxyConfigured: () => false,
         };
       }
       if (stubs[name]) return stubs[name];
@@ -69,6 +71,15 @@ const baseStubs = {
     isWorkerProxyConfigured: () => false,
     shouldSkipWorkerProxy: () => false,
     workerProxyFetch: async () => ({ ok: false }),
+    cookieAwareFetch: async () => ({ ok: false, status: 500, body: '' }),
+  },
+  './registry.js': {
+    isMsnUrl: () => false,
+  },
+  './msn-fetcher.js': {
+    fetchMsnArticleByUrl: async () => null,
+    extractMsnArticleId: () => null,
+    extractMsnGemId: () => null,
   },
   './article-writer.js': { insertArticleIfNew: async () => true, MIN_ARTICLE_TEXT_LENGTH: 500 },
   '../../lib/promoFilter.js': { matchPromoKeyword: () => null },
@@ -77,6 +88,7 @@ const baseStubs = {
     hostedFetch: async () => { throw new Error('Hosted fetch unavailable'); },
     shouldUseHostedFetch: () => false,
     hasHostedFetchKey: () => false,
+    isDataDomeHost: () => false,
     HostedFetchUnavailableError: class HostedFetchUnavailableError extends Error {},
   },
   './structured-data.js': { extractStructuredArticle: () => null },
@@ -139,6 +151,23 @@ const googleNewsRss = `<?xml version="1.0" encoding="UTF-8"?>
       <link>https://news.google.com/rss/articles/CBMi-test?oc=5</link>
       <guid isPermaLink="false">google/example</guid>
       <description>Google News excerpt</description>
+    </item>
+  </channel>
+</rss>`;
+
+const malformedHackerNewsRss = `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <channel>
+    <item>
+      <title><![CDATA[Powering up a module from the IBM 604]]></title>
+      <description><![CDATA[
+        <p>Article URL: <a href="https://www.righto.com/2026/06/ibm-604-thyraton-tube-module.html">https://www.righto.com/2026/06/ibm-604-thyraton-tube-module.html</a></p>
+        <p>Comments URL: <a href="https://news.ycombinator.com/item?id=48436819">https://news.ycombinator.com/item?id=48436819</a></p>
+      ]]></description>
+      <pubDate>Sun, 07 Jun 2026 17:18:12 +0000</pubDate>
+      <link>https://www.righto.com/2026/06/ibm-604-thyraton-tube-module.htmlelpockohttps://news.ycombinator.com/item?id=48436819https%3A%2F%2Fnews.ycombinator.com%2Fitem%3Fid%3D48436819</link>
+      <dc:creator>elpocko</dc:creator>
+      <guid isPermaLink="false">https://news.ycombinator.com/item?id=48436819</guid>
     </item>
   </channel>
 </rss>`;
@@ -218,6 +247,37 @@ test('RSS discover decodes Google News URLs before enqueueing', async () => {
   assert.equal(items.length, 1);
   assert.equal(items[0].url, 'https://www.apnews.com/world/example');
   assert.equal(items[0].payload.googleNewsUrl, 'https://news.google.com/rss/articles/CBMi-test?oc=5');
+});
+
+test('RSS discover recovers clean Hacker News article URLs from description when fallback link text is polluted', async () => {
+  const { rssFetcher } = loadTsModule('../src/services/fetchers/rss-fetcher.ts', {
+    ...baseStubs,
+    'rss-parser': {
+      default: class StrictParser {
+        async parseString() {
+          throw new Error('force tolerant parser');
+        }
+      },
+    },
+  }, {
+    fetch: async () => ({ ok: true, text: async () => malformedHackerNewsRss }),
+  });
+
+  const items = await rssFetcher.discover({
+    id: 'src_hn',
+    type: 'rss',
+    name: 'Hacker News',
+    url: 'https://hnrss.org/frontpage',
+    language: 'en',
+    category: null,
+    fetch_interval_minutes: 60,
+    parser_config: null,
+  });
+
+  assert.equal(items.length, 1);
+  assert.equal(items[0].title, 'Powering up a module from the IBM 604');
+  assert.equal(items[0].url, 'https://www.righto.com/2026/06/ibm-604-thyraton-tube-module.html');
+  assert.equal(items[0].externalId, 'https://news.ycombinator.com/item?id=48436819');
 });
 
 test('RSS discover skips blocked Google News publisher domains after decode', async () => {
