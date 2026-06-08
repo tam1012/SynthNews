@@ -70,8 +70,9 @@ Project này được thiết kế cho nhu cầu tự host cá nhân: ít thao t
 - **Web source không cần selector thủ công**: nguồn web chỉ cần URL section (vd `https://www.reuters.com/world/`) là cào được — html-fetcher tự động dùng heuristic link scoring + sitemap discovery, không bắt buộc `articleLinkSelector` trong `parser_config` nữa.
 - **Content extraction 3 tầng**: AI selector → cheerio CSS selectors → Mozilla Readability fallback.
 - **Quality gate**: chặn insert bài có content quá ngắn trước khi vào DB, tránh tạo summary rỗng.
-- **Fetch fallback nhiều tầng**: HTTP native → Cloudflare Worker proxy → Scrapling stealth browser sidecar → Scrapling + residential proxy (domain-gated) → **hosted fetch chain** (ScrapingAnt → Scrape.do → Firecrawl). Mỗi tầng tự kích hoạt khi tầng trước bị block/timeout.
-- **Block-triggered escalation**: bất kỳ site nào fail hết các tầng free *vì bị anti-bot chặn* (HTTP 4xx hoặc trang challenge Cloudflare/DataDome) sẽ tự động nhảy lên hosted fetch — không cần thêm domain bằng tay. Bài ngắn thật/404 thì KHÔNG escalate, để tiết kiệm credit. `HOSTED_FETCH_DOMAINS` (kế thừa `FIRECRAWL_DOMAINS`) còn dùng làm allowlist chủ động cho các site cứng (Reuters, Bloomberg).
+- **Fetch fallback nhiều tầng**: HTTP native → Googlebot UA → cookie-aware redirect fetch → Cloudflare Worker proxy → Scrapling stealth browser sidecar → Scrapling + residential proxy → Scrapling + residential proxy + Cloudflare solve → configured cookie + residential proxy → archive.today cho paywall → **hosted fetch chain**. Mỗi tầng tự kích hoạt khi tầng trước bị block/timeout.
+- **Reuters/DataDome thực tế**: Reuters ưu tiên dùng residential proxy kèm cookie/header được warm từ browser profile trên VPS. Cookie runtime nằm trong Docker volume `reuters_cookie_runtime`; worker `reuters-cookie-refresh` tự refresh/verify định kỳ, còn service thủ công `reuters-profile-browser` chỉ mở khi cần anh solve DataDome/captcha lại qua noVNC.
+- **Block-triggered escalation**: bất kỳ site nào fail hết các tầng free *vì bị anti-bot chặn* (HTTP 4xx hoặc trang challenge Cloudflare/DataDome) sẽ tự động nhảy lên hosted fetch — không cần thêm domain bằng tay. Bài ngắn thật/404 thì KHÔNG escalate, để tiết kiệm credit. `HOSTED_FETCH_DOMAINS` (kế thừa `FIRECRAWL_DOMAINS`) còn dùng làm allowlist chủ động cho các site cứng.
 - **Rate limiting**: per-domain throttle 10s giữa các request cùng domain, 1.5s giữa domain khác nhau. Configurable qua `FETCH_PER_DOMAIN_DELAY_MS`.
 - **Rescue job**: tự tìm bài cũ bị skipped vì thiếu content, requeue fetch lại và cập nhật article gốc.
 - GitHub Trending scraper riêng.
@@ -143,7 +144,7 @@ Backend:
 - cheerio
 - Scrapling Python sidecar (stealth browser fetch, Cloudflare bypass)
 - playwright (fallback khi Scrapling unavailable)
-- Hosted fetch chain: ScrapingAnt + Scrape.do + Firecrawl (fallback API thương mại, free tier, vượt DataDome/Cloudflare)
+- Hosted fetch chain: ScrapingAnt + Scrape.do + Firecrawl, riêng DataDome dùng Scrape.do → Firecrawl → ScrapingAnt residential; Reuters hiện ưu tiên cookie warm + residential proxy trước khi dùng hosted provider.
 - @mozilla/readability + jsdom (content extraction fallback)
 - sharp (image processing)
 
@@ -231,12 +232,12 @@ DevOps:
 │   │   │       ├── article-writer.ts     # DB insert + quality gate
 │   │   │       ├── http-utils.ts         # HTTP fetch + Playwright fallback
 │   │   │       ├── scrapling-fetch.ts    # Scrapling sidecar client + fallback (+ residential proxy passthrough)
-│   │   │       ├── hosted-fetch.ts        # Hosted fetch chain (ScrapingAnt → Scrape.do → Firecrawl)
+│   │   │       ├── hosted-fetch.ts        # Hosted fetch chain; DataDome dùng Scrape.do → Firecrawl → ScrapingAnt residential
 │   │   │       ├── registry.ts           # Fetcher routing
 │   │   │       └── types.ts
 │   │   └── index.ts                # Server entry point
 │   └── tests/                      # 16 test files (58 tests)
-├── scripts/                        # Local dev helpers
+├── scripts/                        # Local dev/helpers, gồm Reuters cookie refresh/warm profile scripts
 ├── Dockerfile
 ├── docker-compose.yml
 ├── nginx-synthnews.conf            # Nginx config mẫu
@@ -510,14 +511,21 @@ Biến quan trọng:
 | `SCRAPLING_TIMEOUT_MS` | Timeout cho Scrapling requests, mặc định `60000` |
 | `SCRAPLING_PROXY_URL` | Residential/rotating proxy cho các domain bị chặn cứng, route qua Scrapling. Format `http://user:pass@host:port`, optional |
 | `SCRAPLING_PROXY_DOMAINS` | Allowlist host dùng residential proxy (comma-separated), để không tốn băng thông proxy cho site chạy tốt từ IP VPS |
+| `REUTERS_COOKIE_HEADER_B64_FILE` | File base64 cookie/header runtime cho Reuters, mặc định `/app/runtime/reuters-cookie/reuters-cookie.b64` trong shared Docker volume |
+| `REUTERS_COOKIE_HEADER_B64` | Cookie/header Reuters base64 tĩnh để bootstrap lần đầu; runtime file sẽ được ưu tiên hơn khi có |
+| `REUTERS_COOKIE_REFRESH_INTERVAL_SECONDS` | Chu kỳ worker refresh/verify Reuters cookie, mặc định `21600` giây |
+| `REUTERS_COOKIE_REFRESH_COOLDOWN_SECONDS` | Cooldown tránh refresh quá dày sau lần verify OK, mặc định `900` giây |
+| `REUTERS_COOKIE_VERIFY_URL` | URL dùng để verify Reuters cookie, mặc định `https://www.reuters.com/world/` |
 | `SCRAPINGANT_API_KEY` | API key ScrapingAnt (hosted fetch, free ~10k credit/tháng), optional |
 | `SCRAPINGANT_MAX_PER_DAY` | Trần số request ScrapingAnt mỗi 24 giờ, mặc định `300` |
+| `SCRAPINGANT_RESIDENTIAL_MAX_PER_DAY` | Trần riêng cho ScrapingAnt residential, mặc định `15`; chỉ dùng cuối chain cho DataDome |
 | `SCRAPEDO_API_KEY` | API key Scrape.do (hosted fetch, free ~1k credit/tháng), optional |
 | `SCRAPEDO_MAX_PER_DAY` | Trần số request Scrape.do mỗi 24 giờ, mặc định `30` |
-| `FIRECRAWL_API_KEY` | API key Firecrawl (hosted fetch, mạnh nhất với DataDome), optional |
+| `FIRECRAWL_API_KEY` | API key Firecrawl, một provider trong hosted fetch chain, optional |
 | `FIRECRAWL_API_URL` | Base URL Firecrawl, mặc định `https://api.firecrawl.dev` |
 | `FIRECRAWL_MAX_PER_DAY` | Trần số request Firecrawl mỗi 24 giờ, mặc định `30` |
 | `HOSTED_FETCH_DOMAINS` | Allowlist host luôn thử hosted fetch chủ động (comma-separated), kế thừa `FIRECRAWL_DOMAINS` |
+| `DATADOME_DOMAINS` | Host DataDome/hard-bot, mặc định `reuters.com,bloomberg.com`; hosted chain riêng và logic cookie/proxy dựa vào danh sách này |
 | `FETCH_PER_DOMAIN_DELAY_MS` | Delay tối thiểu giữa requests cùng domain, mặc định `10000` |
 | `BLOCKED_DOMAINS` | Danh sách domain bị chặn (comma-separated), override default nếu set |
 | `MIN_ARTICLE_TEXT_LENGTH` | Ngưỡng tối thiểu content để insert article, mặc định `500` chars |
@@ -791,6 +799,90 @@ Forum rescrape:
 - Mỗi bài rescrape tối đa 2 lần qua `rescraped_count`.
 - Nếu content đổi, reset `summary_status = 'pending'` để AI tóm tắt lại.
 
+## Luồng Fetch Các Nguồn Hiện Tại
+
+### RSS article detail
+
+`server/src/services/fetchers/rss-fetcher.ts` là pipeline chính cho bài lấy từ RSS. Thứ tự hiện tại:
+
+1. Native HTTP với browser headers và random UA.
+2. Native HTTP với Googlebot UA.
+3. Cookie-aware redirect fetch cho site cần giữ `Set-Cookie` qua 302.
+4. Cloudflare Worker generic proxy nếu `WORKER_PROXY_URL` được cấu hình và domain không nằm trong `WORKER_PROXY_SKIP_DOMAINS`.
+5. Scrapling stealth sidecar.
+6. Scrapling stealth qua residential proxy nếu các tầng trước bị block và host chưa nằm trong proxy allowlist.
+7. Scrapling residential proxy + Cloudflare solve cho Cloudflare challenge thường.
+8. Configured cookie + residential proxy, dùng cho Reuters/DataDome khi có cookie runtime/env.
+9. archive.today cho domain paywall nằm trong `PAYWALL_ARCHIVE_DOMAINS`.
+10. Hosted fetch chain nếu domain nằm trong `HOSTED_FETCH_DOMAINS` hoặc các tầng free bị anti-bot block.
+
+Pipeline chỉ escalate lên tầng tốn tiền khi detect block thật (`401`, `403`, `429`, DataDome/Cloudflare challenge HTML). Trang 404 hoặc bài quá ngắn thật không tự đốt credit.
+
+### Reuters/DataDome
+
+Reuters không còn phụ thuộc chính vào Scrape.do/ScrapingAnt/Firecrawl. Đường ưu tiên hiện tại là:
+
+```text
+RSS URL -> fetch detail -> configured Reuters cookie/header -> Scrapling sidecar -> residential proxy -> extract article
+```
+
+Cookie/header Reuters được quản lý bằng Docker volume `reuters_cookie_runtime`:
+
+- File runtime trong container: `/app/runtime/reuters-cookie/reuters-cookie.b64`.
+- App đọc `REUTERS_COOKIE_HEADER_B64_FILE` trước, rồi mới tới `REUTERS_COOKIE_HEADER_B64` và `REUTERS_COOKIE_HEADER`.
+- Worker `reuters-cookie-refresh` chạy định kỳ, mở Chromium persistent profile qua residential proxy, verify `REUTERS_COOKIE_VERIFY_URL`, rồi ghi cookie mới nếu `status=200` và không bị block.
+- Service `reuters-profile-browser` có profile `manual`, chỉ bật khi cần người vận hành mở noVNC và solve Reuters/DataDome/captcha trong đúng browser profile trên VPS.
+- Không tự đọc cookie từ Chrome local. Nếu cần bootstrap thủ công, operator tự export cookie và set bằng env/file base64.
+
+Runbook warm lại Reuters khi bị block:
+
+```bash
+cd /home/ubuntu/newstamhv
+docker compose stop reuters-cookie-refresh
+docker compose --profile manual up -d --force-recreate reuters-profile-browser
+```
+
+Tạo SSH tunnel từ máy local:
+
+```bash
+ssh -i "<path-to-key>" -N -L 6080:127.0.0.1:6080 ubuntu@<vps-host>
+```
+
+Mở `http://127.0.0.1:6080/vnc.html`, bấm Connect, vào Reuters và xử lý consent/captcha nếu có. Sau khi Reuters vào được bình thường:
+
+```bash
+docker compose --profile manual stop reuters-profile-browser
+docker compose up -d reuters-cookie-refresh
+docker compose logs --tail=120 reuters-cookie-refresh
+```
+
+Log OK cần thấy:
+
+```text
+refresh:profile cookies=SET length=...
+refresh:ok cookieHeaderLength=... verifyStatus=200
+```
+
+Nếu thấy `verify failed status=401 blocked=true`, profile/cookie đã bị Reuters/DataDome reject và cần warm lại qua noVNC.
+
+### Hosted fetch
+
+`server/src/services/fetchers/hosted-fetch.ts` là tầng cuối khi các tầng self-hosted bị chặn hoặc domain được allowlist chủ động.
+
+- Host thường: ScrapingAnt datacenter → Scrape.do → Firecrawl.
+- Host DataDome (`DATADOME_DOMAINS`, mặc định Reuters/Bloomberg): Scrape.do → Firecrawl → ScrapingAnt residential.
+- Provider không có key hoặc vượt `*_MAX_PER_DAY` sẽ bị skip.
+- Provider trả challenge/empty/429/lỗi sẽ fall through sang provider tiếp theo.
+
+Reuters vẫn có thể rơi xuống hosted fetch nếu nhánh cookie + residential proxy thất bại, nhưng mục tiêu vận hành hiện tại là dùng warm cookie để giảm phụ thuộc vào hosted providers.
+
+### Web source, GitHub, Reddit, VOZ
+
+- Web source thường đi qua `html-fetcher.ts`: fetch section page, heuristic link scoring + sitemap discovery, selector profile cache, rồi article detail đi qua pipeline phía trên.
+- GitHub Trending có fetcher riêng: ưu tiên native/raw README, fallback Scrapling khi GitHub page không parse được.
+- Reddit có fetcher riêng, ưu tiên OAuth nếu đủ env; nếu không thì RSS/comment feed/Scrapling/proxy/archive fallback.
+- VOZ có fetcher riêng, dùng RSS thread list + Scrapling stealth để mở thread/pagination, sau đó parse comment bằng Cheerio.
+
 ## Scraping Reddit Và VOZ
 
 ### Reddit
@@ -875,8 +967,9 @@ Nếu dùng domain riêng (không phải domain mẫu trong repo), cập nhật 
 - Nếu AI provider trả summary không có `<tldr>`, bài vẫn có summary nhưng list preview sẽ fallback sang excerpt/summary.
 - Nếu source Reddit/VOZ thiếu comment lúc mới scrape, forum rescrape và retry job sẽ có cơ hội cập nhật lại trong vài giờ đầu.
 - `reddit-proxy-worker.js` trong repo là Cloudflare Worker dùng bypass Reddit IP block. Deploy lên Cloudflare Workers rồi set `REDDIT_PROXY_URL` nếu cần; Worker secret `PROXY_TOKEN` phải trùng với app env `WORKER_PROXY_TOKEN`.
-- `fetch-proxy-worker.js` là generic Cloudflare Worker proxy cho các domain bị block IP datacenter (Yahoo, NYT, Reuters, v.v.). Deploy rồi set `WORKER_PROXY_URL` và `WORKER_PROXY_TOKEN`.
+- `fetch-proxy-worker.js` là generic Cloudflare Worker proxy cho các domain bị block IP datacenter (Yahoo, NYT, v.v.). Deploy rồi set `WORKER_PROXY_URL` và `WORKER_PROXY_TOKEN`. Reuters hiện ưu tiên warm cookie + residential proxy; Worker chỉ là tầng phụ nếu được cấu hình.
 - `voz-proxy-worker.js` là Cloudflare Worker proxy cho VOZ (bypass Cloudflare-to-Cloudflare challenge); Worker secret `PROXY_TOKEN` phải trùng với app env `WORKER_PROXY_TOKEN`.
-- `reuters-proxy-worker.js` là Cloudflare Worker proxy riêng cho Reuters; Worker secret `PROXY_TOKEN` phải trùng với app env `WORKER_PROXY_TOKEN`.
-- **Hosted fetch chain** (`server/src/services/fetchers/hosted-fetch.ts`): tầng fetch cuối khi mọi tầng free bị anti-bot chặn. Thử lần lượt theo thứ tự nhiều credit free nhất trước: ScrapingAnt (~10k/tháng) → Scrape.do (~1k/tháng) → Firecrawl (~1k/tháng, mạnh nhất với DataDome như Reuters). Provider nào không có key hoặc chạm trần `*_MAX_PER_DAY` (rolling 24 giờ) thì bị bỏ qua; provider trả 429/lỗi/trang rỗng thì nhảy provider kế. Tên provider thắng được ghi vào `metadata.extractor` của bài. Thêm key mới chỉ cần set env, không phải sửa code.
+- `reuters-proxy-worker.js` là Cloudflare Worker proxy riêng cho Reuters; Worker secret `PROXY_TOKEN` phải trùng với app env `WORKER_PROXY_TOKEN`. Hiện đây không phải đường chính cho Reuters vì DataDome cần cookie/profile hợp lệ.
+- **Reuters cookie refresh**: kiểm tra bằng `docker compose logs --tail=120 reuters-cookie-refresh`. Trạng thái tốt là `refresh:ok ... verifyStatus=200`; nếu `status.json` báo `blocked=true` hoặc `status=401`, mở `reuters-profile-browser` theo runbook trong mục "Luồng Fetch Các Nguồn Hiện Tại".
+- **Hosted fetch chain** (`server/src/services/fetchers/hosted-fetch.ts`): tầng fetch cuối khi mọi tầng free/self-hosted bị anti-bot chặn. Host thường thử ScrapingAnt datacenter → Scrape.do → Firecrawl. DataDome hosts thử Scrape.do → Firecrawl → ScrapingAnt residential. Provider nào không có key hoặc chạm trần `*_MAX_PER_DAY` (rolling 24 giờ) thì bị bỏ qua; provider trả 429/lỗi/trang rỗng/challenge thì nhảy provider kế. Tên provider thắng được ghi vào `metadata.extractor` của bài. Thêm key mới chỉ cần set env, không phải sửa code.
 - **Blocklist**: quản lý URL/domain patterns bị chặn qua `/api/blocklist`. Bài từ URL match pattern sẽ bị skip ở bước discover và fetch.
