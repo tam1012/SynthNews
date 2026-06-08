@@ -240,17 +240,22 @@ async function refreshReutersCookie() {
   });
 
   try {
-    const bootstrapCookieHeader = await readBootstrapCookieHeader();
-    const bootstrapCookies = cookieHeaderToContextCookies(bootstrapCookieHeader);
-    if (bootstrapCookies.length > 0) {
-      let acceptedCookies = 0;
-      for (const cookie of bootstrapCookies) {
-        try {
-          await context.addCookies([cookie]);
-          acceptedCookies += 1;
-        } catch {}
+    const profileCookieHeader = buildCookieHeader(await context.cookies(REUTERS_HOME).catch(() => []));
+    if (profileCookieHeader.length >= MIN_COOKIE_HEADER_LENGTH) {
+      await log(`refresh:profile cookies=SET length=${profileCookieHeader.length}`);
+    } else {
+      const bootstrapCookieHeader = await readBootstrapCookieHeader();
+      const bootstrapCookies = cookieHeaderToContextCookies(bootstrapCookieHeader);
+      if (bootstrapCookies.length > 0) {
+        let acceptedCookies = 0;
+        for (const cookie of bootstrapCookies) {
+          try {
+            await context.addCookies([cookie]);
+            acceptedCookies += 1;
+          } catch {}
+        }
+        await log(`refresh:bootstrap cookies=${acceptedCookies}/${bootstrapCookies.length}`);
       }
-      await log(`refresh:bootstrap cookies=${acceptedCookies}/${bootstrapCookies.length}`);
     }
 
     const page = context.pages()[0] || await context.newPage();
