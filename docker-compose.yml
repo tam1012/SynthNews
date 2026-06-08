@@ -158,6 +158,37 @@ services:
           sleep "$${REUTERS_COOKIE_REFRESH_INTERVAL_SECONDS:-21600}"
         done
 
+  reuters-profile-browser:
+    build: .
+    container_name: newstamhv-reuters-profile-browser
+    restart: "no"
+    profiles: ["manual"]
+    security_opt:
+      - no-new-privileges:true
+    shm_size: "1gb"
+    environment:
+      TZ: Asia/Ho_Chi_Minh
+      NODE_ENV: production
+      DISPLAY: :99
+      PUPPETEER_EXECUTABLE_PATH: /usr/bin/chromium-browser
+      SCRAPLING_PROXY_URL: ${SCRAPLING_PROXY_URL:-}
+      REUTERS_COOKIE_RUNTIME_DIR: ${REUTERS_COOKIE_RUNTIME_DIR:-/app/runtime/reuters-cookie}
+      REUTERS_COOKIE_PROFILE_DIR: ${REUTERS_COOKIE_PROFILE_DIR:-/app/runtime/reuters-cookie/profile}
+    ports:
+      - "127.0.0.1:6080:6080"
+    volumes:
+      - reuters_cookie_runtime:/app/runtime/reuters-cookie
+    command:
+      - sh
+      - -c
+      - |
+        rm -f /tmp/.X99-lock
+        Xvfb :99 -screen 0 1365x900x24 -nolisten tcp &
+        fluxbox >/tmp/fluxbox.log 2>&1 &
+        x11vnc -display :99 -forever -shared -nopw -listen 127.0.0.1 -rfbport 5900 >/tmp/x11vnc.log 2>&1 &
+        websockify --web /usr/share/novnc 0.0.0.0:6080 127.0.0.1:5900 >/tmp/novnc.log 2>&1 &
+        node /app/scripts/open-reuters-profile-browser.mjs
+
 volumes:
   pgdata:
   reuters_cookie_runtime:
