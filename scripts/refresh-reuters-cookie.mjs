@@ -110,8 +110,33 @@ function buildCookieHeader(cookies) {
     .join('; ');
 }
 
+function normalizeCookieHeader(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+
+  const lines = raw.split(/\r?\n/).map((line) => line.trim());
+  const cookieHeaderLine = lines.find((line) => /^cookie\s*:/i.test(line));
+  if (cookieHeaderLine) return cookieHeaderLine.replace(/^cookie\s*:\s*/i, '').trim();
+
+  const markerIndex = lines.findIndex((line) => /^cookie$/i.test(line));
+  if (markerIndex >= 0) {
+    const cookieLines = [];
+    for (const line of lines.slice(markerIndex + 1)) {
+      if (!line) {
+        if (cookieLines.length > 0) break;
+        continue;
+      }
+      if (/^[a-z][a-z0-9-]*$/i.test(line) && cookieLines.length > 0) break;
+      cookieLines.push(line);
+    }
+    if (cookieLines.length > 0) return cookieLines.join(' ').trim();
+  }
+
+  return lines.find((line) => line.includes(';') && line.includes('=')) || raw;
+}
+
 function cookieHeaderToContextCookies(cookieHeader) {
-  return String(cookieHeader || '')
+  return normalizeCookieHeader(cookieHeader)
     .split(';')
     .map((part) => part.trim())
     .filter((part) => part.includes('='))
