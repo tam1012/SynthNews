@@ -96,7 +96,7 @@ const baseStubs = {
     isDataDomeHost: () => false,
     HostedFetchUnavailableError: class HostedFetchUnavailableError extends Error {},
   },
-  './structured-data.js': { extractStructuredArticle: () => null },
+  './structured-data.js': { extractStructuredArticle: () => null, extractStructuredVideo: async () => null },
   './archive-fetch.js': {
     archiveTodayFetch: async () => '',
     shouldUseArchiveFallback: () => false,
@@ -394,6 +394,51 @@ test('RSS fetchArticle uses RSS snippet fallback when full article fetch fails',
   assert.equal(article.rawContent, longSnippet);
   assert.equal(article.metadata.extractor, 'rss:snippet-fallback');
   assert.equal(article.metadata.googleNewsUrl, 'https://news.google.com/rss/articles/CBMi-test?oc=5');
+});
+
+test('RSS fetchArticle marks structured caption recovery as video content', async () => {
+  const transcript = 'Caption transcript text. '.repeat(40);
+  const { rssFetcher } = loadTsModule('../src/services/fetchers/rss-fetcher.ts', {
+    ...baseStubs,
+    './structured-data.js': {
+      extractStructuredArticle: () => null,
+      extractStructuredVideo: async () => ({
+        title: 'CNN video title',
+        description: 'CNN video description.',
+        transcript,
+        datePublished: '2026-06-07T16:00:54.785Z',
+        imageUrl: 'https://media.cnn.com/video.jpg',
+        captionUrl: 'https://media.cnn.com/caption.vtt',
+      }),
+    },
+  }, {
+    fetch: async () => ({ ok: true, text: async () => '<html><body></body></html>' }),
+    console: { warn: () => {}, log: () => {} },
+  });
+
+  const article = await rssFetcher.fetchArticle({
+    id: 'job_cnn_video',
+    source_id: 'src_cnn',
+    url: 'https://example.com/2026/06/07/world/story-with-embedded-video',
+    title: 'CNN video title 3:04',
+    external_id: 'cnn/video',
+    published_at: null,
+    payload_json: { rawExcerpt: '', rawContent: '' },
+  }, {
+    id: 'src_cnn',
+    type: 'rss',
+    name: 'CNN',
+    url: 'https://edition.cnn.com/rss',
+    language: 'en',
+    category: null,
+    fetch_interval_minutes: 60,
+    parser_config: null,
+  });
+
+  assert.equal(article.contentType, 'video');
+  assert.equal(article.title, 'CNN video title');
+  assert.equal(article.rawContent, transcript);
+  assert.equal(article.metadata.extractor, 'fetch:structured-video-caption');
 });
 
 test('RSS fetchArticle passes lightweight browser options for anti-bot-light domains', async () => {

@@ -9,7 +9,7 @@ import { matchPromoKeyword } from '../../lib/promoFilter.js';
 import { BROWSER_UA, GOOGLEBOT_UA, browserHeaders, randomUA, playwrightFetch, isBlockedHtml, workerProxyFetch, isWorkerProxyConfigured, shouldSkipWorkerProxy, WorkerProxyUnavailableError, cookieAwareFetch } from './http-utils.js';
 import { scraplingFetchWithFallback, getScraplingProxyForUrl, isResidentialProxyConfigured } from './scrapling-fetch.js';
 import { hostedFetch, shouldUseHostedFetch, hasHostedFetchKey, isDataDomeHost } from './hosted-fetch.js';
-import { extractStructuredArticle } from './structured-data.js';
+import { extractStructuredArticle, extractStructuredVideo } from './structured-data.js';
 import { archiveTodayFetch, shouldUseArchiveFallback } from './archive-fetch.js';
 import { insertArticleIfNew, MIN_ARTICLE_TEXT_LENGTH } from './article-writer.js';
 import { isMsnUrl } from './registry.js';
@@ -479,6 +479,22 @@ async function extractArticleFromHtml(html: string, jobUrl: string, extractor: s
     if (readabilityContent.length > content.length) {
       content = readabilityContent;
     }
+  }
+
+  const structuredVideo = await extractStructuredVideo(html);
+  if (structuredVideo?.transcript) {
+    return {
+      title: structuredVideo.title || title,
+      content: structuredVideo.transcript,
+      imageUrl: structuredVideo.imageUrl ? normalizePublicHttpUrl(new URL(structuredVideo.imageUrl, jobUrl).toString()) : imageUrl,
+      publishedAt: normalizeDate(structuredVideo.datePublished || publishedAt, defaultTimezone),
+      metadata: {
+        extractor: `${extractor}:structured-video-caption`,
+        contentType: 'video',
+        captionUrl: structuredVideo.captionUrl,
+        description: structuredVideo.description || '',
+      },
+    };
   }
 
   // Structured-data fallback: soft-paywall sites (Wired/Condé Nast, many Next.js
@@ -1067,6 +1083,7 @@ export const rssFetcher: SourceFetcher = {
     const snippetFallbackContent = fullArticle ? null : buildSnippetFallbackContent(rssContent, rssExcerpt, policy.snippetFallbackMinLength);
     const rawContent = fullContent.length > rssContent.length ? fullContent : (snippetFallbackContent || rssContent);
     const rawExcerpt = rawContent ? truncate(rawContent, 500) : rssExcerpt;
+    const isVideoContent = fullArticle?.metadata?.contentType === 'video';
 
     return {
       source,
@@ -1084,6 +1101,7 @@ export const rssFetcher: SourceFetcher = {
       rawContent,
       contentHashSeed: `${fullArticle?.title || job.title}${rawContent || rssExcerpt}`,
       imageUrl: fullArticle?.imageUrl || payload.imageUrl || null,
+      contentType: isVideoContent ? 'video' : 'article',
       metadata: fullArticle?.metadata || (snippetFallbackContent ? {
         extractor: 'rss:snippet-fallback',
         fullArticleError,

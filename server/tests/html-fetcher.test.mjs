@@ -74,7 +74,7 @@ const baseStubs = {
     isDataDomeHost: () => false,
     HostedFetchUnavailableError: class HostedFetchUnavailableError extends Error {},
   },
-  './structured-data.js': { extractStructuredArticle: () => null },
+  './structured-data.js': { extractStructuredArticle: () => null, extractStructuredVideo: async () => null },
   './archive-fetch.js': {
     archiveTodayFetch: async () => '',
     shouldUseArchiveFallback: () => false,
@@ -243,4 +243,64 @@ test('HTML fetchArticle prefers queued title over generic Yahoo page title', asy
   });
 
   assert.equal(article.title, 'Walmart is changing what people see and buy');
+});
+
+test('HTML fetchArticle recovers video transcript from structured video metadata', async () => {
+  const articleHtml = `<html><head>
+    <title>CNN video shell</title>
+  </head><body><main></main></body></html>`;
+  const transcript = 'CNN video transcript sentence. '.repeat(40);
+  let aiSelectorCalled = false;
+
+  const { htmlFetcher } = loadTsModule('../src/services/fetchers/html-fetcher.ts', {
+    ...baseStubs,
+    './structured-data.js': {
+      extractStructuredArticle: () => null,
+      extractStructuredVideo: async () => ({
+        title: 'CNN speaks with Iranian Foreign Ministry spokesperson',
+        description: 'Iran video description.',
+        transcript,
+        datePublished: '2026-06-07T16:00:54.785Z',
+        imageUrl: 'https://media.cnn.com/video.jpg',
+        captionUrl: 'https://media.cnn.com/caption.vtt',
+      }),
+    },
+    './selector-profile.js': {
+      ...baseStubs['./selector-profile.js'],
+      getDomainFromUrl: () => {
+        aiSelectorCalled = true;
+        return 'cnn.com';
+      },
+    },
+  }, {
+    fetch: async () => ({ ok: true, text: async () => articleHtml }),
+    console: { warn: () => {}, log: () => {} },
+  });
+
+  const article = await htmlFetcher.fetchArticle({
+    id: 'job_cnn_video',
+    source_id: 'src_cnn',
+    url: 'https://edition.cnn.com/2026/06/07/world/video/iran-foreign-ministry-spokesperson-cnn-intldsk',
+    title: 'CNN speaks with Iranian Foreign Ministry spokesperson 3:04',
+    external_id: null,
+    published_at: null,
+    payload_json: null,
+  }, {
+    id: 'src_cnn',
+    type: 'web',
+    name: 'CNN',
+    url: 'https://edition.cnn.com/world',
+    language: 'en',
+    category: null,
+    fetch_interval_minutes: 60,
+    parser_config: null,
+  });
+
+  assert.equal(article.contentType, 'video');
+  assert.equal(article.title, 'CNN speaks with Iranian Foreign Ministry spokesperson');
+  assert.equal(article.publishedAt, '2026-06-07T16:00:54.785Z');
+  assert.equal(article.imageUrl, 'https://media.cnn.com/video.jpg');
+  assert.match(article.rawContent, /CNN video transcript sentence/);
+  assert.equal(article.metadata.extractor, 'structured-video-caption');
+  assert.equal(aiSelectorCalled, false);
 });

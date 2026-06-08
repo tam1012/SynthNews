@@ -5,7 +5,7 @@ import { browserHeaders, isBlockedHtml, randomUA, playwrightFetch, workerProxyFe
 import { scraplingFetchWithFallback, getScraplingProxyForUrl, isResidentialProxyConfigured } from './scrapling-fetch.js';
 import { hostedFetch, shouldUseHostedFetch, hasHostedFetchKey, isDataDomeHost } from './hosted-fetch.js';
 import { archiveTodayFetch, shouldUseArchiveFallback } from './archive-fetch.js';
-import { extractStructuredArticle } from './structured-data.js';
+import { extractStructuredArticle, extractStructuredVideo } from './structured-data.js';
 import { insertArticleIfNew } from './article-writer.js';
 import type { DiscoveredArticle } from '../article-fetch-queue.js';
 import { SourceFetcher } from './types.js';
@@ -446,6 +446,30 @@ export const htmlFetcher: SourceFetcher = {
           }
         }
       }
+    }
+
+    const structuredVideo = await extractStructuredVideo(articleHtml);
+    if (structuredVideo) {
+      const title = structuredVideo.title || job.title;
+      const description = structuredVideo.description || '';
+      const rawContent = structuredVideo.transcript || description;
+      const excerpt = truncate(description || rawContent, 500);
+      return {
+        source,
+        url: jobUrl,
+        title,
+        publishedAt: structuredVideo.datePublished || job.published_at,
+        rawExcerpt: excerpt,
+        rawContent,
+        contentHashSeed: title + rawContent,
+        imageUrl: structuredVideo.imageUrl,
+        contentType: 'video',
+        metadata: {
+          extractor: 'structured-video-caption',
+          captionUrl: structuredVideo.captionUrl,
+          description,
+        },
+      };
     }
 
     const aiExtraction = await extractWithAiSelector(articleHtml, jobUrl, getDefaultTimezoneForLanguage(source.language));

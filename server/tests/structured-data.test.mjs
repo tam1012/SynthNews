@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { extractStructuredArticle } from '../dist/services/fetchers/structured-data.js';
+import { extractStructuredArticle, extractStructuredVideo } from '../dist/services/fetchers/structured-data.js';
 
 test('extracts articleBody from JSON-LD NewsArticle', () => {
   const html = `<html><head>
@@ -86,4 +86,44 @@ test('ignores generic "body" AST keys to avoid tag-name pollution', () => {
   };
   const html = `<script id="__NEXT_DATA__" type="application/json">${JSON.stringify(blob)}</script>`;
   assert.equal(extractStructuredArticle(html), null);
+});
+
+test('extracts VideoObject captions as transcript text', async () => {
+  const html = `<html><head>
+    <script type="application/ld+json">${JSON.stringify({
+      '@context': 'https://schema.org',
+      '@type': 'VideoObject',
+      headline: 'CNN speaks with Iranian Foreign Ministry spokesperson',
+      description: 'Iran video description.',
+      uploadDate: '2026-06-07T16:00:54.785Z',
+      image: { url: 'https://media.cnn.com/video.jpg' },
+      caption: [{
+        '@type': 'MediaObject',
+        encodingFormat: 'vtt',
+        url: 'https://media.cnn.com/caption.vtt',
+        inLanguage: 'en',
+      }],
+    })}</script>
+  </head></html>`;
+  const vtt = `WEBVTT
+
+00:00:00.000 --> 00:00:02.000
+Iran says negotiations remain difficult.
+
+00:00:02.000 --> 00:00:04.000
+The spokesperson said messages continue through mediators.
+`;
+
+  const result = await extractStructuredVideo(html, async (url) => {
+    assert.equal(url, 'https://media.cnn.com/caption.vtt');
+    return vtt;
+  });
+
+  assert.ok(result);
+  assert.equal(result.title, 'CNN speaks with Iranian Foreign Ministry spokesperson');
+  assert.equal(result.description, 'Iran video description.');
+  assert.equal(result.datePublished, '2026-06-07T16:00:54.785Z');
+  assert.equal(result.imageUrl, 'https://media.cnn.com/video.jpg');
+  assert.equal(result.captionUrl, 'https://media.cnn.com/caption.vtt');
+  assert.equal(result.transcript, 'Iran says negotiations remain difficult. The spokesperson said messages continue through mediators.');
 });

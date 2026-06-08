@@ -20,6 +20,15 @@ export interface StructuredArticle {
   imageUrl: string | null;
 }
 
+export interface StructuredVideo {
+  title: string | null;
+  description: string | null;
+  transcript: string;
+  datePublished: string | null;
+  imageUrl: string | null;
+  captionUrl: string | null;
+}
+
 // articleBody in JSON-LD is sometimes HTML, sometimes an array of paragraph
 // strings, sometimes plain text. Normalize all shapes to clean plain text.
 function normalizeBody(value: unknown): string {
@@ -71,10 +80,20 @@ const ARTICLE_LD_TYPES = new Set([
   'reviewnewsarticle',
 ]);
 
+const VIDEO_LD_TYPES = new Set([
+  'videoobject',
+]);
+
 function ldTypeMatches(type: unknown): boolean {
   if (!type) return false;
   const types = Array.isArray(type) ? type : [type];
   return types.some((t) => typeof t === 'string' && ARTICLE_LD_TYPES.has(t.toLowerCase()));
+}
+
+function videoLdTypeMatches(type: unknown): boolean {
+  if (!type) return false;
+  const types = Array.isArray(type) ? type : [type];
+  return types.some((t) => typeof t === 'string' && VIDEO_LD_TYPES.has(t.toLowerCase()));
 }
 
 // Walk a parsed JSON-LD value (object, array, or @graph wrapper) and collect any
@@ -91,6 +110,18 @@ function collectLdArticles(node: unknown, out: Record<string, unknown>[]): void 
   if (typeof obj.articleBody === 'string' || Array.isArray(obj.articleBody)) {
     out.push(obj);
   }
+}
+
+function collectLdVideos(node: unknown, out: Record<string, unknown>[]): void {
+  if (!node) return;
+  if (Array.isArray(node)) {
+    for (const item of node) collectLdVideos(item, out);
+    return;
+  }
+  if (typeof node !== 'object') return;
+  const obj = node as Record<string, unknown>;
+  if (Array.isArray(obj['@graph'])) collectLdVideos(obj['@graph'], out);
+  if (videoLdTypeMatches(obj['@type'])) out.push(obj);
 }
 
 function extractFromJsonLd($: cheerio.CheerioAPI): StructuredArticle | null {
@@ -132,6 +163,51 @@ function extractFromJsonLd($: cheerio.CheerioAPI): StructuredArticle | null {
   }
 
   return best?.article || null;
+}
+
+function extractVideoNodesFromJsonLd($: cheerio.CheerioAPI): Record<string, unknown>[] {
+  const scripts = $('script[type="application/ld+json"]');
+  const videos: Record<string, unknown>[] = [];
+
+  for (let i = 0; i < scripts.length; i++) {
+    const raw = $(scripts[i]).contents().text() || $(scripts[i]).html();
+    if (!raw) continue;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw.trim());
+    } catch {
+      continue;
+    }
+    collectLdVideos(parsed, videos);
+  }
+
+  return videos;
+}
+
+function captionUrlFrom(value: unknown): string | null {
+  const captions = Array.isArray(value) ? value : (value ? [value] : []);
+  for (const caption of captions) {
+    if (typeof caption === 'string' && caption.trim()) return caption.trim();
+    if (!caption || typeof caption !== 'object') continue;
+    const obj = caption as Record<string, unknown>;
+    const url = firstString(obj.url, obj.contentUrl);
+    if (url) return url;
+  }
+  return null;
+}
+
+function cleanCaptionText(text: string): string {
+  return text
+    .replace(/^\uFEFF?WEBVTT[^\n\r]*(?:\r?\n)+/i, '')
+    .replace(/^\d+\s*$/gm, '')
+    .replace(/^\d{1,2}:\d{2}:\d{2}[.,]\d{3}\s+-->\s+\d{1,2}:\d{2}:\d{2}[.,]\d{3}.*$/gm, '')
+    .replace(/<[^>]+>/g, '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !/^NOTE\b/i.test(line) && !/^STYLE\b/i.test(line))
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 // Recursively hunt for an article-body string inside an arbitrary parsed JSON
@@ -214,4 +290,46 @@ export function extractStructuredArticle(html: string): StructuredArticle | null
     datePublished: fromLd?.datePublished || null,
     imageUrl: fromLd?.imageUrl || null,
   };
+}
+
+export async function extractStructuredVideo(
+  html: string,
+  fetchCaption: (url: string) => Promise<string> = async (url: string) => {
+    const response = await fetch(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/125 Safari/537.36' },
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!response.ok) throw new Error(`Caption fetch status ${response.status}`);
+    return response.text();
+  },
+): Promise<StructuredVideo | null> {
+  let $: cheerio.CheerioAPI;
+  try {
+    $ = cheerio.load(html);
+  } catch {
+    return null;
+  }
+
+  const videos = extractVideoNodesFromJsonLd($);
+  for (const video of videos) {
+    const captionUrl = captionUrlFrom(video.caption);
+    if (!captionUrl) continue;
+    try {
+      const captionText = await fetchCaption(captionUrl);
+      const transcript = cleanCaptionText(captionText);
+      if (!transcript) continue;
+      return {
+        title: firstString(video.headline, video.name, video.alternativeHeadline),
+        description: firstString(video.description),
+        transcript,
+        datePublished: firstString(video.uploadDate, video.datePublished, video.dateCreated, video.dateModified),
+        imageUrl: imageFrom(video.thumbnailUrl) || imageFrom(video.image),
+        captionUrl,
+      };
+    } catch {
+      continue;
+    }
+  }
+
+  return null;
 }
