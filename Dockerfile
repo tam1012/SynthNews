@@ -34,8 +34,10 @@ RUN mkdir -p /tmp/img-cache /home/app/.cache
 COPY --from=server-build /app/server/dist ./server/dist
 COPY --from=server-build /app/server/src/db/migrations ./server/dist/db/migrations
 COPY --from=client-build /app/client/dist ./server/public
-RUN chown -R app:app /app /tmp/img-cache /home/app \
-  && chmod 700 /tmp/img-cache
+COPY scripts/ ./scripts/
+RUN mkdir -p /app/runtime/reuters-cookie \
+  && chown -R app:app /app /tmp/img-cache /home/app \
+  && chmod 700 /tmp/img-cache /app/runtime/reuters-cookie
 
 WORKDIR /app/server
 

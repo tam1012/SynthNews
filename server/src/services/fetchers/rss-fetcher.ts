@@ -1,5 +1,6 @@
 import RssParser from 'rss-parser';
 import * as cheerio from 'cheerio';
+import { readFileSync } from 'fs';
 import { decodeHTML } from 'entities';
 import { Readability } from '@mozilla/readability';
 import { JSDOM } from 'jsdom';
@@ -69,6 +70,14 @@ function decodeBase64EnvValue(value: string): string | null {
   }
 }
 
+function readBase64CookieFile(path: string): string | null {
+  try {
+    return decodeBase64EnvValue(readFileSync(path, 'utf8').trim());
+  } catch {
+    return null;
+  }
+}
+
 function getConfiguredCookieHeaderForUrl(targetUrl: string): string | null {
   const host = getHostname(targetUrl);
   if (!host) return null;
@@ -85,6 +94,12 @@ function getConfiguredCookieHeaderForUrl(targetUrl: string): string | null {
   for (const name of names) {
     const value = process.env[name]?.trim();
     if (value) return value;
+
+    const encodedFile = process.env[`${name}_B64_FILE`]?.trim();
+    if (encodedFile) {
+      const decoded = readBase64CookieFile(encodedFile);
+      if (decoded) return decoded;
+    }
 
     const encodedValue = process.env[`${name}_B64`]?.trim();
     if (encodedValue) {

@@ -97,8 +97,10 @@ services:
       SCRAPLING_PROXY_DOMAINS: ${SCRAPLING_PROXY_DOMAINS:-}
       REUTERS_COOKIE_HEADER: ${REUTERS_COOKIE_HEADER:-}
       REUTERS_COOKIE_HEADER_B64: ${REUTERS_COOKIE_HEADER_B64:-}
+      REUTERS_COOKIE_HEADER_B64_FILE: ${REUTERS_COOKIE_HEADER_B64_FILE:-/app/runtime/reuters-cookie/reuters-cookie.b64}
       FETCH_COOKIE_REUTERS_COM: ${FETCH_COOKIE_REUTERS_COM:-}
       FETCH_COOKIE_REUTERS_COM_B64: ${FETCH_COOKIE_REUTERS_COM_B64:-}
+      FETCH_COOKIE_REUTERS_COM_B64_FILE: ${FETCH_COOKIE_REUTERS_COM_B64_FILE:-}
       FETCH_PER_DOMAIN_DELAY_MS: ${FETCH_PER_DOMAIN_DELAY_MS:-15000}
       SCRAPLING_SERVICE_TOKEN: ${SCRAPLING_SERVICE_TOKEN:?SCRAPLING_SERVICE_TOKEN is required}
       FIRECRAWL_API_KEY: ${FIRECRAWL_API_KEY:-}
@@ -115,6 +117,8 @@ services:
       ARCHIVE_TODAY_HOST: ${ARCHIVE_TODAY_HOST:-archive.ph}
       ENABLE_SITEMAP_DISCOVERY: ${ENABLE_SITEMAP_DISCOVERY:-true}
       SCRAPLING_SERVICE_URL: ${SCRAPLING_SERVICE_URL:-http://scrapling:8000}
+    volumes:
+      - reuters_cookie_runtime:/app/runtime/reuters-cookie
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:3000/api/health/live >/dev/null"]
       interval: 30s
@@ -122,5 +126,36 @@ services:
       retries: 3
       start_period: 30s
 
+  reuters-cookie-refresh:
+    build: .
+    container_name: newstamhv-reuters-cookie-refresh
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      app:
+        condition: service_healthy
+    environment:
+      TZ: Asia/Ho_Chi_Minh
+      NODE_ENV: production
+      PUPPETEER_EXECUTABLE_PATH: /usr/bin/chromium-browser
+      SCRAPLING_PROXY_URL: ${SCRAPLING_PROXY_URL:-}
+      REUTERS_COOKIE_HEADER_B64_FILE: ${REUTERS_COOKIE_HEADER_B64_FILE:-/app/runtime/reuters-cookie/reuters-cookie.b64}
+      REUTERS_COOKIE_RUNTIME_DIR: ${REUTERS_COOKIE_RUNTIME_DIR:-/app/runtime/reuters-cookie}
+      REUTERS_COOKIE_REFRESH_INTERVAL_SECONDS: ${REUTERS_COOKIE_REFRESH_INTERVAL_SECONDS:-21600}
+      REUTERS_COOKIE_REFRESH_COOLDOWN_SECONDS: ${REUTERS_COOKIE_REFRESH_COOLDOWN_SECONDS:-900}
+      REUTERS_COOKIE_VERIFY_URL: ${REUTERS_COOKIE_VERIFY_URL:-https://www.reuters.com/world/}
+    volumes:
+      - reuters_cookie_runtime:/app/runtime/reuters-cookie
+    command:
+      - sh
+      - -c
+      - |
+        while true; do
+          node /app/scripts/refresh-reuters-cookie.mjs || true
+          sleep "$${REUTERS_COOKIE_REFRESH_INTERVAL_SECONDS:-21600}"
+        done
+
 volumes:
   pgdata:
+  reuters_cookie_runtime:

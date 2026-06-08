@@ -31,6 +31,11 @@ function loadTsModule(relativePath, stubs = {}, globals = {}) {
     URL,
     require: (name) => {
       if (stubs[name]) return stubs[name];
+      if (name === 'fs') {
+        return {
+          readFileSync: () => '',
+        };
+      }
       if (name === './scrapling-fetch.js') {
         return {
           scraplingFetch: async () => { throw new Error('Scrapling unavailable'); },
@@ -608,6 +613,131 @@ test('RSS fetchArticle accepts base64 encoded Reuters cookie env', async () => {
 
   assert.equal(article.metadata.extractor, 'scrapling-proxy-cookie:selectors');
   assert.equal(scraplingAttempts.some((options) => options.cookieHeader === cookieHeader), true);
+});
+
+test('RSS fetchArticle accepts base64 encoded Reuters cookie file env', async () => {
+  const scraplingAttempts = [];
+  const cookieHeader = 'datadome=file-cookie; other=value';
+  const { rssFetcher } = loadTsModule('../src/services/fetchers/rss-fetcher.ts', {
+    ...baseStubs,
+    fs: {
+      readFileSync: (filePath, encoding) => {
+        assert.equal(filePath, '/runtime/reuters-cookie.b64');
+        assert.equal(encoding, 'utf8');
+        return Buffer.from(cookieHeader, 'utf8').toString('base64');
+      },
+    },
+    './scrapling-fetch.js': {
+      getScraplingProxyForUrl: () => undefined,
+      isResidentialProxyConfigured: () => true,
+      scraplingFetchWithFallback: async (_url, options) => {
+        scraplingAttempts.push(options);
+        if (options.forceProxy && options.cookieHeader === cookieHeader) {
+          return articleHtml('Recovered Reuters story', 'Recovered Reuters article ');
+        }
+        return '<html><script src="https://captcha-delivery.com"></script>datadome</html>';
+      },
+    },
+    './hosted-fetch.js': {
+      ...baseStubs['./hosted-fetch.js'],
+      isDataDomeHost: (url) => url.includes('reuters.com'),
+    },
+    './http-utils.js': {
+      ...baseStubs['./http-utils.js'],
+      isBlockedHtml: (html) => html.toLowerCase().includes('datadome') || html.toLowerCase().includes('captcha-delivery.com'),
+    },
+  }, {
+    fetch: async () => ({ ok: false, status: 401, text: async () => '<html>blocked</html>' }),
+    console: { warn: () => {}, log: () => {} },
+    process: { env: { REUTERS_COOKIE_HEADER_B64_FILE: '/runtime/reuters-cookie.b64' } },
+    Buffer,
+  });
+
+  const article = await rssFetcher.fetchArticle({
+    id: 'job_reuters_cookie_file',
+    source_id: 'src_reuters',
+    url: 'https://www.reuters.com/world/example-2026-06-08',
+    title: 'Reuters story',
+    external_id: 'reuters/cookie-file',
+    published_at: null,
+    payload_json: { rawExcerpt: '', rawContent: '' },
+  }, {
+    id: 'src_reuters',
+    type: 'rss',
+    name: 'Reuters',
+    url: 'https://news.google.com/rss/search?q=site%3Areuters.com',
+    language: 'en',
+    category: null,
+    fetch_interval_minutes: 60,
+    parser_config: null,
+  });
+
+  assert.equal(article.metadata.extractor, 'scrapling-proxy-cookie:selectors');
+  assert.equal(scraplingAttempts.some((options) => options.cookieHeader === cookieHeader), true);
+});
+
+test('RSS fetchArticle prefers Reuters cookie file over static base64 env', async () => {
+  const scraplingAttempts = [];
+  const fileCookieHeader = 'datadome=file-cookie; other=value';
+  const staleCookieHeader = 'datadome=stale-cookie; other=value';
+  const { rssFetcher } = loadTsModule('../src/services/fetchers/rss-fetcher.ts', {
+    ...baseStubs,
+    fs: {
+      readFileSync: () => Buffer.from(fileCookieHeader, 'utf8').toString('base64'),
+    },
+    './scrapling-fetch.js': {
+      getScraplingProxyForUrl: () => undefined,
+      isResidentialProxyConfigured: () => true,
+      scraplingFetchWithFallback: async (_url, options) => {
+        scraplingAttempts.push(options);
+        if (options.forceProxy && options.cookieHeader === fileCookieHeader) {
+          return articleHtml('Recovered Reuters story', 'Recovered Reuters article ');
+        }
+        return '<html><script src="https://captcha-delivery.com"></script>datadome</html>';
+      },
+    },
+    './hosted-fetch.js': {
+      ...baseStubs['./hosted-fetch.js'],
+      isDataDomeHost: (url) => url.includes('reuters.com'),
+    },
+    './http-utils.js': {
+      ...baseStubs['./http-utils.js'],
+      isBlockedHtml: (html) => html.toLowerCase().includes('datadome') || html.toLowerCase().includes('captcha-delivery.com'),
+    },
+  }, {
+    fetch: async () => ({ ok: false, status: 401, text: async () => '<html>blocked</html>' }),
+    console: { warn: () => {}, log: () => {} },
+    process: {
+      env: {
+        REUTERS_COOKIE_HEADER_B64_FILE: '/runtime/reuters-cookie.b64',
+        REUTERS_COOKIE_HEADER_B64: Buffer.from(staleCookieHeader, 'utf8').toString('base64'),
+      },
+    },
+    Buffer,
+  });
+
+  const article = await rssFetcher.fetchArticle({
+    id: 'job_reuters_cookie_file_priority',
+    source_id: 'src_reuters',
+    url: 'https://www.reuters.com/world/example-2026-06-08',
+    title: 'Reuters story',
+    external_id: 'reuters/cookie-file-priority',
+    published_at: null,
+    payload_json: { rawExcerpt: '', rawContent: '' },
+  }, {
+    id: 'src_reuters',
+    type: 'rss',
+    name: 'Reuters',
+    url: 'https://news.google.com/rss/search?q=site%3Areuters.com',
+    language: 'en',
+    category: null,
+    fetch_interval_minutes: 60,
+    parser_config: null,
+  });
+
+  assert.equal(article.metadata.extractor, 'scrapling-proxy-cookie:selectors');
+  assert.equal(scraplingAttempts.some((options) => options.cookieHeader === fileCookieHeader), true);
+  assert.equal(scraplingAttempts.some((options) => options.cookieHeader === staleCookieHeader), false);
 });
 
 test('RSS discover skips Google News items when decode fails', async () => {
