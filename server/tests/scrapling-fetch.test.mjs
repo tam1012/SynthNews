@@ -77,3 +77,30 @@ test('scraplingFetch sends X-Sidecar-Token when configured', async () => {
   assert.equal(capturedInit.headers['X-Sidecar-Token'], 'sidecar-secret');
   assert.equal(capturedInit.headers['Content-Type'], 'application/json');
 });
+
+test('scraplingFetch forwards cookie header to sidecar options without logging it', async () => {
+  let capturedBody = {};
+  const { scraplingFetch } = loadScraplingFetch(
+    {
+      NODE_ENV: 'production',
+      SCRAPLING_SERVICE_URL: 'http://scrapling:8000',
+      SCRAPLING_SERVICE_TOKEN: 'sidecar-secret',
+    },
+    async (_url, init) => {
+      capturedBody = JSON.parse(init.body);
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ ok: true, html: '<html>ok</html>', status_code: 200, elapsed_ms: 5 }),
+      };
+    },
+  );
+
+  await scraplingFetch('https://www.reuters.com/world/example', {
+    mode: 'stealth',
+    timeoutMs: 1000,
+    cookieHeader: 'datadome=test-cookie',
+  });
+
+  assert.equal(capturedBody.options.cookie_header, 'datadome=test-cookie');
+});

@@ -69,6 +69,8 @@ export interface ScraplingFetchOptions {
    *  page never goes idle — waiting for it stalls the render to the timeout. Set
    *  false for hard-proxied domains. Sidecar defaults to true when omitted. */
   networkIdle?: boolean;
+  /** Raw Cookie header for hosts where the operator provides a browser session. */
+  cookieHeader?: string;
 }
 
 interface ScraplingResponse {
@@ -152,6 +154,7 @@ export async function scraplingFetch(url: string, options: ScraplingFetchOptions
           timeout_ms: effectiveTimeout,
           solve_cloudflare: solveCloudflare,
           proxy: proxy || undefined,
+          cookie_header: options.cookieHeader || undefined,
         },
       }),
       signal: AbortSignal.timeout(effectiveTimeout + 5000),

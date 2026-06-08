@@ -6,6 +6,7 @@ import socket
 from typing import Optional
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlparse
+from http.cookies import SimpleCookie
 
 from fastapi import FastAPI, Header, Response
 from pydantic import BaseModel, Field
@@ -55,6 +56,7 @@ class FetchOptions(BaseModel):
     block_media: Optional[bool] = False
     block_ads: Optional[bool] = False
     network_idle: Optional[bool] = None
+    cookie_header: Optional[str] = None
 
 
 class FetchRequest(BaseModel):
@@ -269,22 +271,26 @@ def _stealth_fetch_sync(url: str, options: FetchOptions, timeout_ms: int) -> str
     # all-or-nothing and also drops websocket/beacon/stylesheet — which starves the
     # PerimeterX sensor channel and made Bloomberg 504 on 2026-06-05. This keeps the
     # challenge JS alive while still shedding the heavy bytes over a metered proxy.
-    if options.block_media:
+    if options.block_media or options.cookie_header:
         _BLOCK_RESOURCE_TYPES = {"image", "media", "font"}
 
         def _page_setup(page):
-            def _route_handler(route):
-                try:
-                    if route.request.resource_type in _BLOCK_RESOURCE_TYPES:
-                        route.abort()
-                    else:
-                        route.continue_()
-                except Exception:
+            if options.cookie_header:
+                _apply_cookie_header(page, url, options.cookie_header)
+
+            if options.block_media:
+                def _route_handler(route):
                     try:
-                        route.continue_()
+                        if route.request.resource_type in _BLOCK_RESOURCE_TYPES:
+                            route.abort()
+                        else:
+                            route.continue_()
                     except Exception:
-                        pass
-            page.route("**/*", _route_handler)
+                        try:
+                            route.continue_()
+                        except Exception:
+                            pass
+                page.route("**/*", _route_handler)
 
         kwargs["page_setup"] = _page_setup
 
@@ -307,6 +313,71 @@ def _stealth_fetch_sync(url: str, options: FetchOptions, timeout_ms: int) -> str
     page = StealthyFetcher.fetch(url, **kwargs)
 
     return page.html_content if hasattr(page, "html_content") else (page.body if hasattr(page, "body") else str(page))
+
+
+def _apply_cookie_header(page, url: str, cookie_header: str) -> None:
+    cookies = _cookie_header_to_playwright_cookies(url, cookie_header)
+    try:
+        if cookies:
+            page.context.add_cookies(cookies)
+            return
+    except Exception:
+        pass
+
+    # Fallback for browser adapters that expose a Page but not context cookies.
+    # Do not include cookie values in errors/logs.
+    try:
+        page.set_extra_http_headers({"Cookie": cookie_header})
+    except Exception:
+        pass
+
+
+def _cookie_header_to_playwright_cookies(url: str, cookie_header: str) -> list[dict]:
+    parsed_url = urlparse(url)
+    domain = parsed_url.hostname or ""
+    path = parsed_url.path or "/"
+    cookie_path = "/" if not path.startswith("/") else path.rsplit("/", 1)[0] or "/"
+
+    parsed_cookie = SimpleCookie()
+    try:
+        parsed_cookie.load(cookie_header)
+    except Exception:
+        parsed_cookie = SimpleCookie()
+
+    cookies = []
+    for morsel in parsed_cookie.values():
+        if not morsel.key:
+            continue
+        cookies.append({
+            "name": morsel.key,
+            "value": morsel.value,
+            "domain": domain,
+            "path": morsel["path"] or cookie_path,
+            "httpOnly": bool(morsel["httponly"]),
+            "secure": True if morsel["secure"] else parsed_url.scheme == "https",
+        })
+
+    if cookies:
+        return cookies
+
+    # Some copied Cookie headers contain values SimpleCookie rejects. Preserve the
+    # useful pairs conservatively instead of failing the whole fetch.
+    for part in cookie_header.split(";"):
+        if "=" not in part:
+            continue
+        name, value = part.split("=", 1)
+        name = name.strip()
+        if not name:
+            continue
+        cookies.append({
+            "name": name,
+            "value": value.strip(),
+            "domain": domain,
+            "path": cookie_path,
+            "secure": parsed_url.scheme == "https",
+        })
+
+    return cookies
 
 
 def _fast_fetch_sync(url: str, options: FetchOptions, timeout_ms: int) -> str:

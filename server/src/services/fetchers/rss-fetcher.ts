@@ -56,6 +56,30 @@ function getHostname(url: string): string {
   }
 }
 
+function envNameForCookieHost(host: string): string {
+  return `FETCH_COOKIE_${host.replace(/[^a-z0-9]/gi, '_').toUpperCase()}`;
+}
+
+function getConfiguredCookieHeaderForUrl(targetUrl: string): string | null {
+  const host = getHostname(targetUrl);
+  if (!host) return null;
+
+  const names = [envNameForCookieHost(host)];
+  const parts = host.split('.');
+  for (let i = 1; i < parts.length - 1; i++) {
+    names.push(envNameForCookieHost(parts.slice(i).join('.')));
+  }
+  if (host === 'reuters.com' || host.endsWith('.reuters.com')) {
+    names.push('REUTERS_COOKIE_HEADER');
+  }
+
+  for (const name of names) {
+    const value = process.env[name]?.trim();
+    if (value) return value;
+  }
+  return null;
+}
+
 // URLs that are never a readable text article — media players, ticker/market-data
 // pages, newsletter signup shells. Google News `site:bloomberg.com` surfaces a lot
 // of these (videos/audio/quote/markets/professional/newsletters), and each one that
@@ -655,6 +679,80 @@ async function fetchFullArticle(jobUrl: string, policy = getRssDomainPolicy(jobU
         browserError = new Error(`scrapling+proxy extraction too short (${article.content.length} characters)`);
       } else {
         browserError = new Error('scrapling+proxy still blocked');
+      }
+    } catch (err: any) {
+      browserError = err instanceof Error ? err : new Error(String(err));
+    }
+  }
+
+  // ── Attempt 4c: residential proxy + Cloudflare solve ─────────────────────
+  // Some "ordinary" anti-bot pages are Cloudflare challenges. A plain
+  // residential render can still return the interstitial, but Scrapling's
+  // Cloudflare solver clears it when run over the residential proxy. Keep this
+  // before hosted-fetch so Scrape.do/ScrapingAnt/Firecrawl are true last resorts.
+  if (sawBlock && isResidentialProxyConfigured() && !getScraplingProxyForUrl(safeJobUrl) && !isDataDomeHost(safeJobUrl)) {
+    try {
+      console.warn(`Retrying RSS article via Scrapling + residential proxy + Cloudflare solve ${safeJobUrl}`);
+      const html = await scraplingFetchWithFallback(safeJobUrl, {
+        mode: 'stealth',
+        forceProxy: true,
+        solveCloudflare: true,
+        timeoutMs: 90000,
+        waitMs: 2000,
+        blockResources: false,
+        blockMedia: false,
+        blockAds: false,
+        networkIdle: false,
+      }, {
+        ...(policy.browserOptions || {}),
+        userAgent: randomUA(),
+        blockHeavyResources: false,
+        settleMs: 2000,
+        timeoutMs: 90000,
+      });
+      if (!isBlockedHtml(html)) {
+        const article = await extractArticleFromHtml(html, safeJobUrl, 'scrapling-proxy-cloudflare', defaultTimezone);
+        if (article.content.length >= MIN_ARTICLE_TEXT_LENGTH) return article;
+        browserError = new Error(`scrapling+proxy+cloudflare extraction too short (${article.content.length} characters)`);
+      } else {
+        browserError = new Error('scrapling+proxy+cloudflare still blocked');
+      }
+    } catch (err: any) {
+      browserError = err instanceof Error ? err : new Error(String(err));
+    }
+  }
+
+  // ── Attempt 4d: operator-provided browser cookie + residential proxy ──────
+  // DataDome hosts such as Reuters may require a warm browser cookie. We never
+  // read local browser cookies automatically; if the operator supplies a cookie
+  // header via env, try it through the residential proxy before hosted providers.
+  const configuredCookieHeader = getConfiguredCookieHeaderForUrl(safeJobUrl);
+  if (configuredCookieHeader && isResidentialProxyConfigured()) {
+    try {
+      console.warn(`Retrying RSS article via Scrapling + residential proxy + configured cookie ${safeJobUrl}`);
+      const html = await scraplingFetchWithFallback(safeJobUrl, {
+        mode: 'stealth',
+        forceProxy: true,
+        cookieHeader: configuredCookieHeader,
+        timeoutMs: 120000,
+        waitMs: 3000,
+        blockResources: false,
+        blockMedia: true,
+        blockAds: true,
+        networkIdle: false,
+      }, {
+        ...(policy.browserOptions || {}),
+        userAgent: randomUA(),
+        blockHeavyResources: false,
+        settleMs: 3000,
+        timeoutMs: 120000,
+      });
+      if (!isBlockedHtml(html)) {
+        const article = await extractArticleFromHtml(html, safeJobUrl, 'scrapling-proxy-cookie', defaultTimezone);
+        if (article.content.length >= MIN_ARTICLE_TEXT_LENGTH) return article;
+        browserError = new Error(`scrapling+proxy+cookie extraction too short (${article.content.length} characters)`);
+      } else {
+        browserError = new Error('scrapling+proxy+cookie still blocked');
       }
     } catch (err: any) {
       browserError = err instanceof Error ? err : new Error(String(err));

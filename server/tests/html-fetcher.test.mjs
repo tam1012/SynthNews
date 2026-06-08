@@ -68,6 +68,10 @@ const baseStubs = {
     HostedFetchUnavailableError: class HostedFetchUnavailableError extends Error {},
   },
   './structured-data.js': { extractStructuredArticle: () => null },
+  './archive-fetch.js': {
+    archiveTodayFetch: async () => '',
+    shouldUseArchiveFallback: () => false,
+  },
   './selector-profile.js': {
     extractWithSelectorProfile: () => ({ title: '', content: '', imageUrl: null, publishedAt: null, matchedSelector: null }),
     getDomainFromUrl: () => null,

@@ -30,6 +30,7 @@ function loadTsModule(relativePath, stubs = {}, globals = {}) {
     process: { env: {} },
     URL,
     require: (name) => {
+      if (stubs[name]) return stubs[name];
       if (name === './scrapling-fetch.js') {
         return {
           scraplingFetch: async () => { throw new Error('Scrapling unavailable'); },
@@ -41,7 +42,6 @@ function loadTsModule(relativePath, stubs = {}, globals = {}) {
           isResidentialProxyConfigured: () => false,
         };
       }
-      if (stubs[name]) return stubs[name];
       throw new Error(`Unexpected require ${name}`);
     },
     ...globals,
@@ -154,6 +154,10 @@ const googleNewsRss = `<?xml version="1.0" encoding="UTF-8"?>
     </item>
   </channel>
 </rss>`;
+
+function articleHtml(title, phrase) {
+  return `<html><body><article><h1>${title}</h1><p>${phrase.repeat(40)}</p></article></body></html>`;
+}
 
 const malformedHackerNewsRss = `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/">
@@ -432,6 +436,124 @@ test('RSS fetchArticle passes lightweight browser options for anti-bot-light dom
   assert.equal(browserOptions.waitUntil, 'domcontentloaded');
   assert.equal(browserOptions.blockHeavyResources, true);
   assert.equal(article.metadata.extractor, 'scrapling-stealth:selectors');
+});
+
+test('RSS fetchArticle tries residential proxy Cloudflare solve before hosted fetch for blocked non-DataDome pages', async () => {
+  const scraplingAttempts = [];
+  let hostedCalled = false;
+  const { rssFetcher } = loadTsModule('../src/services/fetchers/rss-fetcher.ts', {
+    ...baseStubs,
+    './scrapling-fetch.js': {
+      getScraplingProxyForUrl: () => undefined,
+      isResidentialProxyConfigured: () => true,
+      scraplingFetchWithFallback: async (_url, options) => {
+        scraplingAttempts.push(options);
+        if (options.forceProxy && options.solveCloudflare) {
+          return articleHtml('Recovered console story', 'Recovered console article ');
+        }
+        return '<html><title>Just a moment...</title><script src="https://challenges.cloudflare.com"></script></html>';
+      },
+    },
+    './hosted-fetch.js': {
+      ...baseStubs['./hosted-fetch.js'],
+      hasHostedFetchKey: () => true,
+      hostedFetch: async () => {
+        hostedCalled = true;
+        throw new Error('hosted fetch should not be called');
+      },
+    },
+    './http-utils.js': {
+      ...baseStubs['./http-utils.js'],
+      isBlockedHtml: (html) => html.toLowerCase().includes('cloudflare') || html.toLowerCase().includes('just a moment'),
+    },
+  }, {
+    fetch: async () => ({ ok: false, status: 403, text: async () => '<html>blocked</html>' }),
+    console: { warn: () => {}, log: () => {} },
+  });
+
+  const article = await rssFetcher.fetchArticle({
+    id: 'job_cloudflare_proxy',
+    source_id: 'src_google',
+    url: 'https://www.purexbox.com/news/example',
+    title: 'Cloudflare story',
+    external_id: 'google/cloudflare',
+    published_at: null,
+    payload_json: { rawExcerpt: '', rawContent: '' },
+  }, {
+    id: 'src_google',
+    type: 'rss',
+    name: 'Google News',
+    url: 'https://news.google.com/rss/search?q=test',
+    language: 'en',
+    category: null,
+    fetch_interval_minutes: 60,
+    parser_config: null,
+  });
+
+  assert.ok(article.metadata, `expected recovered metadata; rawContent length=${article.rawContent.length}; attempts=${JSON.stringify(scraplingAttempts)}`);
+  assert.equal(article.metadata.extractor, 'scrapling-proxy-cloudflare:selectors');
+  assert.equal(hostedCalled, false);
+  assert.equal(scraplingAttempts.some((options) => options.forceProxy && options.solveCloudflare), true);
+});
+
+test('RSS fetchArticle sends configured Reuters cookie through residential proxy before hosted fetch', async () => {
+  const scraplingAttempts = [];
+  let hostedCalled = false;
+  const { rssFetcher } = loadTsModule('../src/services/fetchers/rss-fetcher.ts', {
+    ...baseStubs,
+    './scrapling-fetch.js': {
+      getScraplingProxyForUrl: () => undefined,
+      isResidentialProxyConfigured: () => true,
+      scraplingFetchWithFallback: async (_url, options) => {
+        scraplingAttempts.push(options);
+        if (options.forceProxy && options.cookieHeader) {
+          return articleHtml('Recovered Reuters story', 'Recovered Reuters article ');
+        }
+        return '<html><script src="https://captcha-delivery.com"></script>datadome</html>';
+      },
+    },
+    './hosted-fetch.js': {
+      ...baseStubs['./hosted-fetch.js'],
+      isDataDomeHost: (url) => url.includes('reuters.com'),
+      hasHostedFetchKey: () => true,
+      hostedFetch: async () => {
+        hostedCalled = true;
+        throw new Error('hosted fetch should not be called');
+      },
+    },
+    './http-utils.js': {
+      ...baseStubs['./http-utils.js'],
+      isBlockedHtml: (html) => html.toLowerCase().includes('datadome') || html.toLowerCase().includes('captcha-delivery.com'),
+    },
+  }, {
+    fetch: async () => ({ ok: false, status: 401, text: async () => '<html>blocked</html>' }),
+    console: { warn: () => {}, log: () => {} },
+    process: { env: { REUTERS_COOKIE_HEADER: 'datadome=test-cookie; other=value' } },
+  });
+
+  const article = await rssFetcher.fetchArticle({
+    id: 'job_reuters_cookie',
+    source_id: 'src_reuters',
+    url: 'https://www.reuters.com/world/example-2026-06-08',
+    title: 'Reuters story',
+    external_id: 'reuters/cookie',
+    published_at: null,
+    payload_json: { rawExcerpt: '', rawContent: '' },
+  }, {
+    id: 'src_reuters',
+    type: 'rss',
+    name: 'Reuters',
+    url: 'https://news.google.com/rss/search?q=site%3Areuters.com',
+    language: 'en',
+    category: null,
+    fetch_interval_minutes: 60,
+    parser_config: null,
+  });
+
+  assert.ok(article.metadata, `expected recovered metadata; rawContent length=${article.rawContent.length}; attempts=${JSON.stringify(scraplingAttempts)}`);
+  assert.equal(article.metadata.extractor, 'scrapling-proxy-cookie:selectors');
+  assert.equal(hostedCalled, false);
+  assert.equal(scraplingAttempts.some((options) => options.forceProxy && options.cookieHeader === 'datadome=test-cookie; other=value'), true);
 });
 
 test('RSS discover skips Google News items when decode fails', async () => {
