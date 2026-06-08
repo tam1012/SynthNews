@@ -94,6 +94,47 @@ function getMetaContent($: cheerio.CheerioAPI, selector: string): string {
   return $(selector).first().attr('content')?.trim() || '';
 }
 
+function getHostname(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '').toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
+function getArticleBrowserPolicy(url: string) {
+  const hostname = getHostname(url);
+  const isYahoo = hostname === 'yahoo.com' || hostname.endsWith('.yahoo.com');
+
+  if (isYahoo) {
+    return {
+      scrapling: {
+        blockResources: true,
+        networkIdle: false,
+        waitMs: 1500,
+        timeoutMs: 45000,
+      },
+      playwright: {
+        waitUntil: 'domcontentloaded' as const,
+        blockHeavyResources: true,
+        settleMs: 1500,
+        timeoutMs: 45000,
+      },
+    };
+  }
+
+  return {
+    scrapling: {
+      blockResources: false,
+      waitMs: 1000,
+    },
+    playwright: {
+      blockHeavyResources: false,
+      settleMs: 1000,
+    },
+  };
+}
+
 async function extractWithAiSelector(html: string, pageUrl: string, defaultTimezone: string = 'Z') {
   const domain = getDomainFromUrl(pageUrl);
   if (!domain) return null;
@@ -264,6 +305,8 @@ export const htmlFetcher: SourceFetcher = {
     const jobUrl = await normalizePublicHttpUrlWithDns(job.url, false);
     if (!jobUrl) throw new Error('Article URL must be a public http(s) URL');
 
+    const articleBrowserPolicy = getArticleBrowserPolicy(jobUrl);
+
     await sleep(500);
     // Try native fetch first, then worker proxy, then Scrapling stealth fallback
     let articleHtml = '';
@@ -331,13 +374,11 @@ export const htmlFetcher: SourceFetcher = {
           }
           articleHtml = await scraplingFetchWithFallback(jobUrl, {
             mode: 'stealth',
-            blockResources: false,
-            waitMs: 1000,
+            ...articleBrowserPolicy.scrapling,
           }, {
             rawText: false,
-            blockHeavyResources: false,
-            settleMs: 1000,
             userAgent: randomUA(),
+            ...articleBrowserPolicy.playwright,
           });
           if (isBlockedHtml(articleHtml)) { sawBlock = true; throw new Error('blocked HTML'); }
           fetchOk = true;

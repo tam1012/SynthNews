@@ -34,6 +34,8 @@ function loadTsModule(relativePath, stubs = {}, globals = {}) {
             const httpUtils = stubs['./http-utils.js'];
             return httpUtils.playwrightFetch(url, playwrightOpts);
           },
+          getScraplingProxyForUrl: () => undefined,
+          isResidentialProxyConfigured: () => false,
         };
       }
       if (stubs[name]) return stubs[name];
@@ -58,6 +60,10 @@ const baseStubs = {
     isBlockedHtml: () => false,
     randomUA: () => 'random-agent',
     playwrightFetch: async () => '',
+    isWorkerProxyConfigured: () => false,
+    shouldSkipWorkerProxy: () => false,
+    workerProxyFetch: async () => ({ ok: false }),
+    cookieAwareFetch: async () => ({ ok: false, status: 500, body: '' }),
   },
   './article-writer.js': { insertArticleIfNew: async () => true },
   './selector-learning.js': { learnSelectorProfileFromHtml: async () => null },
@@ -65,6 +71,7 @@ const baseStubs = {
     hostedFetch: async () => { throw new Error('Hosted fetch unavailable'); },
     shouldUseHostedFetch: () => false,
     hasHostedFetchKey: () => false,
+    isDataDomeHost: () => false,
     HostedFetchUnavailableError: class HostedFetchUnavailableError extends Error {},
   },
   './structured-data.js': { extractStructuredArticle: () => null },
@@ -148,4 +155,54 @@ test('HTML discover allows sitemap-only web sources', async () => {
   assert.equal(items.length, 1);
   assert.equal(items[0].url, 'https://example.com/2026/05/12/sitemap-story');
   assert.equal(items[0].payload.discovery, 'sitemap');
+});
+
+test('HTML fetchArticle uses domcontentloaded browser fallback for Yahoo articles', async () => {
+  let fallbackOptions;
+  const articleHtml = `<html><head>
+    <meta property="og:title" content="Yahoo finance story">
+  </head><body><article>${'Yahoo article body '.repeat(80)}</article></body></html>`;
+
+  const { htmlFetcher } = loadTsModule('../src/services/fetchers/html-fetcher.ts', {
+    ...baseStubs,
+    './http-utils.js': {
+      ...baseStubs['./http-utils.js'],
+      playwrightFetch: async (_url, options) => {
+        fallbackOptions = options;
+        return articleHtml;
+      },
+      cookieAwareFetch: async () => ({ ok: false, status: 500, body: '' }),
+    },
+    './selector-profile.js': {
+      ...baseStubs['./selector-profile.js'],
+      getDomainFromUrl: () => 'yahoo.com',
+    },
+  }, {
+    fetch: async () => { throw new Error('fetch failed'); },
+    console: { warn: () => {}, log: () => {} },
+  });
+
+  const article = await htmlFetcher.fetchArticle({
+    id: 'job_yahoo',
+    source_id: 'src_yahoo',
+    url: 'https://www.yahoo.com/finance/sectors/technology/articles/went-walmarts-hq-saw-ai-091201001.html',
+    title: 'Walmart is changing what people see and buy',
+    external_id: null,
+    published_at: null,
+    payload_json: null,
+  }, {
+    id: 'src_yahoo',
+    type: 'web',
+    name: 'Yahoo News',
+    url: 'https://www.yahoo.com/news/',
+    language: 'en',
+    category: null,
+    fetch_interval_minutes: 60,
+    parser_config: null,
+  });
+
+  assert.equal(fallbackOptions.waitUntil, 'domcontentloaded');
+  assert.equal(fallbackOptions.blockHeavyResources, true);
+  assert.equal(fallbackOptions.timeoutMs, 45000);
+  assert.match(article.rawContent, /Yahoo article body/);
 });
