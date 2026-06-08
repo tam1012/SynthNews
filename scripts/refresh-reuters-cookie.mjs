@@ -120,13 +120,16 @@ function cookieHeaderToContextCookies(cookieHeader) {
       return {
         name: part.slice(0, eq).trim(),
         value: part.slice(eq + 1).trim(),
-        domain: '.reuters.com',
-        path: '/',
+        url: REUTERS_HOME,
         secure: true,
-        httpOnly: false,
       };
     })
-    .filter((cookie) => cookie.name && cookie.value);
+    .filter((cookie) => {
+      if (!cookie.name || !cookie.value) return false;
+      if (/[\u0000-\u001f\u007f()<>@,;:\\"/[\\]?={} \t]/.test(cookie.name)) return false;
+      if (/[\u0000-\u001f\u007f;]/.test(cookie.value)) return false;
+      return true;
+    });
 }
 
 async function readEncodedCookieFromFile(filePath) {
@@ -215,8 +218,14 @@ async function refreshReutersCookie() {
     const bootstrapCookieHeader = await readBootstrapCookieHeader();
     const bootstrapCookies = cookieHeaderToContextCookies(bootstrapCookieHeader);
     if (bootstrapCookies.length > 0) {
-      await context.addCookies(bootstrapCookies);
-      await log(`refresh:bootstrap cookies=${bootstrapCookies.length}`);
+      let acceptedCookies = 0;
+      for (const cookie of bootstrapCookies) {
+        try {
+          await context.addCookies([cookie]);
+          acceptedCookies += 1;
+        } catch {}
+      }
+      await log(`refresh:bootstrap cookies=${acceptedCookies}/${bootstrapCookies.length}`);
     }
 
     const page = context.pages()[0] || await context.newPage();
