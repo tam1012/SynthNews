@@ -135,6 +135,15 @@ function getArticleBrowserPolicy(url: string) {
   };
 }
 
+function isGenericArticleTitle(title: string, url: string): boolean {
+  const normalized = title.trim().toLowerCase();
+  if (!normalized) return true;
+  const hostname = getHostname(url);
+  const isYahoo = hostname === 'yahoo.com' || hostname.endsWith('.yahoo.com');
+  if (isYahoo && ['yahoo', 'yahoo news', 'yahoo finance'].includes(normalized)) return true;
+  return false;
+}
+
 async function extractWithAiSelector(html: string, pageUrl: string, defaultTimezone: string = 'Z') {
   const domain = getDomainFromUrl(pageUrl);
   if (!domain) return null;
@@ -459,10 +468,11 @@ export const htmlFetcher: SourceFetcher = {
 
     const $article = cheerio.load(articleHtml);
 
-    const title = $article(config.titleSelector || 'h1').first().text().trim() ||
+    const extractedTitle = $article(config.titleSelector || 'h1').first().text().trim() ||
       getMetaContent($article, 'meta[property="og:title"]') ||
       $article('title').first().text().trim() ||
       job.title;
+    const title = isGenericArticleTitle(extractedTitle, jobUrl) && job.title ? job.title : extractedTitle;
     if (!title) return null;
 
     let imageUrl: string | null = null;

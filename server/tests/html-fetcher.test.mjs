@@ -206,3 +206,41 @@ test('HTML fetchArticle uses domcontentloaded browser fallback for Yahoo article
   assert.equal(fallbackOptions.timeoutMs, 45000);
   assert.match(article.rawContent, /Yahoo article body/);
 });
+
+test('HTML fetchArticle prefers queued title over generic Yahoo page title', async () => {
+  const articleHtml = `<html><head>
+    <title>Yahoo Finance</title>
+  </head><body><article>${'Yahoo article body '.repeat(80)}</article></body></html>`;
+
+  const { htmlFetcher } = loadTsModule('../src/services/fetchers/html-fetcher.ts', {
+    ...baseStubs,
+    './selector-profile.js': {
+      ...baseStubs['./selector-profile.js'],
+      getDomainFromUrl: () => 'yahoo.com',
+    },
+  }, {
+    fetch: async () => ({ ok: true, text: async () => articleHtml }),
+    console: { warn: () => {}, log: () => {} },
+  });
+
+  const article = await htmlFetcher.fetchArticle({
+    id: 'job_yahoo',
+    source_id: 'src_yahoo',
+    url: 'https://www.yahoo.com/finance/sectors/technology/articles/went-walmarts-hq-saw-ai-091201001.html',
+    title: 'Walmart is changing what people see and buy',
+    external_id: null,
+    published_at: null,
+    payload_json: null,
+  }, {
+    id: 'src_yahoo',
+    type: 'web',
+    name: 'Yahoo News',
+    url: 'https://www.yahoo.com/news/',
+    language: 'en',
+    category: null,
+    fetch_interval_minutes: 60,
+    parser_config: null,
+  });
+
+  assert.equal(article.title, 'Walmart is changing what people see and buy');
+});
