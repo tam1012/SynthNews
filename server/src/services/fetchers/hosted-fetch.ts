@@ -27,6 +27,7 @@
 //   SCRAPINGANT_API_KEY=...        SCRAPINGANT_MAX_PER_DAY=300
 //   SCRAPINGANT_RESIDENTIAL_MAX_PER_DAY=15   (residential is ~25x cost; cap tight)
 //   SCRAPEDO_API_KEY=...           SCRAPEDO_MAX_PER_DAY=30
+//   SCRAPEOPS_API_KEY=...          SCRAPEOPS_MAX_PER_DAY=30
 //   FIRECRAWL_API_KEY=fc-...       FIRECRAWL_MAX_PER_DAY=30
 //   FIRECRAWL_API_URL=https://api.firecrawl.dev
 //   HOSTED_FETCH_DOMAINS=reuters.com,bloomberg.com   (legacy: FIRECRAWL_DOMAINS)
@@ -170,6 +171,33 @@ async function firecrawlFetchRaw(url: string, timeoutMs: number): Promise<string
   return data.data?.rawHtml || data.data?.html || '';
 }
 
+// ── Provider: ScrapeOps ──────────────────────────────────────────────────
+// Proxy API aggregator with built-in anti-bot bypass (DataDome, Cloudflare,
+// PerimeterX). Uses render_js + residential + bypass=generic_level_3 for
+// DataDome hosts, render_js + residential for normal hosts.
+const SCRAPEOPS_API_KEY = process.env.SCRAPEOPS_API_KEY || '';
+async function scrapeOpsFetch(url: string, timeoutMs: number): Promise<string> {
+  const targetIsDataDome = isDataDomeHost(url);
+  const params = new URLSearchParams({
+    api_key: SCRAPEOPS_API_KEY,
+    url,
+    render_js: 'true',
+    residential: 'true',
+    ...(targetIsDataDome ? { bypass: 'generic_level_3' } : {}),
+  });
+  const endpoint = `https://proxy.scrapeops.io/v1/?${params.toString()}`;
+  let res: Response;
+  try {
+    res = await fetch(endpoint, { signal: AbortSignal.timeout(timeoutMs + 5000) });
+  } catch (err: any) {
+    throw new HostedFetchUnavailableError(`ScrapeOps unreachable: ${err.message}`);
+  }
+  if (res.status === 402) throw new HostedFetchUnavailableError('ScrapeOps out of credits (402)');
+  if (res.status === 429) throw new HostedFetchUnavailableError('ScrapeOps rate limited (429)');
+  if (!res.ok) throw new HostedFetchUnavailableError(`ScrapeOps HTTP ${res.status}`);
+  return res.text();
+}
+
 // Each provider tracks its own rolling-24h budget independently. ScrapingAnt's
 // datacenter and residential modes share one API key but are budgeted separately
 // because residential burns ~25x the credits.
@@ -205,14 +233,23 @@ const firecrawl: HostedProvider = {
   windowStart: Date.now(),
   used: 0,
 };
+const scrapeOps: HostedProvider = {
+  name: 'scrapeops',
+  hasKey: () => Boolean(SCRAPEOPS_API_KEY),
+  fetch: scrapeOpsFetch,
+  cap: parsePositiveInt(process.env.SCRAPEOPS_MAX_PER_DAY, 30),
+  windowStart: Date.now(),
+  used: 0,
+};
 
-const ALL_PROVIDERS: HostedProvider[] = [scrapingAntDatacenter, scrapingAntResidential, scrapeDo, firecrawl];
+const ALL_PROVIDERS: HostedProvider[] = [scrapingAntDatacenter, scrapingAntResidential, scrapeDo, scrapeOps, firecrawl];
 
 // Normal hosts: cheap datacenter first, then the two strong-but-scarce providers.
-const DEFAULT_CHAIN: HostedProvider[] = [scrapingAntDatacenter, scrapeDo, firecrawl];
-// DataDome hosts: ScrapingAnt datacenter can't clear them, so lead with Scrape.do
-// and Firecrawl (both pass cheaply) and keep residential as the capped last resort.
-const DATADOME_CHAIN: HostedProvider[] = [scrapeDo, firecrawl, scrapingAntResidential];
+const DEFAULT_CHAIN: HostedProvider[] = [scrapingAntDatacenter, scrapeDo, scrapeOps, firecrawl];
+// DataDome hosts: ScrapingAnt datacenter can't clear them, so lead with Scrape.do,
+// ScrapeOps (strong DataDome bypass with generic_level_3), Firecrawl, and keep
+// residential as the capped last resort.
+const DATADOME_CHAIN: HostedProvider[] = [scrapeDo, scrapeOps, firecrawl, scrapingAntResidential];
 
 function providerChainFor(targetUrl: string): HostedProvider[] {
   return isDataDomeHost(targetUrl) ? DATADOME_CHAIN : DEFAULT_CHAIN;
