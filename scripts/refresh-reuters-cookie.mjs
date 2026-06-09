@@ -224,6 +224,41 @@ async function verifyPage(page) {
   };
 }
 
+// Stealth patches to defeat DataDome automation detection.
+// DataDome checks navigator.webdriver, chrome.runtime, permissions.query,
+// and other browser APIs that Playwright/Chromium expose by default.
+async function applyStealthPatches(page) {
+  await page.addInitScript(() => {
+    // Hide navigator.webdriver flag
+    Object.defineProperty(navigator, 'webdriver', { get: () => false });
+
+    // Fake chrome.runtime so it looks like a real Chrome install
+    if (!window.chrome) window.chrome = {};
+    if (!window.chrome.runtime) {
+      window.chrome.runtime = {
+        connect: () => {},
+        sendMessage: () => {},
+        id: undefined,
+      };
+    }
+
+    // Override permissions.query to hide 'notifications' denial (automation tell)
+    const originalQuery = window.Permissions?.prototype?.query;
+    if (originalQuery) {
+      window.Permissions.prototype.query = function (params) {
+        if (params?.name === 'notifications') {
+          return Promise.resolve({ state: Notification.permission });
+        }
+        return originalQuery.call(this, params);
+      };
+    }
+
+    // Remove Playwright/CDP-injected properties
+    delete window.__playwright;
+    delete window.__pw_manual;
+  });
+}
+
 async function refreshReutersCookie() {
   const proxy = parseProxyUrl(process.env.SCRAPLING_PROXY_URL || '');
   const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || process.env.CHROMIUM_EXECUTABLE_PATH || '/usr/bin/chromium-browser';
@@ -293,6 +328,7 @@ async function refreshReutersCookie() {
         }
 
         const page = context.pages()[0] || await context.newPage();
+        await applyStealthPatches(page);
         // Fresh sessions need 'load' + longer settle so DataDome JS challenge
         // completes its proof-of-work and sets the datadome cookie; existing
         // sessions with valid cookies only need 'domcontentloaded' + 7s.
