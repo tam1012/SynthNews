@@ -154,8 +154,11 @@ services:
       - -c
       - |
         while true; do
-          node /app/scripts/refresh-reuters-cookie.mjs || true
-          sleep "$${REUTERS_COOKIE_REFRESH_INTERVAL_SECONDS:-21600}"
+          if node /app/scripts/refresh-reuters-cookie.mjs; then
+            sleep "$${REUTERS_COOKIE_REFRESH_INTERVAL_SECONDS:-21600}"
+          else
+            sleep "$${REUTERS_COOKIE_REFRESH_RETRY_SECONDS:-1800}"
+          fi
         done
 
   reuters-profile-browser:

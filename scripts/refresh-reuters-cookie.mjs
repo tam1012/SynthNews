@@ -229,7 +229,15 @@ async function refreshReutersCookie() {
   const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || process.env.CHROMIUM_EXECUTABLE_PATH || '/usr/bin/chromium-browser';
 
   await removeStaleChromiumLocks();
-  await log(`refresh:start proxy=${proxy ? 'SET' : 'EMPTY'} dryRun=${DRY_RUN}`);
+
+  // Detect consecutive failures — stale DataDome cookies cause immediate 401
+  // rejection instead of a solvable JS challenge. When this happens, reusing
+  // the profile cookies is counterproductive; clearing them lets the residential
+  // proxy receive a fresh DataDome challenge that the browser can solve.
+  const previousStatus = await readStatus().catch(() => null);
+  const prevFailed = previousStatus?.status === 'failed';
+
+  await log(`refresh:start proxy=${proxy ? 'SET' : 'EMPTY'} dryRun=${DRY_RUN} prevFailed=${prevFailed}`);
 
   const context = await chromium.launchPersistentContext(PROFILE_DIR, {
     headless: process.env.REUTERS_COOKIE_HEADLESS !== 'false',
@@ -247,58 +255,101 @@ async function refreshReutersCookie() {
   });
 
   try {
-    const profileCookieHeader = buildCookieHeader(await context.cookies(REUTERS_HOME).catch(() => []));
-    if (profileCookieHeader.length >= MIN_COOKIE_HEADER_LENGTH) {
-      await log(`refresh:profile cookies=SET length=${profileCookieHeader.length}`);
-    } else {
-      const bootstrapCookieHeader = await readBootstrapCookieHeader();
-      const bootstrapCookies = cookieHeaderToContextCookies(bootstrapCookieHeader);
-      if (bootstrapCookies.length > 0) {
-        let acceptedCookies = 0;
-        for (const cookie of bootstrapCookies) {
-          try {
-            await context.addCookies([cookie]);
-            acceptedCookies += 1;
-          } catch {}
+    // If previous refresh failed, stale DataDome cookies get rejected instantly
+    // (401 + 1.5KB captcha shell). Clearing forces DataDome to serve a fresh JS
+    // challenge that the browser + residential proxy can solve.
+    if (prevFailed) {
+      await log('refresh:clearing stale cookies after previous failure');
+      await context.clearCookies();
+    }
+
+    const MAX_ATTEMPTS = 2;
+    let lastError = null;
+
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      const isFreshSession = prevFailed || attempt > 1;
+      try {
+        // On first attempt with a healthy profile, reuse existing cookies.
+        // On fresh sessions (after clear or retry), skip — we want DataDome
+        // to issue a new JS challenge instead of rejecting stale cookies.
+        if (attempt === 1 && !prevFailed) {
+          const profileCookieHeader = buildCookieHeader(await context.cookies(REUTERS_HOME).catch(() => []));
+          if (profileCookieHeader.length >= MIN_COOKIE_HEADER_LENGTH) {
+            await log(`refresh:profile cookies=SET length=${profileCookieHeader.length}`);
+          } else {
+            const bootstrapCookieHeader = await readBootstrapCookieHeader();
+            const bootstrapCookies = cookieHeaderToContextCookies(bootstrapCookieHeader);
+            if (bootstrapCookies.length > 0) {
+              let acceptedCookies = 0;
+              for (const cookie of bootstrapCookies) {
+                try {
+                  await context.addCookies([cookie]);
+                  acceptedCookies += 1;
+                } catch {}
+              }
+              await log(`refresh:bootstrap cookies=${acceptedCookies}/${bootstrapCookies.length}`);
+            }
+          }
         }
-        await log(`refresh:bootstrap cookies=${acceptedCookies}/${bootstrapCookies.length}`);
+
+        const page = context.pages()[0] || await context.newPage();
+        // Fresh sessions need 'load' + longer settle so DataDome JS challenge
+        // completes its proof-of-work and sets the datadome cookie; existing
+        // sessions with valid cookies only need 'domcontentloaded' + 7s.
+        const waitEvent = isFreshSession ? 'load' : 'domcontentloaded';
+        const settleMs = isFreshSession ? 15000 : 7000;
+        if (attempt > 1) {
+          await log(`refresh:retry attempt=${attempt} waitEvent=${waitEvent} settleMs=${settleMs}`);
+        }
+
+        await page.goto(REUTERS_HOME, { waitUntil: waitEvent, timeout: TIMEOUT_MS });
+        await page.waitForTimeout(settleMs);
+
+        for (const selector of [
+          'button:has-text("Accept")',
+          'button:has-text("I agree")',
+          'button[aria-label*="Accept"]',
+          '#onetrust-accept-btn-handler',
+        ]) {
+          await page.locator(selector).first().click({ timeout: 2000 }).catch(() => {});
+        }
+
+        const verify = await verifyPage(page);
+        const cookies = await context.cookies();
+        const cookieHeader = buildCookieHeader(cookies);
+
+        if (cookieHeader.length < MIN_COOKIE_HEADER_LENGTH) {
+          throw new Error(`cookie header too short (${cookieHeader.length})`);
+        }
+        if (!verify.ok) {
+          throw new Error(`verify failed status=${verify.status} blocked=${verify.blocked} htmlLength=${verify.htmlLength}`);
+        }
+
+        if (!DRY_RUN) {
+          await atomicWriteCookie(cookieHeader);
+        }
+
+        await writeStatus('ok', {
+          cookieHeaderLength: cookieHeader.length,
+          verify,
+          dryRun: DRY_RUN,
+          attempt,
+        });
+        await log(`refresh:ok cookieHeaderLength=${cookieHeader.length} verifyStatus=${verify.status} attempt=${attempt}`);
+        lastError = null;
+        break;
+      } catch (err) {
+        lastError = err;
+        if (attempt < MAX_ATTEMPTS) {
+          await log(`refresh:attempt ${attempt} failed, clearing cookies for retry: ${maskMessage(err)}`);
+          await context.clearCookies();
+          // Brief pause before retry to avoid rapid-fire requests to DataDome
+          await new Promise((r) => setTimeout(r, 3000));
+        }
       }
     }
 
-    const page = context.pages()[0] || await context.newPage();
-    await page.goto(REUTERS_HOME, { waitUntil: 'domcontentloaded', timeout: TIMEOUT_MS });
-    await page.waitForTimeout(7000);
-
-    for (const selector of [
-      'button:has-text("Accept")',
-      'button:has-text("I agree")',
-      'button[aria-label*="Accept"]',
-      '#onetrust-accept-btn-handler',
-    ]) {
-      await page.locator(selector).first().click({ timeout: 2000 }).catch(() => {});
-    }
-
-    const verify = await verifyPage(page);
-    const cookies = await context.cookies();
-    const cookieHeader = buildCookieHeader(cookies);
-
-    if (cookieHeader.length < MIN_COOKIE_HEADER_LENGTH) {
-      throw new Error(`cookie header too short (${cookieHeader.length})`);
-    }
-    if (!verify.ok) {
-      throw new Error(`verify failed status=${verify.status} blocked=${verify.blocked} htmlLength=${verify.htmlLength}`);
-    }
-
-    if (!DRY_RUN) {
-      await atomicWriteCookie(cookieHeader);
-    }
-
-    await writeStatus('ok', {
-      cookieHeaderLength: cookieHeader.length,
-      verify,
-      dryRun: DRY_RUN,
-    });
-    await log(`refresh:ok cookieHeaderLength=${cookieHeader.length} verifyStatus=${verify.status}`);
+    if (lastError) throw lastError;
   } finally {
     if (!KEEP_BROWSER_OPEN) {
       await context.close();
