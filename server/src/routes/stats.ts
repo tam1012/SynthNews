@@ -21,8 +21,8 @@ function toMs(date: string): number {
 }
 
 function defaultTodayVn(): string {
-  const nowVn = new Date(new Date().toLocaleString('en-US', { timeZone: TZ }));
-  return nowVn.toISOString().slice(0, 10);
+  // en-CA cho dinh dang YYYY-MM-DD san; timeZone dam bao lay dung ngay theo gio VN
+  return new Date().toLocaleDateString('en-CA', { timeZone: TZ });
 }
 
 // Phan giai khoang ngay tu query, mac dinh 7 ngay gan nhat (gio VN). Tra ve loi neu khong hop le.

@@ -11,8 +11,8 @@ type AdminStatsResponse = { data: AdminStats };
 type AdminVisitStatsResponse = { data: AdminVisitStats };
 
 function todayVn(): string {
-  const nowVn = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
-  return nowVn.toISOString().slice(0, 10);
+  // en-CA cho dinh dang YYYY-MM-DD san; timeZone dam bao lay dung ngay theo gio VN
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' });
 }
 
 function daysAgoVn(days: number): string {
