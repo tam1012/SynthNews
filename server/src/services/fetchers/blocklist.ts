@@ -116,6 +116,22 @@ function domainMatches(hostname: string, domain: string): boolean {
   return hostname === domain || hostname.endsWith(`.${domain}`);
 }
 
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Path pattern matching. A `*` is a wildcard that matches any run of path
+// characters (including slashes), so `edition.cnn.com/*/weather/video` matches
+// `edition.cnn.com/2026/06/09/weather/video/...` regardless of the date segment.
+// Patterns without `*` keep the original substring behaviour.
+function pathMatches(normalized: string, pattern: string): boolean {
+  if (pattern.includes('*')) {
+    const regex = new RegExp('^' + pattern.split('*').map(escapeRegex).join('[^?#]*'));
+    return regex.test(normalized);
+  }
+  return normalized.startsWith(pattern) || normalized.includes(`/${pattern}`);
+}
+
 export async function getBlocklistMatch(url: string): Promise<BlocklistEntry | null> {
   const state = await getCache();
   const hostname = getHostname(url);
@@ -126,7 +142,7 @@ export async function getBlocklistMatch(url: string): Promise<BlocklistEntry | n
   }
 
   const normalized = url.toLowerCase().replace(/^https?:\/\/(www\.)?/, '');
-  const pathHit = state.paths.find(entry => normalized.startsWith(entry.pattern) || normalized.includes(`/${entry.pattern}`));
+  const pathHit = state.paths.find(entry => pathMatches(normalized, entry.pattern));
   return pathHit || null;
 }
 

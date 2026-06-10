@@ -1,6 +1,7 @@
 import { getMany, query } from '../db/index.js';
 import { generateId, normalizePublicHttpUrl } from '../lib/utils.js';
 import { matchPromoKeyword } from '../lib/promoFilter.js';
+import { getBlocklistMatch, recordBlocklistHit } from './fetchers/blocklist.js';
 
 export const MAX_ARTICLE_FETCH_RETRIES = 3;
 
@@ -170,6 +171,16 @@ export async function enqueueDiscoveredArticles(items: DiscoveredArticle[]): Pro
     const matchedKeyword = matchPromoKeyword(item.title);
     if (matchedKeyword) {
       console.log(`[promo-filter] Skipped at enqueue "${item.title}" (matched: "${matchedKeyword}")`);
+      continue;
+    }
+
+    // Blocklist applies to every source type at enqueue (RSS already checks it
+    // earlier, but web/sitemap discovery does not), so a path pattern like
+    // edition.cnn.com/*/weather/video/ stops the link before it costs a fetch.
+    const blockMatch = await getBlocklistMatch(item.url);
+    if (blockMatch) {
+      console.log(`[blocklist] Skipped at enqueue "${item.title}" from ${item.url} (pattern=${blockMatch.pattern})`);
+      recordBlocklistHit(blockMatch.id).catch(() => {});
       continue;
     }
 

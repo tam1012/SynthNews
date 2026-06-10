@@ -145,6 +145,7 @@ export function BlocklistTab() {
         <div style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>
           <code>domain</code> chặn cả domain (vd <code>wsj.com</code> chặn cả <code>www.wsj.com</code> và subdomain).
           {' '}<code>path</code> chỉ chặn URL chứa pattern (vd <code>bbc.com/sport/</code>).
+          {' '}Dùng <code>*</code> làm ký tự đại diện cho phần thay đổi, vd <code>edition.cnn.com/*/weather/video/</code> chặn mọi link video thời tiết CNN bất kể ngày tháng.
         </div>
       </form>
 
