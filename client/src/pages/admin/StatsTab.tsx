@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { api } from '../../services/api';
 import { useFetchRaw } from '../../hooks/useApi';
 import {
@@ -56,6 +56,8 @@ function mergeDaily(articles: AdminStatsDailyPoint[], fetchFailed: AdminStatsDai
 export function StatsTab() {
   const [from, setFrom] = useState(() => daysAgoVn(6));
   const [to, setTo] = useState(() => todayVn());
+  const [domainPage, setDomainPage] = useState(1);
+  const [domainPageSize, setDomainPageSize] = useState(50);
   const { data: raw, loading, error, reload } = useFetchRaw<AdminStatsResponse>(
     () => api.getStats({ from, to }), [from, to]
   );
@@ -74,6 +76,9 @@ export function StatsTab() {
 
   const reloadAll = () => { reload(); reloadVisits(); };
 
+  // Doi khoang ngay hoac so dong/trang thi ve trang 1
+  useEffect(() => { setDomainPage(1); }, [from, to, domainPageSize]);
+
   const daily = useMemo(
     () => stats ? mergeDaily(stats.daily.articles, stats.daily.fetchFailed) : [],
     [stats]
@@ -85,6 +90,13 @@ export function StatsTab() {
   const maxError = useMemo(
     () => (stats?.errorTypes || []).reduce((max, row) => Math.max(max, row.count), 0),
     [stats]
+  );
+  const allDomains = stats?.domains || [];
+  const domainTotalPages = Math.max(1, Math.ceil(allDomains.length / domainPageSize));
+  const domainPageSafe = Math.min(domainPage, domainTotalPages);
+  const pagedDomains = useMemo(
+    () => allDomains.slice((domainPageSafe - 1) * domainPageSize, domainPageSafe * domainPageSize),
+    [allDomains, domainPageSafe, domainPageSize]
   );
   const maxVisitDaily = useMemo(
     () => (visits?.daily || []).reduce((max, row) => Math.max(max, row.total), 0),
@@ -180,7 +192,19 @@ export function StatsTab() {
           </div>
 
           <div className="card">
-            <div style={{ fontWeight: 700, marginBottom: 10 }}>Theo domain</div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
+              <div style={{ fontWeight: 700 }}>Theo domain</div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: '0.78rem', color: 'var(--color-text-muted)' }}>
+                <span>{allDomains.length.toLocaleString('vi-VN')} domain</span>
+                <label style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                  Mỗi trang
+                  <select value={domainPageSize} onChange={(e) => setDomainPageSize(Number(e.target.value))} style={{ padding: '3px 6px' }}>
+                    <option value={50}>50</option>
+                    <option value={100}>100</option>
+                  </select>
+                </label>
+              </div>
+            </div>
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
                 <thead>
@@ -193,7 +217,7 @@ export function StatsTab() {
                   </tr>
                 </thead>
                 <tbody>
-                  {stats.domains.map((row) => (
+                  {pagedDomains.map((row) => (
                     <tr key={row.domain} style={{ borderTop: '1px solid var(--color-border-light)' }}>
                       <td style={{ padding: '6px 8px', overflowWrap: 'anywhere' }}>{row.domain}</td>
                       <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 600 }}>{row.articles.toLocaleString('vi-VN')}</td>
@@ -202,12 +226,19 @@ export function StatsTab() {
                       <td style={{ padding: '6px 8px', textAlign: 'right', color: row.successRate !== null && row.successRate < 0.5 ? 'var(--color-error)' : 'var(--color-text-muted)' }}>{percentText(row.successRate)}</td>
                     </tr>
                   ))}
-                  {stats.domains.length === 0 && (
+                  {allDomains.length === 0 && (
                     <tr><td colSpan={5} style={{ padding: '10px 8px', color: 'var(--color-text-muted)' }}>Không có dữ liệu trong khoảng này.</td></tr>
                   )}
                 </tbody>
               </table>
             </div>
+            {domainTotalPages > 1 && (
+              <div style={{ display: 'flex', justifyContent: 'center', gap: 8, alignItems: 'center', marginTop: 10 }}>
+                <button className="btn btn-sm" onClick={() => setDomainPage((p) => Math.max(1, p - 1))} disabled={domainPageSafe <= 1}>Trang trước</button>
+                <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>{domainPageSafe}/{domainTotalPages}</span>
+                <button className="btn btn-sm" onClick={() => setDomainPage((p) => Math.min(domainTotalPages, p + 1))} disabled={domainPageSafe >= domainTotalPages}>Trang sau</button>
+              </div>
+            )}
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12 }}>
