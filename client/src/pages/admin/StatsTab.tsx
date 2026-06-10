@@ -4,9 +4,11 @@ import { useFetchRaw } from '../../hooks/useApi';
 import {
   AdminStats,
   AdminStatsDailyPoint,
+  AdminVisitStats,
 } from './adminHelpers';
 
 type AdminStatsResponse = { data: AdminStats };
+type AdminVisitStatsResponse = { data: AdminVisitStats };
 
 function todayVn(): string {
   const nowVn = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
@@ -16,6 +18,16 @@ function todayVn(): string {
 function daysAgoVn(days: number): string {
   const base = new Date(`${todayVn()}T00:00:00Z`).getTime() - days * 24 * 60 * 60 * 1000;
   return new Date(base).toISOString().slice(0, 10);
+}
+
+function dayMs(date: string): number {
+  return new Date(`${date}T00:00:00Z`).getTime();
+}
+
+// Visits chi cho phep toi da 31 ngay; neu khoang rong hon thi keo "from" lai gan "to".
+function clampVisitFrom(from: string, to: string): string {
+  const maxFromMs = dayMs(to) - 30 * 24 * 60 * 60 * 1000;
+  return dayMs(from) < maxFromMs ? new Date(maxFromMs).toISOString().slice(0, 10) : from;
 }
 
 function percentText(value: number | null): string {
@@ -49,10 +61,18 @@ export function StatsTab() {
   );
   const stats = raw?.data;
 
+  const visitFrom = clampVisitFrom(from, to);
+  const { data: visitRaw, loading: visitLoading, error: visitError, reload: reloadVisits } = useFetchRaw<AdminVisitStatsResponse>(
+    () => api.getVisitStats({ from: visitFrom, to }), [visitFrom, to]
+  );
+  const visits = visitRaw?.data;
+
   const applyPreset = (days: number) => {
     setFrom(daysAgoVn(days));
     setTo(todayVn());
   };
+
+  const reloadAll = () => { reload(); reloadVisits(); };
 
   const daily = useMemo(
     () => stats ? mergeDaily(stats.daily.articles, stats.daily.fetchFailed) : [],
@@ -66,6 +86,14 @@ export function StatsTab() {
     () => (stats?.errorTypes || []).reduce((max, row) => Math.max(max, row.count), 0),
     [stats]
   );
+  const maxVisitDaily = useMemo(
+    () => (visits?.daily || []).reduce((max, row) => Math.max(max, row.total), 0),
+    [visits]
+  );
+  const maxVisitIp = useMemo(
+    () => (visits?.topIps || []).reduce((max, row) => Math.max(max, row.total), 0),
+    [visits]
+  );
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
@@ -76,7 +104,7 @@ export function StatsTab() {
             Số bài lấy được và số URL lỗi fetch theo từng domain, tính theo ngày hệ thống lấy bài về (giờ VN).
           </div>
         </div>
-        <button className="btn btn-sm" onClick={reload} disabled={loading}>Tải lại</button>
+        <button className="btn btn-sm" onClick={reloadAll} disabled={loading || visitLoading}>Tải lại</button>
       </div>
 
       <div className="card" style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
@@ -258,6 +286,113 @@ export function StatsTab() {
                 </table>
               </div>
             )}
+          </div>
+        </>
+      ) : null}
+
+      <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <div style={{ fontWeight: 700 }}>Lượt truy cập website</div>
+        <div style={{ fontSize: '0.74rem', color: 'var(--color-text-muted)' }}>
+          Đọc từ log máy chủ nginx (tối đa 31 ngày). Đếm mọi request HTTP, đã tách "người" và "bot" theo trình duyệt, loại bỏ truy cập nội bộ VPS.
+          {visitFrom !== from && ' Khoảng lượt truy cập đã được rút về 31 ngày gần nhất.'}
+        </div>
+      </div>
+
+      {visitLoading ? (
+        <div className="loading">Đang đọc log truy cập...</div>
+      ) : visitError ? (
+        <div className="empty-state">
+          <p style={{ color: 'var(--color-error)' }}>{visitError}</p>
+          <button className="btn btn-primary" onClick={reloadVisits} style={{ marginTop: 12 }}>Thử lại</button>
+        </div>
+      ) : visits && !visits.available ? (
+        <div className="card" style={{ borderColor: 'var(--color-warning)', background: 'rgba(245, 158, 11, 0.08)' }}>
+          <div style={{ fontWeight: 700, marginBottom: 4 }}>Chưa đọc được log truy cập</div>
+          <div style={{ fontSize: '0.82rem', color: 'var(--color-text-muted)' }}>{visits.reason || 'Không có dữ liệu log.'}</div>
+        </div>
+      ) : visits ? (
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8 }}>
+            {[
+              ['Lượt người', visits.totals.humanRequests, 'var(--color-success)'],
+              ['IP người', visits.totals.uniqueHumanIps, 'var(--color-text)'],
+              ['Lượt bot', visits.totals.botRequests, 'var(--color-warning)'],
+              ['Tổng lượt', visits.totals.requests, 'var(--color-text)'],
+              ['Tổng IP', visits.totals.uniqueIps, 'var(--color-text-muted)'],
+            ].map(([label, value, color]) => (
+              <div key={String(label)} className="card" style={{ padding: '10px 12px' }}>
+                <div style={{ fontSize: '1.45rem', lineHeight: 1, fontWeight: 800, color: String(color) }}>{Number(value).toLocaleString('vi-VN')}</div>
+                <div style={{ fontSize: '0.78rem', fontWeight: 600, marginTop: 6 }}>{label}</div>
+              </div>
+            ))}
+          </div>
+          {visits.reason && (
+            <div style={{ fontSize: '0.74rem', color: 'var(--color-warning)' }}>{visits.reason}</div>
+          )}
+
+          <div className="card">
+            <div style={{ fontWeight: 700, marginBottom: 4 }}>Lượt truy cập theo ngày</div>
+            <div style={{ fontSize: '0.74rem', color: 'var(--color-text-muted)', marginBottom: 12 }}>
+              Cột xanh: lượt người · cột mờ: tổng (gồm bot). Số dưới mỗi cột là số IP khác nhau hôm đó.
+            </div>
+            {visits.daily.length === 0 ? (
+              <div style={{ fontSize: '0.82rem', color: 'var(--color-text-muted)' }}>Không có lượt truy cập trong khoảng này.</div>
+            ) : (
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, overflowX: 'auto', paddingBottom: 4, minHeight: 150 }}>
+                {visits.daily.map((row) => (
+                  <div key={row.date} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, minWidth: 40, flex: '1 0 auto' }}>
+                    <div style={{ position: 'relative', display: 'flex', alignItems: 'flex-end', height: 110, width: 22 }} title={`${row.date}\nngười: ${row.humans}\ntổng: ${row.total}\nIP: ${row.uniqueIps}`}>
+                      <div style={{ position: 'absolute', bottom: 0, width: '100%', height: `${maxVisitDaily > 0 ? Math.max(2, (row.total / maxVisitDaily) * 110) : 2}px`, background: 'var(--color-border)', borderRadius: '2px 2px 0 0' }} />
+                      <div style={{ position: 'absolute', bottom: 0, width: '100%', height: `${maxVisitDaily > 0 ? Math.max(2, (row.humans / maxVisitDaily) * 110) : 2}px`, background: 'var(--color-success)', borderRadius: '2px 2px 0 0' }} />
+                    </div>
+                    <div style={{ fontSize: '0.6rem', color: 'var(--color-text-muted)' }}>{row.uniqueIps}</div>
+                    <div style={{ fontSize: '0.62rem', color: 'var(--color-text-muted)', transform: 'rotate(-45deg)', whiteSpace: 'nowrap', transformOrigin: 'center' }}>
+                      {row.date.slice(5)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="card">
+            <div style={{ fontWeight: 700, marginBottom: 4 }}>Top IP truy cập</div>
+            <div style={{ fontSize: '0.74rem', color: 'var(--color-text-muted)', marginBottom: 12 }}>
+              IP nhiều request nhất trong khoảng. Một IP có nhiều "lượt bot" hoặc rất nhiều request thường là crawler.
+            </div>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                <thead>
+                  <tr style={{ textAlign: 'left', color: 'var(--color-text-muted)', fontSize: '0.74rem' }}>
+                    <th style={{ padding: '6px 8px' }}>IP</th>
+                    <th style={{ padding: '6px 8px', textAlign: 'right' }}>Tổng</th>
+                    <th style={{ padding: '6px 8px', textAlign: 'right' }}>Người</th>
+                    <th style={{ padding: '6px 8px', textAlign: 'right' }}>Bot</th>
+                    <th style={{ padding: '6px 8px', textAlign: 'right' }}>Số đường dẫn</th>
+                    <th style={{ padding: '6px 8px', width: '28%' }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visits.topIps.map((row) => (
+                    <tr key={row.ip} style={{ borderTop: '1px solid var(--color-border-light)' }}>
+                      <td style={{ padding: '6px 8px', fontFamily: 'monospace' }}>{row.ip}</td>
+                      <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 600 }}>{row.total.toLocaleString('vi-VN')}</td>
+                      <td style={{ padding: '6px 8px', textAlign: 'right', color: 'var(--color-success)' }}>{row.humans.toLocaleString('vi-VN')}</td>
+                      <td style={{ padding: '6px 8px', textAlign: 'right', color: row.bot > 0 ? 'var(--color-warning)' : 'var(--color-text-muted)' }}>{row.bot.toLocaleString('vi-VN')}</td>
+                      <td style={{ padding: '6px 8px', textAlign: 'right', color: 'var(--color-text-muted)' }}>{row.paths}</td>
+                      <td style={{ padding: '6px 8px' }}>
+                        <div style={{ height: 6, background: 'var(--color-border-light)', borderRadius: 3, overflow: 'hidden' }}>
+                          <div style={{ height: '100%', width: `${maxVisitIp > 0 ? (row.total / maxVisitIp) * 100 : 0}%`, background: 'var(--color-text-muted)', opacity: 0.6 }} />
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {visits.topIps.length === 0 && (
+                    <tr><td colSpan={6} style={{ padding: '10px 8px', color: 'var(--color-text-muted)' }}>Không có lượt truy cập trong khoảng này.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </>
       ) : null}

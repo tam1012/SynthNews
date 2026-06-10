@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { getMany } from '../db/index.js';
+import { aggregateVisits } from '../lib/accessLog.js';
 
 const stats = new Hono();
 
@@ -19,32 +20,33 @@ function toMs(date: string): number {
   return new Date(`${date}T00:00:00Z`).getTime();
 }
 
-stats.get('/', async (c) => {
+function defaultTodayVn(): string {
+  const nowVn = new Date(new Date().toLocaleString('en-US', { timeZone: TZ }));
+  return nowVn.toISOString().slice(0, 10);
+}
+
+// Phan giai khoang ngay tu query, mac dinh 7 ngay gan nhat (gio VN). Tra ve loi neu khong hop le.
+function resolveRange(c: any, maxDays: number): { from: string; to: string } | { error: string } {
   const toParam = c.req.query('to');
   const fromParam = c.req.query('from');
+  if (toParam && !isValidDate(toParam)) return { error: 'to must be YYYY-MM-DD' };
+  if (fromParam && !isValidDate(fromParam)) return { error: 'from must be YYYY-MM-DD' };
 
-  if (toParam && !isValidDate(toParam)) {
-    return c.json({ success: false, error: { code: 'VALIDATION', message: 'to must be YYYY-MM-DD' } }, 400);
-  }
-  if (fromParam && !isValidDate(fromParam)) {
-    return c.json({ success: false, error: { code: 'VALIDATION', message: 'from must be YYYY-MM-DD' } }, 400);
-  }
-
-  // Mac dinh: 7 ngay gan nhat tinh theo gio VN
-  const nowVn = new Date(new Date().toLocaleString('en-US', { timeZone: TZ }));
-  const defaultTo = nowVn.toISOString().slice(0, 10);
-  const to = isValidDate(toParam) ? toParam : defaultTo;
+  const to = isValidDate(toParam) ? toParam : defaultTodayVn();
   const defaultFromMs = toMs(to) - 6 * 24 * 60 * 60 * 1000;
   const from = isValidDate(fromParam) ? fromParam : new Date(defaultFromMs).toISOString().slice(0, 10);
 
-  if (toMs(from) > toMs(to)) {
-    return c.json({ success: false, error: { code: 'VALIDATION', message: 'from must be <= to' } }, 400);
-  }
-  // Gioi han toi da 92 ngay de tranh query nang
-  if (toMs(to) - toMs(from) > 92 * 24 * 60 * 60 * 1000) {
-    return c.json({ success: false, error: { code: 'VALIDATION', message: 'range must be <= 92 days' } }, 400);
-  }
+  if (toMs(from) > toMs(to)) return { error: 'from must be <= to' };
+  if (toMs(to) - toMs(from) > maxDays * 24 * 60 * 60 * 1000) return { error: `range must be <= ${maxDays} days` };
+  return { from, to };
+}
 
+stats.get('/', async (c) => {
+  const resolved = resolveRange(c, 92);
+  if ('error' in resolved) {
+    return c.json({ success: false, error: { code: 'VALIDATION', message: resolved.error } }, 400);
+  }
+  const { from, to } = resolved;
   const range = [from, to];
 
   const [articleByDomain, jobFailByDomain, skippedByDomain, dailyArticles, dailyFetchFail, errorTypes, aiByDay, silentDomains, totals] = await Promise.all([
@@ -188,6 +190,17 @@ stats.get('/', async (c) => {
       silentDomains: silentDomains.map((s) => ({ domain: s.domain, priorCount: s.prior_count, lastSeen: s.last_seen })),
     },
   });
+});
+
+// Luot truy cap website tu nginx access log (IP, so request, bot vs nguoi)
+stats.get('/visits', async (c) => {
+  const resolved = resolveRange(c, 31);
+  if ('error' in resolved) {
+    return c.json({ success: false, error: { code: 'VALIDATION', message: resolved.error } }, 400);
+  }
+  const { from, to } = resolved;
+  const visits = await aggregateVisits(from, to);
+  return c.json({ success: true, data: { range: { from, to }, ...visits } });
 });
 
 export { stats };

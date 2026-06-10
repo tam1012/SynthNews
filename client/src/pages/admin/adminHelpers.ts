@@ -98,6 +98,16 @@ export type AdminStats = {
   aiByDay: AdminStatsAiPoint[];
   silentDomains: AdminStatsSilentDomain[];
 };
+export type AdminVisitDaily = { date: string; total: number; humans: number; uniqueIps: number };
+export type AdminVisitIp = { ip: string; total: number; humans: number; bot: number; paths: number };
+export type AdminVisitStats = {
+  range: { from: string; to: string };
+  available: boolean;
+  reason?: string;
+  daily: AdminVisitDaily[];
+  topIps: AdminVisitIp[];
+  totals: { requests: number; humanRequests: number; botRequests: number; uniqueIps: number; uniqueHumanIps: number };
+};
 export type AdminPageMeta = {
   page?: number;
   total?: number;

@@ -119,8 +119,14 @@ services:
       ARCHIVE_TODAY_HOST: ${ARCHIVE_TODAY_HOST:-archive.ph}
       ENABLE_SITEMAP_DISCOVERY: ${ENABLE_SITEMAP_DISCOVERY:-true}
       SCRAPLING_SERVICE_URL: ${SCRAPLING_SERVICE_URL:-http://scrapling:8000}
+      NGINX_ACCESS_LOG_DIR: ${NGINX_ACCESS_LOG_DIR:-/var/log/nginx}
+    # Doc nginx access log de thong ke luot truy cap. File log thuoc group adm (GID 4),
+    # them group nay cho user trong container de doc duoc (chi doc, mount read-only).
+    group_add:
+      - "4"
     volumes:
       - reuters_cookie_runtime:/app/runtime/reuters-cookie
+      - /var/log/nginx:/var/log/nginx:ro
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:3000/api/health/live >/dev/null"]
       interval: 30s

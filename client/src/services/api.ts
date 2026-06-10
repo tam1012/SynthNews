@@ -108,6 +108,13 @@ export const api = {
     const query = qs.toString();
     return request<any>(`/stats${query ? `?${query}` : ''}`);
   },
+  getVisitStats: (params?: { from?: string; to?: string }) => {
+    const qs = new URLSearchParams();
+    if (params?.from) qs.set('from', params.from);
+    if (params?.to) qs.set('to', params.to);
+    const query = qs.toString();
+    return request<any>(`/stats/visits${query ? `?${query}` : ''}`);
+  },
 
   // Sources
   getSources: () => request<any>('/sources'),
