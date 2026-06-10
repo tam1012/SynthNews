@@ -17,7 +17,7 @@ export type PromptConfigFormData = {
   custom_context: string;
 };
 
-export type AdminTab = 'overview' | 'queue' | 'quality' | 'fetchJobs' | 'ai' | 'prompt' | 'blocklist';
+export type AdminTab = 'overview' | 'stats' | 'queue' | 'quality' | 'fetchJobs' | 'ai' | 'prompt' | 'blocklist';
 export type SummaryQueueStatus = 'failed' | 'pending' | 'processing' | 'skipped' | 'done';
 export type QualityIssue = 'missing_tldr' | 'missing_summary_short' | 'missing_tags' | 'missing_hot_score' | 'short_summary';
 export type FetchJobStatus = 'failed' | 'discovered' | 'fetching' | 'done';
@@ -77,6 +77,26 @@ export type AdminDigestSummary = {
   title?: string | null;
   digest_date: string;
   article_count?: number;
+};
+export type AdminStatsDomain = {
+  domain: string;
+  articles: number;
+  fetchFailed: number;
+  skipped: number;
+  successRate: number | null;
+};
+export type AdminStatsDailyPoint = { date: string; count: number };
+export type AdminStatsAiPoint = { date: string; done: number; failed: number; skipped: number };
+export type AdminStatsErrorType = { category: string; count: number };
+export type AdminStatsSilentDomain = { domain: string; priorCount: number; lastSeen: string };
+export type AdminStats = {
+  range: { from: string; to: string; dayBasis: string };
+  summary: { articles: number; fetchFailed: number; skipped: number; domains: number };
+  domains: AdminStatsDomain[];
+  daily: { articles: AdminStatsDailyPoint[]; fetchFailed: AdminStatsDailyPoint[] };
+  errorTypes: AdminStatsErrorType[];
+  aiByDay: AdminStatsAiPoint[];
+  silentDomains: AdminStatsSilentDomain[];
 };
 export type AdminPageMeta = {
   page?: number;

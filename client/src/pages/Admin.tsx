@@ -5,6 +5,7 @@ import { useFetch } from '../hooks/useApi';
 import { AiProvidersTab } from './admin/AiProvidersTab';
 import { FetchJobsTab } from './admin/FetchJobsTab';
 import { OverviewTab, type AdminActionMessage } from './admin/OverviewTab';
+import { StatsTab } from './admin/StatsTab';
 import { PromptConfigTab } from './admin/PromptConfigTab';
 import { QualityControlTab } from './admin/QualityControlTab';
 import { SummaryQueueTab } from './admin/SummaryQueueTab';
@@ -13,6 +14,7 @@ import { AdminHealth, AdminTab, FetchJobStatus, SummaryQueueStatus } from './adm
 
 const TAB_SLUGS: { tab: AdminTab; slug: string; label: string }[] = [
   { tab: 'overview', slug: 'overview', label: 'Tổng quan' },
+  { tab: 'stats', slug: 'stats', label: 'Thống kê' },
   { tab: 'queue', slug: 'queue', label: 'Hàng đợi tóm tắt' },
   { tab: 'quality', slug: 'quality', label: 'Kiểm tra chất lượng' },
   { tab: 'fetchJobs', slug: 'fetch-jobs', label: 'Hàng đợi lấy bài' },
@@ -211,6 +213,7 @@ export function Admin() {
           goToQuality={goToQuality}
         />
       )}
+      {tab === 'stats' && <StatsTab />}
       {tab === 'queue' && <SummaryQueueTab initialStatus={queueFilter} />}
       {tab === 'quality' && <QualityControlTab />}
       {tab === 'fetchJobs' && <FetchJobsTab initialStatus={fetchFilter} />}

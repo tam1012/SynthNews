@@ -100,6 +100,15 @@ export const api = {
   // Health
   getHealth: () => request<{ success: boolean; data: AdminHealth }>('/health'),
 
+  // Stats
+  getStats: (params?: { from?: string; to?: string }) => {
+    const qs = new URLSearchParams();
+    if (params?.from) qs.set('from', params.from);
+    if (params?.to) qs.set('to', params.to);
+    const query = qs.toString();
+    return request<any>(`/stats${query ? `?${query}` : ''}`);
+  },
+
   // Sources
   getSources: () => request<any>('/sources'),
   getPublicSources: () => request<any>('/sources/public'),
