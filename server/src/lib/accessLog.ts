@@ -72,9 +72,17 @@ async function readLogFileLines(path: string, onLine: (line: string) => void): P
 export type VisitAggregation = {
   available: boolean;
   reason?: string;
-  daily: { date: string; total: number; humans: number; uniqueIps: number }[];
-  topIps: { ip: string; total: number; humans: number; bot: number; paths: number }[];
-  totals: { requests: number; humanRequests: number; botRequests: number; uniqueIps: number; uniqueHumanIps: number };
+  daily: { date: string; total: number; humans: number; suspectedBots: number; uniqueIps: number }[];
+  topIps: { ip: string; total: number; humans: number; suspectedBot: number; bot: number; paths: number }[];
+  totals: {
+    requests: number;
+    humanRequests: number;
+    suspectedBotRequests: number;
+    botRequests: number;
+    uniqueIps: number;
+    uniqueHumanIps: number;
+    uniqueSuspectedBotIps: number;
+  };
 };
 
 // Doc + gop log trong khoang [from, to] (YYYY-MM-DD). Dung som khi gap file chi chua ngay cu hon from.
@@ -86,17 +94,24 @@ export async function aggregateVisits(from: string, to: string): Promise<VisitAg
       reason: `Không tìm thấy log nginx tại ${LOG_DIR}. Cần mount thư mục log vào container.`,
       daily: [],
       topIps: [],
-      totals: { requests: 0, humanRequests: 0, botRequests: 0, uniqueIps: 0, uniqueHumanIps: 0 },
+      totals: {
+        requests: 0,
+        humanRequests: 0,
+        suspectedBotRequests: 0,
+        botRequests: 0,
+        uniqueIps: 0,
+        uniqueHumanIps: 0,
+        uniqueSuspectedBotIps: 0,
+      },
     };
   }
 
-  const dailyMap = new Map<string, { total: number; humans: number; ips: Set<string> }>();
+  const dailyMap = new Map<string, { total: number; humans: number; suspectedBots: number; ips: Set<string> }>();
   const ipMap = new Map<string, { total: number; humans: number; bot: number; paths: Set<string> }>();
+  const dailyIpMap = new Map<string, Map<string, { total: number; humans: number }>>();
+
   let requests = 0;
-  let humanRequests = 0;
-  let botRequests = 0;
   const uniqueIps = new Set<string>();
-  const uniqueHumanIps = new Set<string>();
   let linesParsed = 0;
   let truncated = false;
 
@@ -115,19 +130,21 @@ export async function aggregateVisits(from: string, to: string): Promise<VisitAg
         requests++;
         uniqueIps.add(parsed.ip);
         const human = !parsed.isBot;
-        if (human) { humanRequests++; uniqueHumanIps.add(parsed.ip); } else { botRequests++; }
-
-        const day = dailyMap.get(parsed.date) || { total: 0, humans: 0, ips: new Set<string>() };
-        day.total++;
-        if (human) day.humans++;
-        day.ips.add(parsed.ip);
-        dailyMap.set(parsed.date, day);
 
         const ipRow = ipMap.get(parsed.ip) || { total: 0, humans: 0, bot: 0, paths: new Set<string>() };
         ipRow.total++;
         if (human) ipRow.humans++; else ipRow.bot++;
         if (ipRow.paths.size < 50) ipRow.paths.add(parsed.path);
         ipMap.set(parsed.ip, ipRow);
+
+        if (!dailyIpMap.has(parsed.date)) {
+          dailyIpMap.set(parsed.date, new Map());
+        }
+        const dayIpMap = dailyIpMap.get(parsed.date)!;
+        const dayIpRow = dayIpMap.get(parsed.ip) || { total: 0, humans: 0 };
+        dayIpRow.total++;
+        if (human) dayIpRow.humans++;
+        dayIpMap.set(parsed.ip, dayIpRow);
       });
     } catch {
       // File loi (vd .gz hong) thi bo qua, tiep tuc file khac
@@ -137,12 +154,73 @@ export async function aggregateVisits(from: string, to: string): Promise<VisitAg
     if (fileHadOlder || truncated) break;
   }
 
+  // Tinh so ngay trong khoang de dat nguong bot phu hop (trung binh > 50 request/ngay hoac toi thieu 100 request)
+  const fromMs = new Date(`${from}T00:00:00Z`).getTime();
+  const toMs = new Date(`${to}T00:00:00Z`).getTime();
+  const daysCount = Math.max(1, Math.round((toMs - fromMs) / (24 * 60 * 60 * 1000)) + 1);
+  const suspectedThreshold = Math.max(100, daysCount * 50);
+
+  const suspectedBotIps = new Set<string>();
+  for (const [ip, stats] of ipMap.entries()) {
+    // Neu IP khong phai bot theo UA nhung co luot request human vuot nguong thi nghi ngo la bot
+    if (stats.humans > 0 && stats.total > suspectedThreshold) {
+      suspectedBotIps.add(ip);
+    }
+  }
+
+  let finalHumanRequests = 0;
+  let finalSuspectedBotRequests = 0;
+  let finalBotRequests = 0;
+  const finalUniqueHumanIps = new Set<string>();
+  const finalUniqueSuspectedBotIps = new Set<string>();
+
+  for (const [ip, stats] of ipMap.entries()) {
+    if (suspectedBotIps.has(ip)) {
+      finalSuspectedBotRequests += stats.total;
+      finalUniqueSuspectedBotIps.add(ip);
+    } else {
+      finalHumanRequests += stats.humans;
+      finalBotRequests += stats.bot;
+      if (stats.humans > 0) finalUniqueHumanIps.add(ip);
+    }
+  }
+
+  for (const [date, dayIpMap] of dailyIpMap.entries()) {
+    let dayTotal = 0;
+    let dayHumans = 0;
+    let daySuspectedBots = 0;
+    const dayIps = new Set<string>();
+
+    for (const [ip, stats] of dayIpMap.entries()) {
+      dayTotal += stats.total;
+      dayIps.add(ip);
+      if (suspectedBotIps.has(ip)) {
+        daySuspectedBots += stats.total;
+      } else {
+        dayHumans += stats.humans;
+      }
+    }
+    dailyMap.set(date, {
+      total: dayTotal,
+      humans: dayHumans,
+      suspectedBots: daySuspectedBots,
+      ips: dayIps,
+    });
+  }
+
   const daily = Array.from(dailyMap.entries())
-    .map(([date, v]) => ({ date, total: v.total, humans: v.humans, uniqueIps: v.ips.size }))
+    .map(([date, v]) => ({ date, total: v.total, humans: v.humans, suspectedBots: v.suspectedBots, uniqueIps: v.ips.size }))
     .sort((a, b) => a.date.localeCompare(b.date));
 
   const topIps = Array.from(ipMap.entries())
-    .map(([ip, v]) => ({ ip, total: v.total, humans: v.humans, bot: v.bot, paths: v.paths.size }))
+    .map(([ip, v]) => ({
+      ip,
+      total: v.total,
+      humans: suspectedBotIps.has(ip) ? 0 : v.humans,
+      suspectedBot: suspectedBotIps.has(ip) ? v.total : 0,
+      bot: v.bot,
+      paths: v.paths.size,
+    }))
     .sort((a, b) => b.total - a.total)
     .slice(0, 30);
 
@@ -153,10 +231,12 @@ export async function aggregateVisits(from: string, to: string): Promise<VisitAg
     topIps,
     totals: {
       requests,
-      humanRequests,
-      botRequests,
+      humanRequests: finalHumanRequests,
+      suspectedBotRequests: finalSuspectedBotRequests,
+      botRequests: finalBotRequests,
       uniqueIps: uniqueIps.size,
-      uniqueHumanIps: uniqueHumanIps.size,
+      uniqueHumanIps: finalUniqueHumanIps.size,
+      uniqueSuspectedBotIps: finalUniqueSuspectedBotIps.size,
     },
   };
 }

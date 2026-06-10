@@ -58,6 +58,7 @@ export function StatsTab() {
   const [to, setTo] = useState(() => todayVn());
   const [domainPage, setDomainPage] = useState(1);
   const [domainPageSize, setDomainPageSize] = useState(50);
+  const [hoveredDate, setHoveredDate] = useState<string | null>(null);
   const { data: raw, loading, error, reload } = useFetchRaw<AdminStatsResponse>(
     () => api.getStats({ from, to }), [from, to]
   );
@@ -106,6 +107,10 @@ export function StatsTab() {
     () => (visits?.topIps || []).reduce((max, row) => Math.max(max, row.total), 0),
     [visits]
   );
+  const daysCount = useMemo(() => {
+    const diffMs = dayMs(to) - dayMs(visitFrom);
+    return Math.max(1, Math.round(diffMs / (24 * 60 * 60 * 1000)) + 1);
+  }, [visitFrom, to]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
@@ -343,11 +348,13 @@ export function StatsTab() {
         </div>
       ) : visits ? (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8 }}>
             {[
-              ['Lượt người', visits.totals.humanRequests, 'var(--color-success)'],
-              ['IP người', visits.totals.uniqueHumanIps, 'var(--color-text)'],
-              ['Lượt bot', visits.totals.botRequests, 'var(--color-warning)'],
+              ['Lượt người thật', visits.totals.humanRequests, 'var(--color-success)'],
+              ['IP người thật', visits.totals.uniqueHumanIps, 'var(--color-success)'],
+              ['Lượt nghi bot', visits.totals.suspectedBotRequests, '#f97316'],
+              ['IP nghi bot', visits.totals.uniqueSuspectedBotIps, '#f97316'],
+              ['Lượt bot UA', visits.totals.botRequests, '#94a3b8'],
               ['Tổng lượt', visits.totals.requests, 'var(--color-text)'],
               ['Tổng IP', visits.totals.uniqueIps, 'var(--color-text-muted)'],
             ].map(([label, value, color]) => (
@@ -364,24 +371,80 @@ export function StatsTab() {
           <div className="card">
             <div style={{ fontWeight: 700, marginBottom: 4 }}>Lượt truy cập theo ngày</div>
             <div style={{ fontSize: '0.74rem', color: 'var(--color-text-muted)', marginBottom: 12 }}>
-              Cột xanh: lượt người · cột mờ: tổng (gồm bot). Số dưới mỗi cột là số IP khác nhau hôm đó.
+              Cột xanh: người thật · cột cam: nghi bot · cột xám mờ: bot UA. Số dưới mỗi cột là số IP khác nhau hôm đó. Hover để xem chi tiết.
             </div>
             {visits.daily.length === 0 ? (
               <div style={{ fontSize: '0.82rem', color: 'var(--color-text-muted)' }}>Không có lượt truy cập trong khoảng này.</div>
             ) : (
-              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, overflowX: 'auto', paddingBottom: 4, minHeight: 150 }}>
-                {visits.daily.map((row) => (
-                  <div key={row.date} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, minWidth: 40, flex: '1 0 auto' }}>
-                    <div style={{ position: 'relative', display: 'flex', alignItems: 'flex-end', height: 110, width: 22 }} title={`${row.date}\nngười: ${row.humans}\ntổng: ${row.total}\nIP: ${row.uniqueIps}`}>
-                      <div style={{ position: 'absolute', bottom: 0, width: '100%', height: `${maxVisitDaily > 0 ? Math.max(2, (row.total / maxVisitDaily) * 110) : 2}px`, background: 'var(--color-border)', borderRadius: '2px 2px 0 0' }} />
-                      <div style={{ position: 'absolute', bottom: 0, width: '100%', height: `${maxVisitDaily > 0 ? Math.max(2, (row.humans / maxVisitDaily) * 110) : 2}px`, background: 'var(--color-success)', borderRadius: '2px 2px 0 0' }} />
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, overflowX: 'auto', paddingBottom: 4, minHeight: 180 }}>
+                {visits.daily.map((row) => {
+                  const hPct = maxVisitDaily > 0 ? (row.humans / maxVisitDaily) * 110 : 0;
+                  const sPct = maxVisitDaily > 0 ? (row.suspectedBots / maxVisitDaily) * 110 : 0;
+                  const bVal = Math.max(0, row.total - row.humans - row.suspectedBots);
+                  const bPct = maxVisitDaily > 0 ? (bVal / maxVisitDaily) * 110 : 0;
+
+                  return (
+                    <div key={row.date} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, minWidth: 44, flex: '1 0 auto', position: 'relative' }}>
+                      {hoveredDate === row.date && (
+                        <div style={{
+                          position: 'absolute',
+                          bottom: '100%',
+                          left: '50%',
+                          transform: 'translateX(-50%)',
+                          marginBottom: 8,
+                          padding: '8px 10px',
+                          background: 'var(--color-bg-card)',
+                          border: '1px solid var(--color-border)',
+                          borderRadius: 6,
+                          fontSize: '0.74rem',
+                          whiteSpace: 'nowrap',
+                          zIndex: 100,
+                          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: 3,
+                        }}>
+                          <strong style={{ borderBottom: '1px solid var(--color-border-light)', paddingBottom: 3, marginBottom: 3 }}>{row.date}</strong>
+                          <span style={{ color: 'var(--color-success)', display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                            <span>Người thật:</span> <strong>{row.humans.toLocaleString('vi-VN')}</strong>
+                          </span>
+                          <span style={{ color: '#f97316', display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                            <span>Nghi bot:</span> <strong>{row.suspectedBots.toLocaleString('vi-VN')}</strong>
+                          </span>
+                          <span style={{ color: '#94a3b8', display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                            <span>Bot UA:</span> <strong>{bVal.toLocaleString('vi-VN')}</strong>
+                          </span>
+                          <span style={{ borderTop: '1px solid var(--color-border-light)', paddingTop: 3, display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                            <span>Tổng request:</span> <strong>{row.total.toLocaleString('vi-VN')}</strong>
+                          </span>
+                          <span style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                            <span>IP duy nhất:</span> <strong>{row.uniqueIps}</strong>
+                          </span>
+                        </div>
+                      )}
+
+                      <div
+                        onMouseEnter={() => setHoveredDate(row.date)}
+                        onMouseLeave={() => setHoveredDate(null)}
+                        style={{ display: 'flex', flexDirection: 'column', height: 110, width: 24, justifyContent: 'flex-end', cursor: 'pointer' }}
+                      >
+                        {bPct > 0 && (
+                          <div style={{ height: `${bPct}px`, background: '#94a3b8', opacity: 0.5, borderRadius: (sPct === 0 && hPct === 0) ? '2px 2px 0 0' : '0' }} />
+                        )}
+                        {sPct > 0 && (
+                          <div style={{ height: `${sPct}px`, background: '#f97316', borderRadius: (hPct === 0) ? '2px 2px 0 0' : '0' }} />
+                        )}
+                        {hPct > 0 && (
+                          <div style={{ height: `${hPct}px`, background: 'var(--color-success)', borderRadius: '2px 2px 0 0' }} />
+                        )}
+                      </div>
+                      <div style={{ fontSize: '0.6rem', color: 'var(--color-text-muted)' }}>{row.uniqueIps}</div>
+                      <div style={{ fontSize: '0.62rem', color: 'var(--color-text-muted)', transform: 'rotate(-45deg)', whiteSpace: 'nowrap', transformOrigin: 'center' }}>
+                        {row.date.slice(5)}
+                      </div>
                     </div>
-                    <div style={{ fontSize: '0.6rem', color: 'var(--color-text-muted)' }}>{row.uniqueIps}</div>
-                    <div style={{ fontSize: '0.62rem', color: 'var(--color-text-muted)', transform: 'rotate(-45deg)', whiteSpace: 'nowrap', transformOrigin: 'center' }}>
-                      {row.date.slice(5)}
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -389,37 +452,54 @@ export function StatsTab() {
           <div className="card">
             <div style={{ fontWeight: 700, marginBottom: 4 }}>Top IP truy cập</div>
             <div style={{ fontSize: '0.74rem', color: 'var(--color-text-muted)', marginBottom: 12 }}>
-              IP nhiều request nhất trong khoảng. Một IP có nhiều "lượt bot" hoặc rất nhiều request thường là crawler.
+              IP nhiều request nhất trong khoảng. Một IP có nhiều "lượt bot/nghi bot" thường là crawler.
             </div>
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
                 <thead>
                   <tr style={{ textAlign: 'left', color: 'var(--color-text-muted)', fontSize: '0.74rem' }}>
                     <th style={{ padding: '6px 8px' }}>IP</th>
+                    <th style={{ padding: '6px 8px' }}>Phân loại</th>
                     <th style={{ padding: '6px 8px', textAlign: 'right' }}>Tổng</th>
-                    <th style={{ padding: '6px 8px', textAlign: 'right' }}>Người</th>
-                    <th style={{ padding: '6px 8px', textAlign: 'right' }}>Bot</th>
-                    <th style={{ padding: '6px 8px', textAlign: 'right' }}>Số đường dẫn</th>
-                    <th style={{ padding: '6px 8px', width: '28%' }}></th>
+                    <th style={{ padding: '6px 8px', textAlign: 'right' }}>Req/ngày</th>
+                    <th style={{ padding: '6px 8px', textAlign: 'right' }}>Người thật</th>
+                    <th style={{ padding: '6px 8px', textAlign: 'right' }}>Bot UA</th>
+                    <th style={{ padding: '6px 8px', textAlign: 'right' }}>Đường dẫn</th>
+                    <th style={{ padding: '6px 8px', width: '20%' }}></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {visits.topIps.map((row) => (
-                    <tr key={row.ip} style={{ borderTop: '1px solid var(--color-border-light)' }}>
-                      <td style={{ padding: '6px 8px', fontFamily: 'monospace' }}>{row.ip}</td>
-                      <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 600 }}>{row.total.toLocaleString('vi-VN')}</td>
-                      <td style={{ padding: '6px 8px', textAlign: 'right', color: 'var(--color-success)' }}>{row.humans.toLocaleString('vi-VN')}</td>
-                      <td style={{ padding: '6px 8px', textAlign: 'right', color: row.bot > 0 ? 'var(--color-warning)' : 'var(--color-text-muted)' }}>{row.bot.toLocaleString('vi-VN')}</td>
-                      <td style={{ padding: '6px 8px', textAlign: 'right', color: 'var(--color-text-muted)' }}>{row.paths}</td>
-                      <td style={{ padding: '6px 8px' }}>
-                        <div style={{ height: 6, background: 'var(--color-border-light)', borderRadius: 3, overflow: 'hidden' }}>
-                          <div style={{ height: '100%', width: `${maxVisitIp > 0 ? (row.total / maxVisitIp) * 100 : 0}%`, background: 'var(--color-text-muted)', opacity: 0.6 }} />
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                  {visits.topIps.map((row) => {
+                    const avgPerDay = Math.round((row.total / daysCount) * 10) / 10;
+                    const getIpBadge = () => {
+                      if (row.bot > row.total * 0.5) {
+                        return <span className="badge" style={{ background: '#94a3b8', color: '#fff', fontSize: '0.65rem', padding: '2px 6px', borderRadius: 4 }}>Bot UA</span>;
+                      }
+                      if (row.suspectedBot > 0) {
+                        return <span className="badge" style={{ background: '#e07a5f', color: '#fff', fontSize: '0.65rem', padding: '2px 6px', borderRadius: 4 }}>Nghi bot</span>;
+                      }
+                      return <span className="badge badge-success" style={{ fontSize: '0.65rem', padding: '2px 6px', borderRadius: 4 }}>Người</span>;
+                    };
+
+                    return (
+                      <tr key={row.ip} style={{ borderTop: '1px solid var(--color-border-light)' }}>
+                        <td style={{ padding: '6px 8px', fontFamily: 'monospace' }}>{row.ip}</td>
+                        <td style={{ padding: '6px 8px' }}>{getIpBadge()}</td>
+                        <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 600 }}>{row.total.toLocaleString('vi-VN')}</td>
+                        <td style={{ padding: '6px 8px', textAlign: 'right', color: 'var(--color-text-muted)' }}>{avgPerDay.toLocaleString('vi-VN')}</td>
+                        <td style={{ padding: '6px 8px', textAlign: 'right', color: 'var(--color-success)' }}>{row.humans.toLocaleString('vi-VN')}</td>
+                        <td style={{ padding: '6px 8px', textAlign: 'right', color: row.bot > 0 ? 'var(--color-warning)' : 'var(--color-text-muted)' }}>{row.bot.toLocaleString('vi-VN')}</td>
+                        <td style={{ padding: '6px 8px', textAlign: 'right', color: 'var(--color-text-muted)' }}>{row.paths}</td>
+                        <td style={{ padding: '6px 8px' }}>
+                          <div style={{ height: 6, background: 'var(--color-border-light)', borderRadius: 3, overflow: 'hidden' }}>
+                            <div style={{ height: '100%', width: `${maxVisitIp > 0 ? (row.total / maxVisitIp) * 100 : 0}%`, background: 'var(--color-text-muted)', opacity: 0.6 }} />
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                   {visits.topIps.length === 0 && (
-                    <tr><td colSpan={6} style={{ padding: '10px 8px', color: 'var(--color-text-muted)' }}>Không có lượt truy cập trong khoảng này.</td></tr>
+                    <tr><td colSpan={8} style={{ padding: '10px 8px', color: 'var(--color-text-muted)' }}>Không có lượt truy cập trong khoảng này.</td></tr>
                   )}
                 </tbody>
               </table>
