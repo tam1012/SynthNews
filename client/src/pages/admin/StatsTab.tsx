@@ -329,7 +329,7 @@ export function StatsTab() {
       <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
         <div style={{ fontWeight: 700 }}>Lượt truy cập website</div>
         <div style={{ fontSize: '0.74rem', color: 'var(--color-text-muted)' }}>
-          Đọc từ log máy chủ nginx (tối đa 31 ngày). Đếm mọi request HTTP, đã tách "người" và "bot" theo trình duyệt, loại bỏ truy cập nội bộ VPS.
+          Đọc từ log máy chủ nginx (tối đa 31 ngày). Đếm mọi request HTTP, đã tách "người" và "bot" theo trình duyệt và theo đường dẫn dò lỗ hổng (scanner giả trình duyệt vẫn bị xếp vào bot), loại bỏ truy cập nội bộ VPS.
           {visitFrom !== from && ' Khoảng lượt truy cập đã được rút về 31 ngày gần nhất.'}
         </div>
       </div>

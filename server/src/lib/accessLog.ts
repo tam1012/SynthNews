@@ -20,6 +20,10 @@ const LINE_RE = /^(\S+) \S+ \S+ \[(\d{2})\/([A-Za-z]{3})\/(\d{4}):[^\]]+\] "([A-
 
 const BOT_UA_RE = /bot|crawl|spider|slurp|bingpreview|mediapartners|facebookexternalhit|embedly|monitor|uptime|pingdom|headless|python-requests|curl|wget|go-http|node|axios|okhttp|java\/|libwww|scrapy|semrush|ahrefs|dotbot|petalbot/i;
 
+// Path ma scanner do lo hong hay mo (file bi mat, CMS, control panel, path traversal).
+// Nhieu scanner gia User-Agent trinh duyet -> bat theo path moi loc duoc.
+const SCANNER_PATH_RE = /(^|\/)\.(env|git|aws|ssh|npmrc|htpasswd)\b|\/\.(env|git|aws)\/|wp-(config|content|admin|login|includes|json)|xmlrpc\.php|\/actuator\b|phpinfo|\/vendor\/|\/cgi-bin\/|\.\.(\/|%2f)|credentials(\.json)?|id_rsa|\/boaform|\/manager\/html|\/solr\/|_ignition|\/\.well-known\/.*\.(env|git)|\.(sql|bak|old|save|swp)\b|\bwww\.zip\b|\/backend\/\.env|\/laravel\/\.env|\/app\/\.env/i;
+
 export type ParsedLogLine = {
   ip: string;
   date: string; // YYYY-MM-DD theo gio trong log (+0700)
@@ -42,7 +46,8 @@ function parseLine(line: string): ParsedLogLine | null {
     method,
     path,
     status: Number(statusStr),
-    isBot: BOT_UA_RE.test(ua),
+    // Coi la "bot" neu UA giong bot HOAC dang do path nhay cam (scanner gia trinh duyet)
+    isBot: BOT_UA_RE.test(ua) || SCANNER_PATH_RE.test(path),
     isInternal: INTERNAL_IPS.has(ip),
   };
 }
