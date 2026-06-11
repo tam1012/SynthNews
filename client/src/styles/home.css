@@ -664,7 +664,7 @@
 }
 
 .feed-item-preview {
-  font-family: var(--font-serif);
+  font-family: var(--font-reader);
   font-size: 0.9rem; line-height: 1.65;
   color: var(--color-text-secondary);
 }
@@ -1235,7 +1235,7 @@
 }
 
 .detail-body {
-  font-family: var(--font-serif);
+  font-family: var(--font-reader);
   font-size: 1rem; line-height: 1.8;
   color: var(--color-text-secondary);
   margin-bottom: 24px;
@@ -1320,7 +1320,7 @@
   background: var(--color-accent);
   color: #fff;
 }
-.digest-content { font-family: var(--font-serif); line-height: 1.8; font-size: 1rem; color: var(--color-text-secondary); overflow-wrap: anywhere; }
+.digest-content { font-family: var(--font-reader); line-height: 1.8; font-size: 1rem; color: var(--color-text-secondary); overflow-wrap: anywhere; }
 .digest-content h2 {
   font-family: var(--font-heading);
   margin-top: 30px; margin-bottom: 10px;
