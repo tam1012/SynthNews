@@ -38,11 +38,12 @@ Designed for self-hosting with minimal maintenance, SynthNews features automatic
 *   **Multi-Tier Fetching Cascade**: Overcomes datacenter IP blocks and rate limits via an automatic fallback cascade:
     $$\text{Native HTTP} \rightarrow \text{CF Worker Proxies} \rightarrow \text{Scrapling Stealth} \rightarrow \text{Scrapling + Residential Proxy} \rightarrow \text{Configured Cookie + Residential Proxy} \rightarrow \text{Hosted Fetch APIs}$$
 *   **Reuters/DataDome Warm Profile**: Reuters is handled first with a VPS-warmed browser profile, runtime cookie file, and residential proxy. The `reuters-cookie-refresh` worker verifies and refreshes this cookie periodically; `reuters-profile-browser` is a manual noVNC warm-up service used only when DataDome requires a human solve. See `README_VI.md` for the current runbook.
-*   **Hosted Fetch Chain**: When every self-hosted tier is defeated by anti-bot challenges, requests escalate to a chain of commercial scraping APIs. Normal hosts use **ScrapingAnt → Scrape.do → Firecrawl**; DataDome hosts use **Scrape.do → Firecrawl → ScrapingAnt residential**. Each provider is skipped if it lacks a key or hits its rolling 24h cap; a 429/error/blocked response falls through to the next.
+*   **Hosted Fetch Chain**: When every self-hosted tier is defeated by anti-bot challenges, requests escalate to a chain of commercial scraping APIs (ScrapingAnt, Scrape.do, Geekflare, ScrapeOps, Firecrawl). Normal hosts use **ScrapingAnt datacenter → Scrape.do → Geekflare → ScrapeOps → Firecrawl**; DataDome hosts (Reuters/Bloomberg) use **Geekflare → Scrape.do → ScrapeOps → Firecrawl → ScrapingAnt residential** (datacenter can't clear DataDome, so residential is the capped last resort). Each provider is skipped if it lacks a key or hits its rolling 24h cap; a 429/error/blocked response falls through to the next.
 *   **Block-Triggered Escalation**: Any host that fails all free layers *because it was blocked* (HTTP 4xx or a Cloudflare/DataDome challenge page) auto-escalates to the hosted fetch chain — no allowlist edit required. Genuinely short or 404 pages do *not* escalate, preserving credits. `HOSTED_FETCH_DOMAINS` additionally forces known-hard hosts to try hosted fetch proactively.
 *   **Selector-Free Web Sources**: Web sources need only a section URL (e.g. `https://www.reuters.com/world/`); the HTML fetcher auto-discovers article links via heuristic link scoring and sitemap parsing, with no hand-written `articleLinkSelector` required.
 *   **AI-Learned CSS Selectors**: Utilizes LLMs to inspect raw HTML once, automatically discover the main article content and title selectors, and cache these selector profiles. If selectors break due to website updates, the engine relearns them automatically.
 *   **3-Stage Content Extraction**: Extracts clean text using AI learned selectors first, falls back to static Cheerio parsing second, and uses Mozilla Readability library third.
+*   **Structured-Data / Soft-Paywall Recovery**: A dedicated extractor (`structured-data.ts`) pulls the full article body out of `application/ld+json` (`NewsArticle.articleBody`) and embedded state blobs (`__NEXT_DATA__`, `__PRELOADED_STATE__`) that many soft-paywall publishers (Wired, The Atlantic, The New Yorker, etc.) ship inside the page — no browser, proxy, or paid credit required. The same path recovers video transcripts/captions from `VideoObject` structured data. Migration `018` removes these recoverable publishers from the discovery blocklist.
 *   **Deep Forum Crawling**:
     *   *Reddit*: Fetches threads and nested comment trees via Reddit RSS, OAuth APIs, or proxy fallbacks. Ranks comments using a scoring formula (upvotes, early comments, length, depth) to distill community sentiment.
     *   *VOZ Forum*: Interacts with forum threads, parses paginated threads (up to a configurable limit), separates Original Poster (OP) context from comments, and extracts top-voted discussions.
@@ -54,6 +55,7 @@ Designed for self-hosting with minimal maintenance, SynthNews features automatic
 *   **Hybrid Promotion & Spam Filtering**: Implements a zero-cost keyword filter at the discovery stage, followed by an LLM-based classifier at the summarization stage to keep advertisement and sponsored content out of the user's feed.
 *   **Title Translation**: Translates foreign language titles into Vietnamese, rendering them side-by-side with original titles for bilingual context.
 *   **Dynamic Digests**: Aggregates high-scoring articles and summaries processed in the last 24 hours to synthesize a readable markdown newsletter.
+*   **Near-Duplicate Clustering**: Wire-service stories republished across outlets are grouped into leader/follower clusters so the feed shows each event once with a follower count. A fetch-time pass (`similarity.ts`, character-bigram Jaccard on title + excerpt with an image-match bonus) catches same-language republishes; a second post-summarization pass re-runs similarity on the Vietnamese `translated_title` + `summary_short` to catch cross-language duplicates (e.g. a Chinese-script Reuters story vs. an English AP version). A novelty check keeps genuine follow-up stories separate. Admins can manually attach/detach via `/api/articles/:id/cluster` and `/uncluster`.
 
 ### 3. Premium Reading Experience
 
@@ -67,6 +69,8 @@ Designed for self-hosting with minimal maintenance, SynthNews features automatic
 *   **Health and Scraping Logs**: View detailed scrape summaries, success rates, API error counts, and database sizes.
 *   **Job Trigger Dashboard**: Manually trigger scraping, queue fetching, summarization, digest building, and database cleanup.
 *   **Prompt Configuration Admin**: Read, edit, and hot-reload AI prompts used for summarization, forum digests, and newsletters directly from the UI without restart.
+*   **Visit Analytics**: The `/api/stats/visits` endpoint parses the Nginx access logs (`NGINX_ACCESS_LOG_DIR`, gzip-aware) to aggregate real human visits, filtering out bots, internal health checks, and vulnerability scanners by User-Agent and request path.
+*   **Blocklist Management**: A `/api/blocklist` CRUD API (plus a `/test` matcher) manages regex URL/domain patterns that discard unwanted content at the discovery and fetch stages.
 
 ---
 
@@ -92,7 +96,7 @@ Designed for self-hosting with minimal maintenance, SynthNews features automatic
 ```
 
 *   **Monorepo Workspaces**: Developed as an npm workspace split into `client/` (React SPA) and `server/` (Hono API, Scheduler, Crawler, DB runner).
-*   **Docker Containerization**: Three containers managed via `docker-compose.yml`: the main Hono application server, PostgreSQL 16 database, and the Python Scrapling sidecar service.
+*   **Docker Containerization**: Five services managed via `docker-compose.yml`: the main Hono application server (`app`), PostgreSQL 16 database (`db`), the Python Scrapling sidecar (`scrapling`), a `reuters-cookie-refresh` worker that periodically warms and verifies the Reuters/DataDome cookie, and a manual-profile `reuters-profile-browser` (noVNC) started only when a human must solve a DataDome challenge.
 *   **Local Caddy Integration**: Runs `synthnews.local` locally using Caddy v2 with self-signed SSL/TLS matching the production Nginx behavior.
 
 ---
@@ -117,7 +121,7 @@ Designed for self-hosting with minimal maintenance, SynthNews features automatic
 ### Sidecars & Proxies
 *   **Scrapling Sidecar**: Python-based stealth scraping microservice leveraging Playwright/Stealth browsers to bypass Cloudflare. Supports an optional residential proxy passthrough for hard-blocked, domain-gated hosts.
 *   **Cloudflare Workers**: Edge proxies dynamically routing Reddit, VOZ, and generic blocked news requests. Reuters currently prefers the warmed browser cookie + residential proxy path.
-*   **Hosted Fetch APIs**: A fallback chain of commercial scraping APIs (ScrapingAnt, Scrape.do, Firecrawl) used as the last resort against DataDome/Cloudflare, each gated by an optional key and a per-provider daily cap.
+*   **Hosted Fetch APIs**: A fallback chain of commercial scraping APIs (ScrapingAnt, Scrape.do, Geekflare, ScrapeOps, Firecrawl) used as the last resort against DataDome/Cloudflare, each gated by an optional key and a per-provider daily cap.
 
 ---
 
@@ -140,15 +144,23 @@ Designed for self-hosting with minimal maintenance, SynthNews features automatic
 │   ├── src/
 │   │   ├── db/                  # PostgreSQL client & migration files
 │   │   ├── jobs/scheduler.ts    # Cron manager and locking mutexes
-│   │   ├── lib/                 # Core utility engines (OG, image proxy, auth)
-│   │   ├── routes/              # Hono REST router controllers
-│   │   ├── services/            # Main crawlers, queue buffers, and summarizers
-│   │   └── index.ts             # Node server main entry
-│   └── tests/                   # Backend tests (API & parsing tests)
-├── scrapling-sidecar/           # Python scraper service
+│   │   ├── lib/                 # Utility engines: auth, OG meta, image proxy,
+│   │   │                        #   similarity (near-dup clustering), access log
+│   │   ├── routes/              # health, sources, articles, digests, settings,
+│   │   │                        #   ai-providers, blocklist, stats, image-proxy
+│   │   ├── services/            # Crawlers, queue, summarizer, post-summarize
+│   │   │   └── fetchers/        #   cluster; fetchers incl. structured-data extractor
+│   │   └── index.ts             # Node entry; also serves /sitemap.xml
+│   └── tests/                   # Backend tests (34 test files)
+├── scripts/                     # Ops helpers: db-backup.sh, daily-restart.sh,
+│                                #   Reuters cookie refresh / warm-profile, check-hosts
+├── scrapling-sidecar/           # Python Scrapling anti-bot fetch service
 ├── Dockerfile                   # Multi-stage production image builder
-├── docker-compose.yml           # Multi-container local/production docker system
+├── docker-compose.yml           # 5 services: app, db, scrapling, reuters-cookie-refresh,
+│                                #   reuters-profile-browser (manual noVNC)
 ├── Caddyfile.local              # Local Caddy HTTPS server config
+├── nginx-synthnews.conf         # Production reverse-proxy sample (synthnews.site)
+├── nginx-rsshub.conf            # Reverse proxy exposing internal RSSHub to a public host
 ├── fetch-proxy-worker.js        # Generic proxy script for Cloudflare Workers
 ├── reddit-proxy-worker.js       # Dedicated Reddit CF proxy
 ├── voz-proxy-worker.js          # Dedicated VOZ CF proxy
@@ -179,6 +191,15 @@ Another independent worker polls the `articles` database for `pending` summaries
 3.  Instructs the LLM to filter promotions, translate foreign titles, write a concise summary, and extract a lists of TL;DR bullet points.
 4.  Updates status to `done` on success or `failed`/`skipped` depending on errors or text length thresholds.
 
+### 4. Near-Duplicate Clustering
+
+Clustering runs in two passes so wire-service republishes collapse into a single feed entry:
+
+*   **Fetch-time pass** (`article-writer.ts`): on insert, character-bigram Jaccard similarity over title + excerpt (with an image-URL match bonus) compares each new article against recent ones in a 6-hour window. A match attaches the new row as a *follower* of the existing *leader* via `parent_article_id`; non-matches become leaders themselves.
+*   **Post-summarize pass** (`post-summarize-cluster.ts`): once an article has a Vietnamese `translated_title` and `summary_short`, similarity is recomputed on those normalized fields to catch cross-language duplicates (e.g. a Chinese-script Reuters story vs. an English AP version) that the fetch-time pass cannot match. This pass is forward-only and keeps clusters flat.
+
+Reader feeds show leaders only, with a follower count badge; the article detail endpoint exposes the cluster. Admins can `uncluster`/`cluster` articles manually when the heuristic is wrong.
+
 ---
 
 ## Database Schema & Migrations
@@ -192,9 +213,17 @@ SynthNews manages its relational schema using a custom TypeScript migration engi
 *   `005_article_ai_metadata.sql`: Token metrics, AI model used, and timing data.
 *   `006_article_retry_state.sql`: Tracks error counts and retry intervals.
 *   `007_article_fetch_jobs.sql`: Implements the 2-phase buffer queue table.
+*   `008_allow_youtube_sources.sql`: Widens the `sources.type` constraint to `('rss','web','youtube')`; YouTube is currently disabled at the auto-detect layer.
+*   `009_default_source_interval_60.sql`: Default `fetch_interval_minutes` of 60 for new sources.
+*   `010_scrape_log_metadata.sql`: JSONB `metadata` column on `scrape_logs`.
+*   `011_ai_provider_default_4096.sql`: Default `max_tokens` for AI providers.
 *   `012_source_profiles.sql`: Stores CSS selectors learned by the AI for web sources.
 *   `013_blocklist.sql`: Regex filter lists to discard unwanted URL/domain patterns.
+*   `014_source_feed_category.sql`: `feed_category` (news/tech) column for sources.
 *   `015_add_translated_title.sql`: Stores translations of foreign language article headlines.
+*   `016_article_clustering.sql`: Near-duplicate clustering via self-referencing `parent_article_id` (leader/follower) plus `cluster_signature`, with indexes for follower lookup and "feed leaders only".
+*   `017_clamp_future_published_at.sql`: Clamps articles whose `published_at` is beyond the feed tolerance window, preserving the original timestamp in `metadata`.
+*   `018_unblock_soft_paywalls.sql`: Removes soft-paywall publishers (wired, theatlantic, newyorker, medium, towardsdatascience, technologyreview) from the blocklist now that the structured-data extractor recovers their full text with no paid credit.
 
 ---
 
@@ -214,8 +243,8 @@ The application reads configuration from local `.env` files. Critical parameters
 | `SCRAPLING_SERVICE_URL` | Address of the Python sidecar service (default: `http://scrapling:8000`) |
 | `SCRAPLING_SERVICE_TOKEN` | Shared internal token sent by the app as `X-Sidecar-Token` when calling Scrapling `/fetch` |
 | `SCRAPLING_PROXY_URL` / `SCRAPLING_PROXY_DOMAINS` | Optional residential proxy + host allowlist routed through Scrapling for hard-blocked domains |
-| `SCRAPINGANT_API_KEY` / `SCRAPEDO_API_KEY` / `FIRECRAWL_API_KEY` | Optional hosted-fetch provider keys (chain tried in that order) |
-| `*_MAX_PER_DAY` | Rolling 24h request cap per hosted provider (defaults: ScrapingAnt `300`, Scrape.do `30`, Firecrawl `30`) |
+| `SCRAPINGANT_API_KEY` / `SCRAPEDO_API_KEY` / `GEEKFLARE_API_KEY` / `SCRAPEOPS_API_KEY` / `FIRECRAWL_API_KEY` | Optional hosted-fetch provider keys. Normal-host order: ScrapingAnt datacenter → Scrape.do → Geekflare → ScrapeOps → Firecrawl. DataDome-host order: Geekflare → Scrape.do → ScrapeOps → Firecrawl → ScrapingAnt residential |
+| `*_MAX_PER_DAY` | Rolling 24h request cap per hosted provider (defaults: ScrapingAnt `300`, ScrapingAnt residential `15`, Scrape.do `30`, Geekflare `100`, ScrapeOps `30`, Firecrawl `30`) |
 | `HOSTED_FETCH_DOMAINS` | Hosts that proactively try the hosted-fetch chain first (comma-separated) |
 | `MIN_ARTICLE_TEXT_LENGTH` | Character threshold for filtering out empty/stub articles (default: `500`) |
 
@@ -314,6 +343,6 @@ To bypass IP-based scraping blockades on sites like Reddit, VOZ, or Reuters, dep
 
 *   **Prompt Refinement**: When editing the AI summarization prompt in `/admin`, ensure you ask the model to populate the JSON key `translated_title` so headlines translate correctly.
 *   **First Run Configuration**: After deploying a fresh installation, navigate to `/admin` to configure an active AI provider and add sources at `/sources`. The crawler is active immediately, but summaries require an active provider key.
-*   **Hosted Fetch Keys**: To unblock DataDome/Cloudflare sites, set any of `SCRAPINGANT_API_KEY`, `SCRAPEDO_API_KEY`, or `FIRECRAWL_API_KEY`. The chain auto-activates on anti-bot blocks; add a new provider by setting its env key, no code change needed. The winning provider is recorded in each article's `metadata.extractor`.
+*   **Hosted Fetch Keys**: To unblock DataDome/Cloudflare sites, set any of `SCRAPINGANT_API_KEY`, `SCRAPEDO_API_KEY`, `GEEKFLARE_API_KEY`, `SCRAPEOPS_API_KEY`, or `FIRECRAWL_API_KEY`. The chain auto-activates on anti-bot blocks; add a new provider by setting its env key, no code change needed. The winning provider is recorded in each article's `metadata.extractor`.
 *   **Reuters Cookie Refresh**: Check `docker compose logs --tail=120 reuters-cookie-refresh`. Healthy logs include `refresh:ok ... verifyStatus=200`; `status=401 blocked=true` means the VPS browser profile must be warmed again with the manual noVNC service documented in `README_VI.md`.
 *   **Debugging Blank Images**: The Hono backend serves an image proxy at `/api/img/*` to resize, clean up headers, and secure image fetches. Check logs on the backend if images do not render in the detail pages.

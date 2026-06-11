@@ -68,7 +68,9 @@ Project này được thiết kế cho nhu cầu tự host cá nhân: ít thao t
 - RSS parser cho nguồn RSS chuẩn.
 - Web scraper với AI-learned selector profiles: tự học CSS selector từ HTML lần đầu, cache lại cho lần sau.
 - **Web source không cần selector thủ công**: nguồn web chỉ cần URL section (vd `https://www.reuters.com/world/`) là cào được — html-fetcher tự động dùng heuristic link scoring + sitemap discovery, không bắt buộc `articleLinkSelector` trong `parser_config` nữa.
-- **Content extraction 3 tầng**: AI selector → cheerio CSS selectors → Mozilla Readability fallback.
+- **Content extraction nhiều tầng**: structured-data (JSON-LD `articleBody` + JSON state blob `__NEXT_DATA__`/`__PRELOADED_STATE__`) → AI selector → cheerio CSS selectors → Mozilla Readability fallback.
+- **Structured-data extractor** (`structured-data.ts`): nhiều site "soft paywall" (Condé Nast/Wired, nhiều site Next.js) nhúng full text ngay trong HTML dù che bằng overlay đăng ký. Extractor đọc thẳng JSON đã có sẵn, không cần browser/proxy/credit. Nhờ vậy migration `018` gỡ các publisher này khỏi blocklist. Cũng đọc được transcript/caption của video qua JSON-LD `VideoObject`.
+- **Gộp bài trùng (near-duplicate clustering)**: dùng Jaccard trên character-bigram của title + excerpt (cross-language friendly), cộng điểm thưởng khi ảnh trùng. Pha gộp lúc fetch (`article-writer.ts`, cùng ngôn ngữ) bắt các bản wire republish; pha gộp sau tóm tắt (`post-summarize-cluster.ts`) chạy lại trên `translated_title` + `summary_short` tiếng Việt để bắt bài trùng khác ngôn ngữ (vd Reuters bản tiếng Trung vs AP bản tiếng Anh). Leader/follower qua `parent_article_id`; feed mặc định chỉ hiện leader kèm badge số bài trùng.
 - **Quality gate**: chặn insert bài có content quá ngắn trước khi vào DB, tránh tạo summary rỗng.
 - **Fetch fallback nhiều tầng**: HTTP native → Googlebot UA → cookie-aware redirect fetch → Cloudflare Worker proxy → Scrapling stealth browser sidecar → Scrapling + residential proxy → Scrapling + residential proxy + Cloudflare solve → configured cookie + residential proxy → archive.today cho paywall → **hosted fetch chain**. Mỗi tầng tự kích hoạt khi tầng trước bị block/timeout.
 - **Reuters/DataDome thực tế**: Reuters ưu tiên dùng residential proxy kèm cookie/header được warm từ browser profile trên VPS. Cookie runtime nằm trong Docker volume `reuters_cookie_runtime`; worker `reuters-cookie-refresh` tự refresh/verify định kỳ, còn service thủ công `reuters-profile-browser` chỉ mở khi cần anh solve DataDome/captcha lại qua noVNC.
@@ -90,7 +92,10 @@ Project này được thiết kế cho nhu cầu tự host cá nhân: ít thao t
 ### Quản trị
 
 - Trang `/sources` quản lý nguồn tin, auto-detect loại source.
-- Trang `/admin` xem health, source quality, forum stats, trigger job thủ công, quản lý AI provider, prompt config và bài viết.
+- Trang `/admin` xem health, source quality, forum stats, trigger job thủ công, quản lý AI provider (kèm routing primary/fallback), prompt config, blocklist, thống kê lượt truy cập và bài viết.
+- **Visit analytics**: route `/api/stats/visits` parse trực tiếp nginx access log (`NGINX_ACCESS_LOG_DIR`), tách bot/scanner, bỏ IP nội bộ — không cần thư viện analytics bên thứ ba.
+- **Blocklist admin**: CRUD URL/domain pattern qua `/api/blocklist`, có endpoint test pattern.
+- **Cluster admin**: gỡ bài khỏi cụm (`uncluster`) hoặc ép gộp vào cụm khác (`cluster`) khi auto-clustering sai/sót.
 - Token admin lưu ở `localStorage` key `admin_token` khi nhập qua prompt.
 
 ## Kiến Trúc
@@ -100,8 +105,8 @@ Repo là monorepo npm workspaces:
 - `client/`: React + Vite SPA.
 - `server/`: Hono API, PostgreSQL, cron jobs, scraper, summarizer.
 - `Dockerfile`: multi-stage build client và server.
-- `docker-compose.yml`: PostgreSQL + Scrapling sidecar + app container.
-- `nginx-synthnews.conf`: reverse proxy production cho `synthnews.site`.
+- `docker-compose.yml`: 5 service — `db` (PostgreSQL), `scrapling` (sidecar anti-bot), `app` (Hono), `reuters-cookie-refresh` (worker refresh cookie Reuters định kỳ), `reuters-profile-browser` (profile `manual`, noVNC, chỉ bật khi cần solve DataDome).
+- `nginx-synthnews.conf`: reverse proxy production cho `synthnews.site`. Repo còn kèm `nginx-newstamhv.conf` (domain DuckDNS dự phòng) và `nginx-rsshub.conf` (reverse proxy cho RSSHub nội bộ).
 
 Production flow:
 
@@ -144,7 +149,7 @@ Backend:
 - cheerio
 - Scrapling Python sidecar (stealth browser fetch, Cloudflare bypass)
 - playwright (fallback khi Scrapling unavailable)
-- Hosted fetch chain: ScrapingAnt + Scrape.do + Firecrawl, riêng DataDome dùng Scrape.do → Firecrawl → ScrapingAnt residential; Reuters hiện ưu tiên cookie warm + residential proxy trước khi dùng hosted provider.
+- Hosted fetch chain 6 provider: ScrapingAnt (datacenter + residential), Scrape.do, Geekflare, ScrapeOps, Firecrawl. Host thường: ScrapingAnt datacenter → Scrape.do → Geekflare → ScrapeOps → Firecrawl; DataDome dùng Geekflare → Scrape.do → ScrapeOps → Firecrawl → ScrapingAnt residential. Reuters hiện ưu tiên cookie warm + residential proxy trước khi dùng hosted provider.
 - @mozilla/readability + jsdom (content extraction fallback)
 - sharp (image processing)
 
@@ -203,18 +208,24 @@ DevOps:
 │   │   │   ├── jobLock.ts          # Mutex cho cron jobs
 │   │   │   ├── rateLimit.ts        # Rate limiter
 │   │   │   ├── tldr.ts             # TL;DR extraction
+│   │   │   ├── similarity.ts       # Near-duplicate clustering (bigram Jaccard)
+│   │   │   ├── accessLog.ts        # Parse nginx access log cho visit analytics
+│   │   │   ├── aiProviderValidation.ts # Validate payload AI provider
 │   │   │   └── utils.ts
 │   │   ├── routes/
 │   │   │   ├── health.ts           # Health + manual trigger
-│   │   │   ├── articles.ts
-│   │   │   ├── sources.ts          # CRUD + scrape + detect
+│   │   │   ├── articles.ts         # CRUD + search + batch + cluster/uncluster
+│   │   │   ├── sources.ts          # CRUD + scrape + detect (+ /public)
 │   │   │   ├── digests.ts
 │   │   │   ├── settings.ts         # Prompt config admin
 │   │   │   ├── image-proxy.ts      # /api/img/* proxy
-│   │   │   └── ai-providers.ts
+│   │   │   ├── blocklist.ts        # /api/blocklist CRUD + test
+│   │   │   ├── stats.ts            # /api/stats + /api/stats/visits
+│   │   │   └── ai-providers.ts     # CRUD + routing primary/fallback
 │   │   ├── services/
 │   │   │   ├── scraper.ts          # Scraping orchestrator
-│   │   │   ├── summarizer.ts       # AI summarization + promo classify
+│   │   │   ├── summarizer.ts       # AI summarization + promo classify + post-cluster
+│   │   │   ├── post-summarize-cluster.ts # Gộp bài trùng cross-language sau summarize
 │   │   │   ├── ai-client.ts        # Multi-provider AI client
 │   │   │   ├── article-fetch-queue.ts # 2-phase fetch queue + rescue
 │   │   │   ├── prompt-settings.ts  # Prompt config DB access
@@ -222,6 +233,8 @@ DevOps:
 │   │   │   └── fetchers/
 │   │   │       ├── rss-fetcher.ts      # RSS + Readability + browser fallback
 │   │   │       ├── html-fetcher.ts     # Web scraper + promo filter
+│   │   │       ├── structured-data.ts  # Trích article/video từ JSON-LD + state blob (soft paywall)
+│   │   │       ├── archive-fetch.ts     # archive.today fallback cho paywall
 │   │   │       ├── forum-fetchers.ts   # Reddit + VOZ logic
 │   │   │       ├── forum-utils.ts      # Shared forum comment utilities
 │   │   │       ├── reddit-fetcher.ts   # Reddit fetcher re-export
@@ -229,18 +242,26 @@ DevOps:
 │   │   │       ├── github-trending-fetcher.ts # GitHub Trending
 │   │   │       ├── selector-learning.ts  # AI selector learning
 │   │   │       ├── selector-profile.ts   # Selector cache/profile
-│   │   │       ├── article-writer.ts     # DB insert + quality gate
+│   │   │       ├── article-writer.ts     # DB insert + quality gate + fetch-time clustering
 │   │   │       ├── http-utils.ts         # HTTP fetch + Playwright fallback
 │   │   │       ├── scrapling-fetch.ts    # Scrapling sidecar client + fallback (+ residential proxy passthrough)
-│   │   │       ├── hosted-fetch.ts        # Hosted fetch chain; DataDome dùng Scrape.do → Firecrawl → ScrapingAnt residential
+│   │   │       ├── hosted-fetch.ts        # Hosted fetch chain 6 provider; DataDome dùng Geekflare → Scrape.do → ScrapeOps → Firecrawl → ScrapingAnt residential
 │   │   │       ├── registry.ts           # Fetcher routing
 │   │   │       └── types.ts
-│   │   └── index.ts                # Server entry point
-│   └── tests/                      # 16 test files (58 tests)
-├── scripts/                        # Local dev/helpers, gồm Reuters cookie refresh/warm profile scripts
+│   │   └── index.ts                # Server entry point (+ /sitemap.xml động)
+│   └── tests/                      # 34 test files (node:test)
+├── scripts/                        # Helper vận hành + dev
+│   ├── db-backup.sh                # Backup PostgreSQL định kỳ (cron VPS, 03:30)
+│   ├── daily-restart.sh            # Restart app định kỳ + healthcheck
+│   ├── refresh-reuters-cookie.mjs  # Worker refresh/verify cookie Reuters
+│   ├── open-reuters-profile-browser.mjs # Mở Chromium profile thủ công (noVNC)
+│   ├── check-local-hosts.mjs       # Kiểm tra hosts local synthnews.local
+│   └── local-build.mjs             # Build + copy client vào server/public
 ├── Dockerfile
 ├── docker-compose.yml
-├── nginx-synthnews.conf            # Nginx config mẫu
+├── nginx-synthnews.conf            # Nginx config mẫu (synthnews.site)
+├── nginx-newstamhv.conf            # Nginx config domain phụ (newstamhv.duckdns.org)
+├── nginx-rsshub.conf               # Nginx reverse proxy cho RSSHub nội bộ
 ├── fetch-proxy-worker.js          # Cloudflare Worker generic proxy (Yahoo, NYT, etc.)
 ├── reddit-proxy-worker.js          # Cloudflare Worker cho Reddit proxy
 ├── voz-proxy-worker.js             # Cloudflare Worker cho VOZ proxy
@@ -250,7 +271,8 @@ DevOps:
 ├── .env.local.example              # Local dev env template
 ├── Caddyfile.local                 # Local HTTPS proxy
 ├── package.json
-└── README.md
+├── README.md
+└── README_VI.md
 ```
 
 Một số script debug nằm trong `scripts/debug/` là artifact vận hành cục bộ, đã được `.gitignore` loại khỏi repo.
@@ -303,6 +325,8 @@ Bài được chuyển ngay sang `processing` trước khi gọi AI. Trạng th�
 - `failed`: lỗi AI/provider/timeout.
 - `pending`: chờ xử lý hoặc được reset retry.
 - `processing`: đang được worker xử lý.
+
+Sau khi mỗi bài tóm tắt xong (có `translated_title` + `summary_short` tiếng Việt), `maybeClusterAfterSummarize()` chạy thêm một lượt gộp trùng cross-language: so khớp bài vừa xong với các bài gần đây để bắt cùng một sự kiện được nhiều hãng đăng ở ngôn ngữ khác nhau (vd bản Reuters tiếng Trung và bản AP tiếng Anh) mà lượt gộp lúc fetch không bắt được.
 
 ### 3. Digest
 
@@ -366,8 +390,9 @@ Endpoint chính:
 | Health | `POST /api/health/trigger/summarize` | Admin |
 | Health | `POST /api/health/trigger/digest` | Admin |
 | Health | `POST /api/health/trigger/cleanup` | Admin |
-| Sources | `GET /api/sources` | Public |
-| Sources | `GET /api/sources/:id` | Public |
+| Sources | `GET /api/sources/public` | Public |
+| Sources | `GET /api/sources` | Admin |
+| Sources | `GET /api/sources/:id` | Admin |
 | Sources | `POST /api/sources` | Admin |
 | Sources | `PATCH /api/sources/:id` | Admin |
 | Sources | `DELETE /api/sources/:id` | Admin |
@@ -375,23 +400,42 @@ Endpoint chính:
 | Sources | `POST /api/sources/:id/scrape` | Admin |
 | Sources | `GET /api/sources/:id/scrape-status` | Admin |
 | Sources | `POST /api/sources/detect` | Admin |
+| Articles | `GET /api/articles` | Public |
+| Articles | `GET /api/articles/search` | Public |
 | Articles | `GET /api/articles/dates` | Public |
 | Articles | `GET /api/articles/tags` | Public |
-| Articles | `GET /api/articles` | Public |
 | Articles | `GET /api/articles/:id` | Public |
+| Articles | `GET /api/articles/fetch-jobs` | Admin |
+| Articles | `POST /api/articles/fetch-jobs/batch/retry` | Admin |
+| Articles | `POST /api/articles/fetch-jobs/batch/delete` | Admin |
+| Articles | `POST /api/articles/fetch-jobs/:id/retry` | Admin |
+| Articles | `DELETE /api/articles/fetch-jobs/:id` | Admin |
+| Articles | `POST /api/articles/batch/reset-summary` | Admin |
+| Articles | `POST /api/articles/batch/delete` | Admin |
 | Articles | `POST /api/articles/:id/reset-summary` | Admin |
 | Articles | `POST /api/articles/:id/rescrape` | Admin |
+| Articles | `POST /api/articles/:id/cluster` | Admin |
+| Articles | `POST /api/articles/:id/uncluster` | Admin |
 | Articles | `DELETE /api/articles/:id` | Admin |
 | Digests | `GET /api/digests/latest` | Public |
 | Digests | `GET /api/digests` | Public |
+| Digests | `GET /api/digests/search` | Public |
 | Digests | `GET /api/digests/:id` | Public |
 | Digests | `DELETE /api/digests/:id` | Admin |
 | Settings | `GET /api/settings/prompt` | Admin |
 | Settings | `GET /api/settings/prompt/default` | Admin |
 | Settings | `POST /api/settings/prompt/reset` | Admin |
 | Settings | `PATCH /api/settings/prompt` | Admin |
+| Blocklist | `GET /api/blocklist` | Admin |
+| Blocklist | `POST /api/blocklist` | Admin |
+| Blocklist | `PATCH /api/blocklist/:id` | Admin |
+| Blocklist | `DELETE /api/blocklist/:id` | Admin |
+| Blocklist | `POST /api/blocklist/test` | Admin |
+| Stats | `GET /api/stats` | Admin |
+| Stats | `GET /api/stats/visits` | Admin |
 | Image Proxy | `GET /api/img/*` | Public |
 | AI Providers | `/api/ai-providers/*` | Admin |
+| Sitemap | `GET /sitemap.xml` | Public |
 
 Query đáng dùng:
 
@@ -400,11 +444,12 @@ curl https://synthnews.site/api/health/live
 curl "https://synthnews.site/api/articles?limit=3&status=done"
 curl "https://synthnews.site/api/articles/dates"
 curl "https://synthnews.site/api/digests/latest?lang=vi"
+curl "https://synthnews.site/sitemap.xml"
 ```
 
 ## Database
 
-Migrations hiện có (14 file):
+Migrations hiện có (18 file):
 
 - `001_initial.sql` — sources, articles, scrape_logs, digests, digest_items
 - `002_ai_providers.sql` — ai_providers, app_settings
@@ -413,7 +458,7 @@ Migrations hiện có (14 file):
 - `005_article_ai_metadata.sql` — ai metadata
 - `006_article_retry_state.sql` — retry state
 - `007_article_fetch_jobs.sql` — article_fetch_jobs queue
-- `008_allow_youtube_sources.sql` — legacy migration for previously supported YouTube source type
+- `008_allow_youtube_sources.sql` — mở rộng constraint `sources.type` lên `('rss','web','youtube')`; hiện YouTube bị tắt ở tầng auto-detect (xem mục AI/source)
 - `009_default_source_interval_60.sql` — default interval 60 phút
 - `010_scrape_log_metadata.sql` — metadata JSONB cho scrape_logs
 - `011_ai_provider_default_4096.sql` — default max_tokens
@@ -421,11 +466,14 @@ Migrations hiện có (14 file):
 - `013_blocklist.sql` — blocklist URL/domain patterns
 - `014_source_feed_category.sql` — feed_category (news/tech) cho sources
 - `015_add_translated_title.sql` — cột translated_title cho articles để lưu tiêu đề đã dịch
+- `016_article_clustering.sql` — gộp bài trùng: `parent_article_id` (leader/follower self-reference) + `cluster_signature`, kèm index cho follower lookup và "feed leaders only"
+- `017_clamp_future_published_at.sql` — kẹp lại các bài có `published_at` tương lai vượt cửa sổ cho phép, lưu mốc gốc vào metadata để feed sort theo thời gian hợp lý
+- `018_unblock_soft_paywalls.sql` — gỡ một số publisher (wired, theatlantic, newyorker, medium, towardsdatascience, technologyreview) khỏi blocklist vì structured-data extractor đã đọc được full text không tốn credit
 
 Bảng chính:
 
 - `sources`
-- `articles`
+- `articles` (gồm cột clustering `parent_article_id`, `cluster_signature`)
 - `article_fetch_jobs`
 - `scrape_logs`
 - `digests`
@@ -450,10 +498,11 @@ node dist/db/migrate.js && node dist/index.js
 
 ## AI Providers
 
-Các `provider_type` hợp lệ trong backend:
+Các `provider_type` hợp lệ trong backend (`server/src/lib/aiProviderValidation.ts`):
 
-- `vertex_ai`
+- `vertex_ai_key`
 - `openai`
+- `openai_responses`
 - `gemini`
 - `xai`
 - `mimo`
@@ -468,9 +517,11 @@ Provider active được lấy từ bảng `ai_providers`:
 SELECT * FROM ai_providers WHERE is_active = true LIMIT 1
 ```
 
+Routing primary/fallback lưu trong `app_settings` key `ai_provider_routing` và quản lý qua `PATCH /api/ai-providers/routing`. Nếu provider chính lỗi, client tự fallback sang provider phụ.
+
 Lưu ý:
 
-- `openai`, `xai`, `deepseek`, `groq`, `mimo` dùng format OpenAI-compatible.
+- `openai`, `openai_responses`, `xai`, `deepseek`, `groq`, `mimo` dùng format OpenAI-compatible.
 - `custom` hỗ trợ format `openai` hoặc `gemini` qua `extra_config.format`.
 - `api_key` và `service_account_json` không trả nguyên văn về frontend.
 - Mỗi lần gọi AI cập nhật `total_calls`, `total_errors`, `last_used_at`, `last_error_message`.
@@ -524,6 +575,10 @@ Biến quan trọng:
 | `FIRECRAWL_API_KEY` | API key Firecrawl, một provider trong hosted fetch chain, optional |
 | `FIRECRAWL_API_URL` | Base URL Firecrawl, mặc định `https://api.firecrawl.dev` |
 | `FIRECRAWL_MAX_PER_DAY` | Trần số request Firecrawl mỗi 24 giờ, mặc định `30` |
+| `GEEKFLARE_API_KEY` | API key Geekflare (`api.geekflare.com/webscraping`, pay-as-you-go rẻ, clear được hầu hết host kể cả Reuters), optional |
+| `GEEKFLARE_MAX_PER_DAY` | Trần số request Geekflare mỗi 24 giờ, mặc định `100` |
+| `SCRAPEOPS_API_KEY` | API key ScrapeOps (`proxy.scrapeops.io`, render_js + residential, có `bypass=generic_level_3` cho DataDome), optional |
+| `SCRAPEOPS_MAX_PER_DAY` | Trần số request ScrapeOps mỗi 24 giờ, mặc định `30` |
 | `HOSTED_FETCH_DOMAINS` | Allowlist host luôn thử hosted fetch chủ động (comma-separated), kế thừa `FIRECRAWL_DOMAINS` |
 | `DATADOME_DOMAINS` | Host DataDome/hard-bot, mặc định `reuters.com,bloomberg.com`; hosted chain riêng và logic cookie/proxy dựa vào danh sách này |
 | `FETCH_PER_DOMAIN_DELAY_MS` | Delay tối thiểu giữa requests cùng domain, mặc định `10000` |
@@ -869,8 +924,8 @@ Nếu thấy `verify failed status=401 blocked=true`, profile/cookie đã bị R
 
 `server/src/services/fetchers/hosted-fetch.ts` là tầng cuối khi các tầng self-hosted bị chặn hoặc domain được allowlist chủ động.
 
-- Host thường: ScrapingAnt datacenter → Scrape.do → Firecrawl.
-- Host DataDome (`DATADOME_DOMAINS`, mặc định Reuters/Bloomberg): Scrape.do → Firecrawl → ScrapingAnt residential.
+- Host thường: ScrapingAnt datacenter → Scrape.do → Geekflare → ScrapeOps → Firecrawl.
+- Host DataDome (`DATADOME_DOMAINS`, mặc định Reuters/Bloomberg): Geekflare → Scrape.do → ScrapeOps → Firecrawl → ScrapingAnt residential (datacenter không phá nổi DataDome nên residential là chốt cuối, cap chặt).
 - Provider không có key hoặc vượt `*_MAX_PER_DAY` sẽ bị skip.
 - Provider trả challenge/empty/429/lỗi sẽ fall through sang provider tiếp theo.
 
@@ -928,12 +983,13 @@ Sleep mặc định giữa các page VOZ là 500ms.
 
 Middleware auth nằm ở `server/src/lib/auth.ts`.
 
-Luật hiện tại:
+Luật hiện tại (`PROTECTED_PREFIXES` + `PUBLIC_GET_PATHS` trong `auth.ts`):
 
-- `GET /api/health/live` public.
-- `GET` public cho articles, sources, digests.
-- `/api/health` và `/api/ai-providers` cần auth cho mọi method, kể cả GET.
-- Mọi method không phải GET đều cần `Authorization: Bearer <ADMIN_TOKEN>`.
+- Chỉ 2 path public GET: `GET /api/health/live` và `GET /api/sources/public`.
+- Các prefix cần auth cho **mọi method (kể cả GET)**: `/api/ai-providers`, `/api/health`, `/api/settings`, `/api/blocklist`, `/api/sources`, `/api/articles/fetch-jobs`, `/api/stats`.
+- Các nhóm còn lại (`/api/articles`, `/api/digests`, `/api/img`) cho GET public, nhưng mọi method không phải GET đều cần `Authorization: Bearer <ADMIN_TOKEN>`.
+- Token sai/thiếu bị `rateLimit` đếm; vượt ngưỡng trả `429` kèm `Retry-After`.
+- Production bắt buộc `ADMIN_TOKEN` mạnh: token rỗng hoặc mẫu yếu (`change-me`, ...) sẽ làm server từ chối khởi động.
 
 Frontend sẽ prompt token khi gặp `UNAUTHORIZED`, rồi lưu vào `localStorage`.
 
@@ -971,5 +1027,5 @@ Nếu dùng domain riêng (không phải domain mẫu trong repo), cập nhật 
 - `voz-proxy-worker.js` là Cloudflare Worker proxy cho VOZ (bypass Cloudflare-to-Cloudflare challenge); Worker secret `PROXY_TOKEN` phải trùng với app env `WORKER_PROXY_TOKEN`.
 - `reuters-proxy-worker.js` là Cloudflare Worker proxy riêng cho Reuters; Worker secret `PROXY_TOKEN` phải trùng với app env `WORKER_PROXY_TOKEN`. Hiện đây không phải đường chính cho Reuters vì DataDome cần cookie/profile hợp lệ.
 - **Reuters cookie refresh**: kiểm tra bằng `docker compose logs --tail=120 reuters-cookie-refresh`. Trạng thái tốt là `refresh:ok ... verifyStatus=200`; nếu `status.json` báo `blocked=true` hoặc `status=401`, mở `reuters-profile-browser` theo runbook trong mục "Luồng Fetch Các Nguồn Hiện Tại".
-- **Hosted fetch chain** (`server/src/services/fetchers/hosted-fetch.ts`): tầng fetch cuối khi mọi tầng free/self-hosted bị anti-bot chặn. Host thường thử ScrapingAnt datacenter → Scrape.do → Firecrawl. DataDome hosts thử Scrape.do → Firecrawl → ScrapingAnt residential. Provider nào không có key hoặc chạm trần `*_MAX_PER_DAY` (rolling 24 giờ) thì bị bỏ qua; provider trả 429/lỗi/trang rỗng/challenge thì nhảy provider kế. Tên provider thắng được ghi vào `metadata.extractor` của bài. Thêm key mới chỉ cần set env, không phải sửa code.
+- **Hosted fetch chain** (`server/src/services/fetchers/hosted-fetch.ts`): tầng fetch cuối khi mọi tầng free/self-hosted bị anti-bot chặn, gồm 6 provider. Host thường thử ScrapingAnt datacenter → Scrape.do → Geekflare → ScrapeOps → Firecrawl. DataDome hosts thử Geekflare → Scrape.do → ScrapeOps → Firecrawl → ScrapingAnt residential. Provider nào không có key hoặc chạm trần `*_MAX_PER_DAY` (rolling 24 giờ) thì bị bỏ qua; provider trả 429/lỗi/trang rỗng/challenge thì nhảy provider kế. Tên provider thắng được ghi vào `metadata.extractor` của bài. Thêm key mới chỉ cần set env, không phải sửa code.
 - **Blocklist**: quản lý URL/domain patterns bị chặn qua `/api/blocklist`. Bài từ URL match pattern sẽ bị skip ở bước discover và fetch.
