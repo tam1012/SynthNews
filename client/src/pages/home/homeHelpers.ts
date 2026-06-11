@@ -203,16 +203,23 @@ export function buildDigestModeMarkdown(digest: any, mode: DigestMode): string {
     ].filter(Boolean).join('\n\n');
   }
 
-  const articleLinks = articles
-    .filter((article: any) => article?.url)
-    .map((article: any) => {
-      const title = cleanTitle(article.translated_title || article.title || 'Bài gốc');
-      return `- [${title}](${article.url}) — ${extractSourceLabel(article)}`;
-    })
+  // Group by source and show a count instead of listing every link — a digest
+  // can aggregate hundreds of articles, so a per-article list is unreadably long.
+  const counts = new Map<string, number>();
+  for (const article of articles) {
+    if (!article?.url) continue;
+    const label = extractSourceLabel(article) || 'KHÁC';
+    counts.set(label, (counts.get(label) || 0) + 1);
+  }
+
+  const total = Array.from(counts.values()).reduce((sum, n) => sum + n, 0);
+  const sourceLines = Array.from(counts.entries())
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([label, count]) => `- ${label} — ${count} bài`)
     .join('\n');
 
-  return articleLinks
-    ? `${body}\n\n## Nguồn bài trong bản tin\n${articleLinks}`
+  return sourceLines
+    ? `${body}\n\n## Nguồn bài trong bản tin\n_Tổng hợp từ ${total} bài qua ${counts.size} nguồn._\n\n${sourceLines}`
     : body;
 }
 

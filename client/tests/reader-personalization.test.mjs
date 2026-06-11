@@ -83,7 +83,10 @@ test('digest mode markdown returns compact and deep variants from the same diges
   assert.ok(shortBody.length < standardBody.length);
   assert.equal(standardBody, digest.body_markdown.trim());
   assert.match(deepBody, /## Nguồn bài trong bản tin/);
-  assert.match(deepBody, /\[Bài một\]\(https:\/\/example\.com\/1\)/);
+  assert.match(deepBody, /Tổng hợp từ 2 bài qua 2 nguồn/);
+  assert.match(deepBody, /- REUTERS — 1 bài/);
+  assert.match(deepBody, /- TECHCRUNCH — 1 bài/);
+  assert.doesNotMatch(deepBody, /https:\/\/example\.com\/1/);
 });
 
 test('reader UI wires bookmark mute controls and digest mode selector', () => {
