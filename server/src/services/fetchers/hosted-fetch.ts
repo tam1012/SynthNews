@@ -8,11 +8,13 @@
 //   - Normal hosts, most-abundant free credits first:
 //       1. ScrapingAnt datacenter  (~10k credits/month free)
 //       2. Scrape.do               (~1k credits/month free)
-//       3. Firecrawl               (~1k credits/month free)
+//       3. Geekflare               (cheap pay-as-you-go, clears most hosts)
+//       4. Firecrawl               (~1k credits/month free)
 //   - DataDome-hard hosts (Reuters/Bloomberg): ScrapingAnt datacenter ALWAYS
 //     returns a challenge shell against DataDome, so it's skipped. Order is
-//     Scrape.do -> Firecrawl -> ScrapingAnt *residential* (defeats DataDome but
-//     ~25x the credit cost, so it's a tightly-capped last resort).
+//     Geekflare -> Scrape.do -> Firecrawl -> ScrapingAnt *residential* (defeats
+//     DataDome but ~25x the credit cost, so it's a tightly-capped last resort).
+//     Geekflare leads because it was verified to clear Reuters cheaply.
 // A provider is skipped when it has no key or has hit its rolling-24h cap; on
 // error/429/empty it falls through to the next. The first usable HTML wins.
 //
@@ -28,6 +30,7 @@
 //   SCRAPINGANT_RESIDENTIAL_MAX_PER_DAY=15   (residential is ~25x cost; cap tight)
 //   SCRAPEDO_API_KEY=...           SCRAPEDO_MAX_PER_DAY=30
 //   SCRAPEOPS_API_KEY=...          SCRAPEOPS_MAX_PER_DAY=30
+//   GEEKFLARE_API_KEY=...          GEEKFLARE_MAX_PER_DAY=100
 //   FIRECRAWL_API_KEY=fc-...       FIRECRAWL_MAX_PER_DAY=30
 //   FIRECRAWL_API_URL=https://api.firecrawl.dev
 //   HOSTED_FETCH_DOMAINS=reuters.com,bloomberg.com   (legacy: FIRECRAWL_DOMAINS)
@@ -171,6 +174,44 @@ async function firecrawlFetchRaw(url: string, timeoutMs: number): Promise<string
   return data.data?.rawHtml || data.data?.html || '';
 }
 
+// ── Provider: Geekflare ────────────────────────────────────────────────────
+// Cheap hosted scraper (api.geekflare.com/webscraping) with a proxy pool +
+// CAPTCHA handling. Verified to clear Reuters' DataDome wall and return the full
+// article body WITHOUT its (slower/pricier) stealth mode, so it's a strong, cheap
+// front-runner for DataDome hosts. For those hosts we still enable stealth as a
+// safety net. Returns JSON { data: { html } }; success codes are 200/201, a
+// blocked/empty page comes back as 422 apiStatus:"failure".
+const GEEKFLARE_API_KEY = process.env.GEEKFLARE_API_KEY || '';
+async function geekflareFetch(url: string, timeoutMs: number): Promise<string> {
+  const body: Record<string, unknown> = { url, format: ['html'], renderJS: true };
+  if (isDataDomeHost(url)) body.stealth = true;
+  let res: Response;
+  try {
+    res = await fetch('https://api.geekflare.com/webscraping', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': GEEKFLARE_API_KEY },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(timeoutMs + 5000),
+    });
+  } catch (err: any) {
+    throw new HostedFetchUnavailableError(`Geekflare unreachable: ${err.message}`);
+  }
+  if (res.status === 401 || res.status === 403) throw new HostedFetchUnavailableError(`Geekflare auth/credit error (${res.status})`);
+  if (res.status === 402) throw new HostedFetchUnavailableError('Geekflare out of credits (402)');
+  if (res.status === 429) throw new HostedFetchUnavailableError('Geekflare rate limited (429)');
+  // 422 NO_SCRAPE_RESULTS = page was blocked/empty; treat as a normal miss so the
+  // chain falls through to the next provider rather than aborting.
+  if (res.status === 422) throw new HostedFetchUnavailableError('Geekflare could not scrape (422 blocked/empty)');
+  if (!res.ok) throw new HostedFetchUnavailableError(`Geekflare HTTP ${res.status}`);
+  const data = (await res.json()) as { apiStatus?: string; message?: string; data?: { html?: string } | string };
+  if (data.apiStatus && data.apiStatus !== 'success') {
+    throw new HostedFetchUnavailableError(`Geekflare scrape failed: ${data.message || 'unknown error'}`);
+  }
+  const payload = data.data;
+  const html = typeof payload === 'object' && payload ? payload.html || '' : '';
+  return html;
+}
+
 // ── Provider: ScrapeOps ──────────────────────────────────────────────────
 // Proxy API aggregator with built-in anti-bot bypass (DataDome, Cloudflare,
 // PerimeterX). Uses render_js + residential + bypass=generic_level_3 for
@@ -241,15 +282,23 @@ const scrapeOps: HostedProvider = {
   windowStart: Date.now(),
   used: 0,
 };
+const geekflare: HostedProvider = {
+  name: 'geekflare',
+  hasKey: () => Boolean(GEEKFLARE_API_KEY),
+  fetch: geekflareFetch,
+  cap: parsePositiveInt(process.env.GEEKFLARE_MAX_PER_DAY, 100),
+  windowStart: Date.now(),
+  used: 0,
+};
 
-const ALL_PROVIDERS: HostedProvider[] = [scrapingAntDatacenter, scrapingAntResidential, scrapeDo, scrapeOps, firecrawl];
+const ALL_PROVIDERS: HostedProvider[] = [scrapingAntDatacenter, scrapingAntResidential, scrapeDo, scrapeOps, geekflare, firecrawl];
 
 // Normal hosts: cheap datacenter first, then the two strong-but-scarce providers.
-const DEFAULT_CHAIN: HostedProvider[] = [scrapingAntDatacenter, scrapeDo, scrapeOps, firecrawl];
-// DataDome hosts: ScrapingAnt datacenter can't clear them, so lead with Scrape.do,
-// ScrapeOps (strong DataDome bypass with generic_level_3), Firecrawl, and keep
-// residential as the capped last resort.
-const DATADOME_CHAIN: HostedProvider[] = [scrapeDo, scrapeOps, firecrawl, scrapingAntResidential];
+const DEFAULT_CHAIN: HostedProvider[] = [scrapingAntDatacenter, scrapeDo, geekflare, scrapeOps, firecrawl];
+// DataDome hosts: ScrapingAnt datacenter can't clear them, so lead with Geekflare
+// (verified to clear Reuters cheaply), then Scrape.do, ScrapeOps (generic_level_3),
+// Firecrawl, and keep residential as the capped last resort.
+const DATADOME_CHAIN: HostedProvider[] = [geekflare, scrapeDo, scrapeOps, firecrawl, scrapingAntResidential];
 
 function providerChainFor(targetUrl: string): HostedProvider[] {
   return isDataDomeHost(targetUrl) ? DATADOME_CHAIN : DEFAULT_CHAIN;

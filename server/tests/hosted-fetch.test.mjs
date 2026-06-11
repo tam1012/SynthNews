@@ -45,6 +45,7 @@ function classify(url) {
   if (url.includes('api.scrapingant.com') && url.includes('proxy_type=residential')) return 'scrapingant-residential';
   if (url.includes('api.scrapingant.com')) return 'scrapingant-datacenter';
   if (url.includes('api.scrape.do')) return 'scrapedo';
+  if (url.includes('api.geekflare.com')) return 'geekflare';
   if (url.includes('api.firecrawl.dev')) return 'firecrawl';
   return 'unknown';
 }
