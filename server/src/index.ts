@@ -19,7 +19,7 @@ import { blocklist } from './routes/blocklist.js';
 import { stats } from './routes/stats.js';
 import { assertAdminTokenConfigured, authMiddleware } from './lib/auth.js';
 import { writeRateLimitMiddleware } from './lib/rateLimit.js';
-import { getOne } from './db/index.js';
+import { getOne, getMany } from './db/index.js';
 import { startCronJobs } from './jobs/scheduler.js';
 import { buildArticleMeta, injectArticleMeta } from './lib/openGraph.js';
 
@@ -62,6 +62,41 @@ app.route('/api/ai-providers', aiProviders);
 app.route('/api/settings', settings);
 app.route('/api/blocklist', blocklist);
 app.route('/api/stats', stats);
+
+// Dynamic sitemap for search engines: homepage + recent public articles
+app.get('/sitemap.xml', async (c) => {
+  const siteUrl = (process.env.PUBLIC_SITE_URL || process.env.SITE_URL || new URL(c.req.url).origin).replace(/\/$/, '');
+  let rows: Array<{ id: string; updated_at: Date | string | null }> = [];
+  try {
+    rows = await getMany(
+      `SELECT id, COALESCE(updated_at, published_at, created_at) AS updated_at
+         FROM articles a
+        WHERE a.summary_status = 'done' AND a.parent_article_id IS NULL
+        ORDER BY COALESCE(a.published_at, a.created_at) DESC
+        LIMIT 1000`
+    );
+  } catch (err) {
+    console.error('Failed to build sitemap:', err);
+  }
+
+  const urls = [
+    `<url><loc>${siteUrl}/</loc><changefreq>hourly</changefreq><priority>1.0</priority></url>`,
+    ...rows.map((r) => {
+      const loc = `${siteUrl}/article/${encodeURIComponent(r.id)}`;
+      const lastmod = r.updated_at ? new Date(r.updated_at).toISOString() : '';
+      return `<url><loc>${loc}</loc>${lastmod ? `<lastmod>${lastmod}</lastmod>` : ''}<changefreq>weekly</changefreq></url>`;
+    }),
+  ].join('\n  ');
+
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  ${urls}
+</urlset>`;
+
+  c.header('Content-Type', 'application/xml; charset=utf-8');
+  c.header('Cache-Control', 'public, max-age=3600');
+  return c.body(xml);
+});
 
 // Serve static frontend (production)
 const publicDir = join(__dirname, '..', 'public');
