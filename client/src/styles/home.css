@@ -1,3 +1,15 @@
+/* ===== Keyboard focus ring for home interactive elements ===== */
+.compact-date-btn:focus-visible,
+.compact-sort-btn:focus-visible,
+.filter-option:focus-visible,
+.feed-filter-control .icon-btn:focus-visible,
+.icon-btn:focus-visible,
+.scroll-top-button:focus-visible,
+.feed-item:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
 /* ===== Feed Tabs (News / Digest) ===== */
 .feed-tabs {
   display: flex; align-items: center; justify-content: center;
@@ -297,10 +309,10 @@
 .scroll-top-button:active {
   transform: translateY(0);
 }
-/* On mobile: raise scroll-top above the fixed bottom tab bar */
+/* On mobile: raise scroll-top above the fixed bottom tab bar (~60px tall) */
 @media (max-width: 899px) {
   .scroll-top-button {
-    bottom: max(22px, env(safe-area-inset-bottom));
+    bottom: calc(72px + var(--safe-bottom));
   }
 }
 
@@ -1592,6 +1604,19 @@
     color: var(--color-text);
     min-width: 38px;
     letter-spacing: -0.3px;
+  }
+  /* WCAG: mở rộng vùng chạm lên >=44px mà không phóng to nút hiển thị */
+  .compact-date-btn { position: relative; }
+  .compact-date-btn::after {
+    content: '';
+    position: absolute;
+    inset: -7px;
+  }
+  .compact-sort-btn { position: relative; }
+  .compact-sort-btn::after {
+    content: '';
+    position: absolute;
+    top: -10px; bottom: -10px; left: 0; right: 0;
   }
   /* Feed bottom padding for bottom nav clearance */
   .feed-container {

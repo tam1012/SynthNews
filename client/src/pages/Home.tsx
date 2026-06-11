@@ -552,6 +552,8 @@ export function Home() {
                         className="compact-date-btn"
                         onClick={handlePrevDate}
                         disabled={selectedDateIdx < 0 || selectedDateIdx >= sortedDates.length - 1}
+                        type="button"
+                        aria-label="Ngày trước đó"
                       >
                         ‹
                       </button>
@@ -562,6 +564,8 @@ export function Home() {
                         className="compact-date-btn"
                         onClick={handleNextDate}
                         disabled={selectedDateIdx <= 0}
+                        type="button"
+                        aria-label="Ngày kế tiếp"
                       >
                         ›
                       </button>
@@ -604,6 +608,9 @@ export function Home() {
                         className={`compact-sort-btn ${filterTag ? 'active' : ''} ${showTagMenu ? 'open' : ''}`}
                         onClick={() => setShowTagMenu(prev => !prev)}
                         type="button"
+                        aria-expanded={showTagMenu}
+                        aria-haspopup="listbox"
+                        aria-label="Lọc theo chủ đề"
                       >
                         {filterTag || 'Chủ đề'} ▾
                       </button>
