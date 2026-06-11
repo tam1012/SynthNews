@@ -330,7 +330,7 @@ Sau khi mỗi bài tóm tắt xong (có `translated_title` + `summary_short` ti�
 
 ### 3. Digest
 
-`generateDigest()` lấy tối đa `DIGEST_ARTICLE_LIMIT` bài `done` trong 24 giờ gần nhất, mặc định 100 bài, gọi AI tạo bản tin markdown, lưu vào `digests` và map qua `digest_items`.
+`generateDigest()` lấy tối đa `DIGEST_ARTICLE_LIMIT` bài `done` trong 24 giờ gần nhất (sắp theo `hot_score` giảm dần), mặc định 500 bài, gọi AI tạo bản tin markdown, lưu vào `digests` và map qua `digest_items`.
 
 ## Frontend
 
@@ -544,7 +544,7 @@ Biến quan trọng:
 | `SCRAPE_INTERVAL_HOURS` | Chu kỳ tạo digest và tránh trùng forum rescrape, mặc định `1` giờ; source discovery luôn check mỗi 5 phút |
 | `MAX_ARTICLES_PER_SOURCE` | Số bài tối đa lấy từ mỗi source mỗi lượt |
 | `MAX_AI_CALLS_PER_RUN` | Số bài tối đa tóm tắt mỗi lượt |
-| `DIGEST_ARTICLE_LIMIT` | Số bài tối đa đưa vào mỗi bản tin, mặc định 100, trần 200 |
+| `DIGEST_ARTICLE_LIMIT` | Số bài tối đa đưa vào mỗi bản tin (lấy theo `hot_score` cao nhất), mặc định 500, trần 500 |
 | `VOZ_MAX_THREAD_PAGES` | Số page VOZ tối đa đọc mỗi thread |
 | `FORUM_MAX_COMMENTS` | Số comment forum tối đa đưa vào raw content |
 | `FORUM_RAW_CONTENT_MAX_LENGTH` | Trần độ dài raw content forum |
@@ -607,7 +607,7 @@ CORS_ORIGIN=https://your-domain.example.com
 SCRAPE_INTERVAL_HOURS=3
 MAX_ARTICLES_PER_SOURCE=20
 MAX_AI_CALLS_PER_RUN=30
-DIGEST_ARTICLE_LIMIT=100
+DIGEST_ARTICLE_LIMIT=500
 VOZ_MAX_THREAD_PAGES=15
 FORUM_MAX_COMMENTS=70
 FORUM_RAW_CONTENT_MAX_LENGTH=80000
@@ -625,7 +625,7 @@ ADMIN_TOKEN=dev-admin-token-change-this
 SCRAPE_INTERVAL_HOURS=3
 MAX_ARTICLES_PER_SOURCE=20
 MAX_AI_CALLS_PER_RUN=30
-DIGEST_ARTICLE_LIMIT=100
+DIGEST_ARTICLE_LIMIT=500
 ```
 
 ## Chạy Local

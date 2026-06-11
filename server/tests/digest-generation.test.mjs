@@ -76,13 +76,13 @@ test('digest date uses Vietnam local date instead of UTC date', () => {
   assert.match(context.displayDateTime, /05\/05\/2026/);
 });
 
-test('digest article limit defaults to 100 and can be overridden safely', () => {
+test('digest article limit defaults to 500 and can be overridden safely', () => {
   const { parseDigestArticleLimit } = loadSummarizer();
 
-  assert.equal(parseDigestArticleLimit(undefined), 100);
+  assert.equal(parseDigestArticleLimit(undefined), 500);
   assert.equal(parseDigestArticleLimit('25'), 25);
-  assert.equal(parseDigestArticleLimit('500'), 200);
-  assert.equal(parseDigestArticleLimit('bad'), 100);
+  assert.equal(parseDigestArticleLimit('1000'), 500);
+  assert.equal(parseDigestArticleLimit('bad'), 500);
 });
 
 test('digest prompt uses English instructions while prioritizing economy society coverage and avoiding time-of-day greetings', () => {

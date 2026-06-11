@@ -28,7 +28,7 @@ test('admin exposes a dedicated summary queue tab', () => {
   const source = readFileSync(resolve(__dirname, '../src/pages/Admin.tsx'), 'utf8');
   const helpers = readFileSync(resolve(__dirname, '../src/pages/admin/adminHelpers.ts'), 'utf8');
 
-  assert.match(helpers, /export type AdminTab = 'overview' \| 'queue'/);
+  assert.match(helpers, /export type AdminTab =[^;]*'queue'/);
   assert.match(source, /\{ tab: 'queue', slug: 'queue', label: 'Hàng đợi tóm tắt' \}/);
   assert.match(source, /navigateToTab\('queue'\)/);
   assert.match(source, /tab === 'queue' && <SummaryQueueTab/);

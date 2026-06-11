@@ -801,8 +801,7 @@
   display: flex; justify-content: center;
   padding: 26px 0 12px;
   position: sticky; top: 0; z-index: 4;
-  background: color-mix(in srgb, var(--color-bg-card) 88%, transparent);
-  backdrop-filter: blur(12px);
+  background: var(--color-bg-card);
   touch-action: none;
 }
 .detail-pull-indicator {
@@ -899,9 +898,8 @@
     width: 44px;
     height: 44px;
     font-size: 1rem;
-    background: color-mix(in srgb, var(--color-bg-card) 95%, transparent);
+    background: var(--color-bg-card);
     border: 1px solid var(--color-border);
-    backdrop-filter: blur(12px);
     box-shadow: 0 2px 8px rgba(0,0,0,0.12);
   }
   .detail-reading-nav {
@@ -928,8 +926,7 @@
     height: 44px;
     border-radius: 50%;
     border: 1px solid var(--color-border);
-    background: color-mix(in srgb, var(--color-bg-card) 95%, transparent);
-    backdrop-filter: blur(12px);
+    background: var(--color-bg-card);
     box-shadow: 0 2px 8px rgba(0,0,0,0.12);
     color: var(--color-text);
     font-size: 1.1rem;
@@ -1291,35 +1288,6 @@
 }
 
 /* ===== Digest ===== */
-.digest-mode-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  margin: 10px 0 18px;
-  padding: 3px;
-  border: 1px solid var(--color-border);
-  border-radius: 999px;
-  background: var(--color-bg-card);
-}
-.digest-mode-btn {
-  min-width: 76px;
-  padding: 6px 11px;
-  border: none;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--color-text-muted);
-  font-size: 0.78rem;
-  font-weight: 700;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-.digest-mode-btn:hover {
-  color: var(--color-text-secondary);
-}
-.digest-mode-btn.active {
-  background: var(--color-accent);
-  color: #fff;
-}
 .digest-content { font-family: var(--font-reader); line-height: 1.8; font-size: 1rem; color: var(--color-text-secondary); overflow-wrap: anywhere; }
 .digest-content h2 {
   font-family: var(--font-heading);
@@ -1510,6 +1478,8 @@
 
   .feed-tabs {
     top: 0;
+    backdrop-filter: none;
+    background: var(--color-bg);
   }
 
   .feed-refresh-row {
@@ -1582,8 +1552,7 @@
   }
   .split-feed-toolbar .toolbar-compact-row {
     padding: 8px 0 4px;
-    backdrop-filter: blur(20px);
-    background: color-mix(in srgb, var(--color-bg) 94%, transparent);
+    background: var(--color-bg);
   }
   .split-feed-toolbar {
     border-bottom: 1px solid var(--color-border-light);

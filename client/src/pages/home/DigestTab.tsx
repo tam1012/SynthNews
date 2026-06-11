@@ -7,7 +7,7 @@ const ReactMarkdown = lazy(() => import('react-markdown'));
 
 export function DigestTab({ digestId }: { digestId?: string | null }) {
   const [internalDigestId, setInternalDigestId] = useState<string | null>(null);
-  const [digestMode, setDigestMode] = useState<DigestMode>('standard');
+  const digestMode: DigestMode = 'deep';
   const { data: digestListRaw, loading: listLoading, error: listError } = useFetchRaw(
     () => api.getDigests(1), []
   );
@@ -69,22 +69,6 @@ export function DigestTab({ digestId }: { digestId?: string | null }) {
       <h2 className="feed-date-heading" style={{ paddingTop: 0 }}>{digest.title || `Bản tin ${digest.digest_date}`}</h2>
       <div className="digest-meta">
         {formatDateHeading(digest.digest_date)} · {formatTime(digest.created_at)} · {digest.article_count} tin
-      </div>
-      <div className="digest-mode-toggle" role="group" aria-label="Chế độ bản tin">
-        {[
-          ['short', 'Ngắn'],
-          ['standard', 'Tiêu chuẩn'],
-          ['deep', 'Sâu'],
-        ].map(([mode, label]) => (
-          <button
-            key={mode}
-            type="button"
-            className={`digest-mode-btn ${digestMode === mode ? 'active' : ''}`}
-            onClick={() => setDigestMode(mode as DigestMode)}
-          >
-            {label}
-          </button>
-        ))}
       </div>
       <div className="digest-content">
         <Suspense fallback={<div className="loading">Đang tải bản tin...</div>}>

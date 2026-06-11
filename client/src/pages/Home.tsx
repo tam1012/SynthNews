@@ -267,6 +267,7 @@ export function Home() {
 
   const scrollFeedToTop = useCallback(() => {
     splitLeftRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+    document.querySelector('.app-content')?.scrollTo({ top: 0, behavior: 'smooth' });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
 
