@@ -14,6 +14,7 @@ github_actions_deploy.pem
 *.key
 *.sql
 !server/src/db/migrations/*.sql
+backups/
 test-rss.js
 test-rss.mjs
 trigger-digest.mjs
