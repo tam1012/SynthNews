@@ -1,10 +1,19 @@
 import { getCachePolicy, makeApiCacheKey } from './apiCache';
+import { loadPersistentApiCache, markPersistentData, savePersistentApiCache } from './persistentCache';
 import type { AdminHealth } from '../pages/admin/adminHelpers';
 
 const API_BASE = '/api';
 const ADMIN_TOKEN_STORAGE_KEY = 'admin_token';
 const responseCache = new Map<string, { expiresAt: number; data: unknown }>();
 const inFlightRequests = new Map<string, Promise<unknown>>();
+
+// Hard cap so a stalled request (international packet-loss spike) can't hang the
+// UI forever; after this we fall back to saved data if any, else surface error.
+const NETWORK_TIMEOUT_MS = 12_000;
+// If the network is slower than this AND we have a saved copy, show the saved
+// copy so the page paints instead of freezing. The real request keeps running
+// in the background and refreshes the cache for the next render.
+const SWR_SOFT_TIMEOUT_MS = 2_500;
 
 type ArticleFeedTab = 'all' | 'news' | 'tech' | 'voz' | 'reddit';
 type ArticleSearchOptions = {
@@ -51,19 +60,16 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   }
 
   const doFetch = async (authToken: string) => {
-    try {
-      const res = await fetch(`${API_BASE}${path}`, {
-        ...options,
-        headers: {
-          'Content-Type': 'application/json',
-          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
-          ...options?.headers,
-        },
-      });
-      return res.json();
-    } catch (err) {
-      throw err;
-    }
+    const res = await fetch(`${API_BASE}${path}`, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        ...options?.headers,
+      },
+      signal: AbortSignal.timeout(NETWORK_TIMEOUT_MS),
+    });
+    return res.json();
   };
 
   const run = async () => {
@@ -82,6 +88,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
         data,
         expiresAt: Date.now() + cachePolicy.ttlMs,
       });
+      savePersistentApiCache(path, data);
     }
 
     return data;
@@ -93,7 +100,34 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     inFlightRequests.delete(cacheKey);
   });
   inFlightRequests.set(cacheKey, promise);
-  return promise;
+
+  // Stale-while-revalidate: when a saved copy exists and the network is slow
+  // (international packet-loss spike to the Cloudflare edge), paint the saved
+  // copy within SWR_SOFT_TIMEOUT_MS instead of freezing on a skeleton. The
+  // request above keeps running and refreshes both caches for the next render.
+  const saved = loadPersistentApiCache(path);
+  if (saved) {
+    promise.catch(() => {}); // returning stale: don't leak an unhandled rejection
+    return new Promise<T>((resolve) => {
+      const timer = setTimeout(
+        () => resolve(markPersistentData(saved as Record<string, unknown>) as T),
+        SWR_SOFT_TIMEOUT_MS
+      );
+      promise.then(
+        (data) => { clearTimeout(timer); resolve(data as T); },
+        () => { clearTimeout(timer); resolve(markPersistentData(saved as Record<string, unknown>) as T); }
+      );
+    });
+  }
+
+  // No saved copy yet: guard the hard hang, and fall back to any saved copy on failure.
+  try {
+    return await promise;
+  } catch (err) {
+    const fallback = loadPersistentApiCache(path);
+    if (fallback) return markPersistentData(fallback as Record<string, unknown>) as T;
+    throw err;
+  }
 }
 
 export const api = {

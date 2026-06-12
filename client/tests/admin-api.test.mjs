@@ -35,6 +35,9 @@ function loadApiModule(fetchImpl) {
       },
     },
     URLSearchParams,
+    AbortSignal,
+    setTimeout,
+    clearTimeout,
     require: (name) => {
       if (name === './apiCache') {
         return {
