@@ -1,6 +1,7 @@
 import { execFile } from 'child_process';
 import { chromium, ChromiumBrowser } from 'playwright';
 import puppeteer from 'puppeteer-core';
+import { ProxyAgent, fetch as undiciFetch } from 'undici';
 import { normalizePublicHttpUrlWithDns } from '../../lib/utils.js';
 
 // ---------------------------------------------------------------------------
@@ -497,6 +498,50 @@ export async function workerProxyFetch(
 }
 
 // ---------------------------------------------------------------------------
+// Vietnam residential proxy (geo-block bypass)
+// ---------------------------------------------------------------------------
+// Vietnamese sites behind VEdge/VNPT CDN (e.g. en.qdnd.vn) geo-block any IP that
+// isn't inside Vietnam — a datacenter IP gets a hard 403 ACCESS DENIED that no
+// browser render or anti-bot trick clears, because it isn't an anti-bot wall at
+// all, it's "you aren't in Vietnam". The fix is an egress IP physically in VN.
+// This is a DIFFERENT axis from SCRAPLING_PROXY_URL (the Singapore residential
+// proxy that clears foreign anti-bot walls like DataDome/PerimeterX). The two
+// don't substitute for each other: the VN proxy is useless against DataDome, the
+// SG proxy is useless against a VN geo-block. So we route by domain.
+//
+// Config via env:
+//   VN_PROXY_URL=http://user:pass@host:port
+//   VN_PROXY_DOMAINS=qdnd.vn          # comma-separated; default below
+const VN_PROXY_URL = process.env.VN_PROXY_URL || '';
+const VN_PROXY_DOMAINS = (process.env.VN_PROXY_DOMAINS || 'qdnd.vn')
+  .split(',')
+  .map((d) => d.trim().toLowerCase())
+  .filter(Boolean);
+
+let _vnProxyAgent: ProxyAgent | null = null;
+function getVnProxyAgent(): ProxyAgent | null {
+  if (!VN_PROXY_URL) return null;
+  if (!_vnProxyAgent) _vnProxyAgent = new ProxyAgent(VN_PROXY_URL);
+  return _vnProxyAgent;
+}
+
+export function isVnProxyConfigured(): boolean {
+  return Boolean(VN_PROXY_URL);
+}
+
+// Should this URL be routed through the VN proxy? True only for the configured
+// VN domains, so we don't tunnel unrelated traffic through a single 4G line.
+export function shouldUseVnProxy(targetUrl: string): boolean {
+  if (!VN_PROXY_URL || VN_PROXY_DOMAINS.length === 0) return false;
+  try {
+    const host = new URL(targetUrl).hostname.replace(/^www\./, '').toLowerCase();
+    return VN_PROXY_DOMAINS.some((d) => host === d || host.endsWith('.' + d));
+  } catch {
+    return false;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Cookie-aware redirect fetch
 // ---------------------------------------------------------------------------
 // Some sites (e.g. qdnd.vn) answer the first request with a 302 + Set-Cookie and
@@ -505,9 +550,14 @@ export async function workerProxyFetch(
 // Set-Cookie across hops, so the app lands on a tiny cookie-gate page (~400
 // chars) that isn't an anti-bot block — it just looks like "content too short".
 // This helper walks redirects manually, accumulating cookies between hops.
+//
+// When `proxyUrl` is set (or the host matches VN_PROXY_DOMAINS), the hops run
+// through undici's ProxyAgent so the request egresses from a Vietnam IP — the
+// only way past VEdge geo-blocking on en.qdnd.vn. We use undici's fetch rather
+// than the global one because the `dispatcher` option is undici-specific.
 export async function cookieAwareFetch(
   url: string,
-  options: { timeoutMs?: number; userAgent?: string; maxRedirects?: number } = {},
+  options: { timeoutMs?: number; userAgent?: string; maxRedirects?: number; proxyUrl?: string } = {},
 ): Promise<{ ok: boolean; status: number; body: string; finalUrl: string }> {
   const safeUrl = await normalizePublicHttpUrlWithDns(url);
   if (!safeUrl) throw new Error('URL must be a public http(s) URL');
@@ -517,6 +567,10 @@ export async function cookieAwareFetch(
   const ua = options.userAgent || BROWSER_UA;
   const cookieJar = new Map<string, string>();
   const deadline = Date.now() + timeoutMs;
+
+  // Explicit proxyUrl wins; otherwise auto-apply the VN proxy for VN domains.
+  const explicitAgent = options.proxyUrl ? new ProxyAgent(options.proxyUrl) : null;
+  const dispatcher = explicitAgent ?? (shouldUseVnProxy(safeUrl) ? getVnProxyAgent() : null);
 
   let currentUrl = safeUrl;
   let lastStatus = 0;
@@ -530,10 +584,11 @@ export async function cookieAwareFetch(
       headers.Cookie = Array.from(cookieJar.entries()).map(([k, v]) => `${k}=${v}`).join('; ');
     }
 
-    const res = await fetch(currentUrl, {
+    const res = await undiciFetch(currentUrl, {
       headers,
       redirect: 'manual',
       signal: AbortSignal.timeout(remaining),
+      ...(dispatcher ? { dispatcher } : {}),
     });
     lastStatus = res.status;
 
