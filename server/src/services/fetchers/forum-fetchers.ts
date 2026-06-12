@@ -2,7 +2,7 @@ import RssParser from 'rss-parser';
 import * as cheerio from 'cheerio';
 import { query, getOne, getMany } from '../../db/index.js';
 import { generateId, createContentHash, normalizePublicHttpUrl, truncate, sleep } from '../../lib/utils.js';
-import { BROWSER_UA, browserFetch, curlFetch, isBlockedHtml, playwrightFetch, randomUA } from './http-utils.js';
+import { BROWSER_UA, browserFetch, cookieAwareFetch, curlFetch, isBlockedHtml, playwrightFetch, randomUA } from './http-utils.js';
 import { scraplingFetchWithFallback } from './scrapling-fetch.js';
 import {
   ForumComment,
@@ -48,6 +48,53 @@ const REDDIT_PROXY_URL = process.env.REDDIT_PROXY_URL || '';
 const VOZ_PROXY_URL = process.env.BROWSER_PROXY_URL || process.env.VOZ_PROXY_URL || '';
 const WORKER_PROXY_TOKEN = process.env.WORKER_PROXY_TOKEN || '';
 let redditToken: { access_token: string; expires_at: number } | null = null;
+
+// Reddit blocks datacenter IPs: the .rss feed answers 429 on a burst and .json
+// is a hard 403 without OAuth (which we can't register). Residential proxies each
+// give one sticky IP with a per-minute quota — a single IP gets ~50% 429, but two
+// independent IPs (VN + SG, already paid for) tried in turn land a clean 200 most
+// of the time. Native (VPS IP) is tried first since it's free when not throttled.
+// Order matters: cheapest/least-throttled first, then rotate residential IPs.
+const REDDIT_RSS_PROXIES: string[] = [
+  process.env.VN_PROXY_URL || '',
+  process.env.SCRAPLING_PROXY_URL || '',
+].filter(Boolean);
+
+// Fetch a Reddit .rss URL resilient to per-IP 429s: try the VPS IP first, then
+// each residential proxy in turn. Returns the first response that isn't a 429 /
+// block. Reddit's .rss is the only endpoint still open to us (.json => 403), so
+// both listings and per-post comments go through here.
+async function fetchRedditRss(url: string, timeoutMs = 15000): Promise<{ ok: boolean; status: number; xml: string }> {
+  // Attempt 1: native VPS IP (free, no proxy) — often 200 when quota isn't spent.
+  try {
+    const res = await fetch(url, {
+      headers: { 'User-Agent': randomUA(), Accept: 'application/rss+xml, application/xml, text/xml' },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (res.ok) {
+      const xml = await res.text();
+      if (!isBlockedHtml(xml)) return { ok: true, status: 200, xml };
+    }
+  } catch {
+    // fall through to proxies
+  }
+
+  // Attempts 2..N: each residential proxy IP in turn.
+  let lastStatus = 429;
+  for (const proxyUrl of REDDIT_RSS_PROXIES) {
+    try {
+      const res = await cookieAwareFetch(url, { proxyUrl, timeoutMs, userAgent: randomUA() });
+      lastStatus = res.status;
+      if (res.ok && res.status === 200 && !isBlockedHtml(res.body)) {
+        return { ok: true, status: 200, xml: res.body };
+      }
+    } catch {
+      // try next proxy
+    }
+  }
+
+  return { ok: false, status: lastStatus, xml: '' };
+}
 
 function hasRedditOAuth(): boolean {
   return !!(REDDIT_CLIENT_ID && REDDIT_CLIENT_SECRET && REDDIT_USERNAME && REDDIT_PASSWORD);
@@ -284,15 +331,9 @@ export async function fetchRedditCommentsForPost(postPath: string, initialPostCo
   try {
     markRedditStrategy(stats, 'rss', false);
     const commentRssUrl = `https://www.reddit.com${postPath}.rss`;
-    const rssRes = await fetch(commentRssUrl, {
-      headers: {
-        'User-Agent': BROWSER_UA,
-        Accept: 'application/rss+xml, application/xml, text/xml',
-      },
-      signal: AbortSignal.timeout(15000),
-    });
+    const rssRes = await fetchRedditRss(commentRssUrl);
     if (rssRes.ok) {
-      const feed = await rssParser.parseString(await rssRes.text());
+      const feed = await rssParser.parseString(rssRes.xml);
       const comments: ForumComment[] = [];
       for (let i = 1; i < feed.items.length; i++) {
         const item = feed.items[i];
@@ -471,23 +512,12 @@ export async function scrapeRedditSource(source: SourceRow): Promise<ScrapeResul
 
   try {
     const rssUrl = `https://www.reddit.com/r/${subreddit}/hot/.rss`;
-    let xml = '';
-    try {
-      const rssRes = await fetch(rssUrl, {
-        headers: {
-          'User-Agent': BROWSER_UA,
-          Accept: 'application/rss+xml, application/xml, text/xml',
-        },
-        signal: AbortSignal.timeout(15000),
-      });
-
-      if (!rssRes.ok) throw new Error(`Reddit RSS ${rssRes.status}`);
-      xml = await rssRes.text();
-      if (isBlockedHtml(xml)) {
-        throw new Error('Cloudflare blocked HTML received instead of RSS XML');
-      }
-    } catch (err: any) {
-      console.warn(`[reddit] native RSS fetch failed for ${rssUrl}, falling back to Playwright: ${err.message}`);
+    // Native VPS IP -> VN proxy -> SG proxy, first non-429/non-blocked wins.
+    const listing = await fetchRedditRss(rssUrl);
+    let xml = listing.xml;
+    if (!listing.ok) {
+      // Last resort: stealth browser via scrapling (slow, but clears some blocks).
+      console.warn(`[reddit] rss proxies failed for ${rssUrl} (status ${listing.status}), falling back to Playwright`);
       xml = await scraplingFetchWithFallback(rssUrl, {
         mode: 'stealth',
         rawText: true,

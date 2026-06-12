@@ -32,6 +32,7 @@ function loadHttpUtils({ normalizeWithDns, fetchImpl }) {
     exports: moduleContext.exports,
     module: moduleContext,
     require: (name) => {
+      if (name === 'undici') return { ProxyAgent: class ProxyAgent {}, fetch: fetchImpl };
       if (name === 'child_process') return { execFile: () => { throw new Error('curl should not run'); } };
       if (name === 'playwright') return { chromium: { launch: async () => { throw new Error('browser should not launch'); } } };
       if (name === 'puppeteer-core') return { default: { launch: async () => { throw new Error('browser should not launch'); } } };
