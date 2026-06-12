@@ -37,11 +37,11 @@ function getSourceScrapeTimeoutMs(source: any): number {
 
   const name = String(source.name || '').toLowerCase();
   const url = String(source.url || '').toLowerCase();
-  // Reddit comment/listing fetch now paces across residential IPs (each IP needs
-  // ~30s cooldown between requests to dodge per-IP 429s). A sub enriching up to 8
-  // posts across 3 lanes spends ~60-90s just waiting on cooldowns, so 90s timed
-  // out mid-sweep. 180s gives headroom for the paced fetch to finish.
-  if (name.includes('reddit') || url.includes('reddit.com')) return 180_000;
+  // Reddit comments now come from old.reddit HTML through the residential proxy
+  // (~3s/post, burst-safe — no per-IP cooldown). A sub enriches up to ~15 posts,
+  // so ~45-75s; 120s leaves headroom for listing + DB writes without the long
+  // 180s window the old per-IP pacing needed.
+  if (name.includes('reddit') || url.includes('reddit.com')) return 120_000;
   // VOZ now passes through Cloudflare Turnstile (~15s solve per page);
   // a full 15-thread sweep with multi-page reads needs serious headroom.
   if (name.includes('voz') || url.includes('voz.vn')) return 600_000;

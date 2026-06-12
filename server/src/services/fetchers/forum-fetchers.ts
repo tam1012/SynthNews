@@ -126,6 +126,95 @@ async function fetchRedditRss(url: string, timeoutMs = 15000): Promise<{ ok: boo
   return { ok: false, status: lastStatus, xml: '' };
 }
 
+// old.reddit.com HTML comment pages behave completely differently from .rss/.json:
+// probed directly, they return 200 on a 10x burst with NO rate-limit through a
+// residential proxy (datacenter/native IP still gets a hard 403). A single page
+// carries BOTH the post body and all comments, so one request replaces the whole
+// "listing .rss + per-post comment .rss" dance that was burning the per-IP budget.
+// Proxies only (native is 403); try VN then SG. Burst-safe, so no lane pacing.
+const OLD_REDDIT_PROXIES: string[] = [
+  process.env.VN_PROXY_URL || '',
+  process.env.SCRAPLING_PROXY_URL || '',
+].filter(Boolean);
+
+async function fetchOldRedditHtml(postPath: string, timeoutMs = 20000): Promise<string | null> {
+  const cleanPath = postPath.endsWith('/') ? postPath : `${postPath}/`;
+  const url = `https://old.reddit.com${cleanPath}`;
+  for (const proxyUrl of OLD_REDDIT_PROXIES) {
+    try {
+      const res = await cookieAwareFetch(url, { proxyUrl, timeoutMs, userAgent: randomUA() });
+      if (res.ok && res.status === 200 && res.body.includes('data-type="comment"')) {
+        return res.body;
+      }
+    } catch {
+      // try next proxy
+    }
+  }
+  return null;
+}
+
+// Parse an old.reddit comment-page HTML into post content + comments. The page
+// markup is stable server-rendered HTML: the link/self post is a single
+// div.thing[data-type=link] (selftext lives in .usertext-body .md, an external
+// link in a.title.outbound[href]); each comment is div.thing[data-type=comment]
+// with data-author, a body in .entry > form .usertext-body .md, and the true
+// (un-fuzzed) score in span.score.unvoted[title]. We keep top-level + shallow
+// replies, mirroring REDDIT_COMMENT_DEPTH.
+function parseOldRedditCommentHtml(html: string, fallbackPostContent: string): RedditCommentFetchResult {
+  const $ = cheerio.load(html);
+
+  let postContent = fallbackPostContent;
+  let outboundUrl: string | null = null;
+
+  const linkThing = $('div.thing[data-type="link"]').first();
+  if (linkThing.length) {
+    const selftext = normalizeWhitespace(linkThing.find('.expando .usertext-body .md').first().text() || '');
+    if (selftext && selftext.length > postContent.length) postContent = selftext;
+
+    const titleHref = linkThing.find('a.title').first().attr('href') || '';
+    if (titleHref && !titleHref.startsWith('/') && !titleHref.includes('reddit.com')) {
+      const normalized = normalizePublicHttpUrl(titleHref);
+      if (normalized) outboundUrl = normalized;
+    }
+  }
+
+  const comments: ForumComment[] = [];
+  $('div.thing[data-type="comment"]').each((_, el) => {
+    const $el = $(el);
+    // depth = nesting level; top-level comments sit at .commentarea > .sitetable
+    const depth = $el.parents('div.thing[data-type="comment"]').length + 1;
+    if (depth > REDDIT_COMMENT_DEPTH) return;
+
+    const author = $el.attr('data-author') || 'unknown';
+    if (author === '[deleted]') return;
+
+    // Only this comment's own body — .entry is the comment's own block; child
+    // replies live in a nested .child we must not pull text from.
+    const bodyEl = $el.find('> .entry .usertext-body .md').first();
+    const body = normalizeWhitespace(bodyEl.text() || '');
+    if (!body || body === '[deleted]' || body === '[removed]' || body.length < 20) return;
+
+    const scoreTitle = $el.find('> .entry .score.unvoted').first().attr('title');
+    const score = scoreTitle ? parseInt(scoreTitle, 10) || 0 : 0;
+
+    comments.push({
+      author,
+      body: body.substring(0, 900),
+      reactions: score,
+      page: depth,
+      order: comments.length,
+      score: scoreForumComment(body, score, depth, comments.length + 1) + (depth === 1 ? 0.8 : 0.2),
+    });
+  });
+
+  return {
+    postContent,
+    outboundUrl,
+    discussionComments: selectForumComments(comments, REDDIT_COMMENT_LIMIT),
+    strategyUsed: 'oldhtml',
+  };
+}
+
 function hasRedditOAuth(): boolean {
   return !!(REDDIT_CLIENT_ID && REDDIT_CLIENT_SECRET && REDDIT_USERNAME && REDDIT_PASSWORD);
 }
@@ -233,7 +322,7 @@ interface ScrapeResult {
 
 type ForumSkipReason = 'few_comments' | 'few_useful_comments' | 'duplicate' | 'comment_fetch_failed';
 
-type ForumStrategyName = 'oauth' | 'proxy' | 'rss' | 'puppeteer' | 'pullpush';
+type ForumStrategyName = 'oauth' | 'proxy' | 'rss' | 'puppeteer' | 'pullpush' | 'oldhtml';
 
 interface RedditCommentFetchResult {
   postContent: string;
@@ -271,6 +360,7 @@ function createForumScrapeStats(kind: 'reddit' | 'voz'): ForumScrapeStats {
       rss: { attempts: 0, successes: 0 },
       proxy: { attempts: 0, successes: 0 },
       pullpush: { attempts: 0, successes: 0 },
+      oldhtml: { attempts: 0, successes: 0 },
     };
   }
 
@@ -332,6 +422,24 @@ export async function fetchRedditCommentsForPost(postPath: string, initialPostCo
       console.log(`[reddit] comments strategy=oauth count=${parsed.discussionComments.length} path=${postPath}`);
       return { ...parsed, strategyUsed: 'oauth' };
     }
+  }
+
+  // Primary path: old.reddit.com HTML via residential proxy. One burst-safe
+  // request returns the post body AND all comments, so it replaces the per-IP
+  // .rss/.json dance that was 429-throttled and timing out whole subreddits.
+  try {
+    markRedditStrategy(stats, 'oldhtml', false);
+    const html = await fetchOldRedditHtml(postPath);
+    if (html) {
+      const parsed = parseOldRedditCommentHtml(html, initialPostContent);
+      if (parsed.discussionComments.length > 0) {
+        markRedditStrategy(stats, 'oldhtml', true);
+        console.log(`[reddit] comments strategy=oldhtml count=${parsed.discussionComments.length} path=${postPath}`);
+        return parsed;
+      }
+    }
+  } catch (e: any) {
+    console.log(`[reddit] comments strategy=oldhtml failed path=${postPath}: ${e.message}`);
   }
 
   if (REDDIT_PROXY_URL) {
@@ -565,7 +673,10 @@ export async function scrapeRedditSource(source: SourceRow): Promise<ScrapeResul
     result.itemsFound = items.length;
 
     let enrichedCount = 0;
-    const MAX_ENRICH_PER_RUN = 8;
+    // old.reddit HTML is burst-safe through the proxy (probed 10/10 with no
+    // rate-limit), so we can enrich every post in the listing in one run instead
+    // of rationing a slow per-IP budget. One HTML page = post + all its comments.
+    const MAX_ENRICH_PER_RUN = parsePositiveInt(process.env.REDDIT_MAX_ENRICH_PER_RUN, 15);
 
     for (const item of items) {
       if (!item.link || !item.title) continue;
@@ -587,7 +698,6 @@ export async function scrapeRedditSource(source: SourceRow): Promise<ScrapeResul
 
       if (hasRedditOAuth() || enrichedCount < MAX_ENRICH_PER_RUN) {
         enrichedCount++;
-        await sleep(1200);
         const fetched = await fetchRedditCommentsForPost(postPath, postContent, forumStats);
         postContent = fetched.postContent;
         outboundUrl = fetched.outboundUrl;
