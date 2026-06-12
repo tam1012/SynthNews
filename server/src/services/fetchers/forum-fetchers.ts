@@ -2,7 +2,7 @@ import RssParser from 'rss-parser';
 import * as cheerio from 'cheerio';
 import { query, getOne, getMany } from '../../db/index.js';
 import { generateId, createContentHash, normalizePublicHttpUrl, truncate, sleep } from '../../lib/utils.js';
-import { BROWSER_UA, browserFetch, cookieAwareFetch, curlFetch, isBlockedHtml, playwrightFetch, randomUA } from './http-utils.js';
+import { BROWSER_UA, browserFetch, cookieAwareFetch, curlFetch, isBlockedHtml, playwrightFetch, proxyFetchFollow, randomUA } from './http-utils.js';
 import { scraplingFetchWithFallback } from './scrapling-fetch.js';
 import {
   ForumComment,
@@ -142,7 +142,10 @@ async function fetchOldRedditHtml(postPath: string, timeoutMs = 20000): Promise<
   const url = `https://old.reddit.com${cleanPath}`;
   for (const proxyUrl of OLD_REDDIT_PROXIES) {
     try {
-      const res = await cookieAwareFetch(url, { proxyUrl, timeoutMs, userAgent: randomUA() });
+      // proxyFetchFollow (not cookieAwareFetch): old.reddit answers a chain of
+      // 301s that the manual-redirect cookieAwareFetch can't walk (it bails after
+      // 5 hops). undici auto-follows them, which is what probed 200 + comments.
+      const res = await proxyFetchFollow(url, { proxyUrl, timeoutMs, userAgent: randomUA() });
       if (res.ok && res.status === 200 && res.body.includes('data-type="comment"')) {
         return res.body;
       }

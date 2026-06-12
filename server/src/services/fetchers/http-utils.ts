@@ -626,6 +626,36 @@ export async function cookieAwareFetch(
 }
 
 // ---------------------------------------------------------------------------
+// Proxy fetch with automatic redirect following
+// ---------------------------------------------------------------------------
+// Like a plain fetch but egressing through an explicit ProxyAgent and letting
+// undici follow redirects itself. cookieAwareFetch walks redirects MANUALLY
+// (redirect: 'manual') to carry Set-Cookie across hops for sites like qdnd.vn —
+// but old.reddit.com answers with a chain of 301s (www<->old, cookie gate) that
+// the manual walker treats as a redirect loop and aborts after maxRedirects.
+// Auto-follow handles that chain transparently, which is what we need here.
+export async function proxyFetchFollow(
+  url: string,
+  options: { timeoutMs?: number; userAgent?: string; proxyUrl?: string } = {},
+): Promise<{ ok: boolean; status: number; body: string }> {
+  const safeUrl = await normalizePublicHttpUrlWithDns(url);
+  if (!safeUrl) throw new Error('URL must be a public http(s) URL');
+
+  const timeoutMs = options.timeoutMs ?? 20000;
+  const ua = options.userAgent || BROWSER_UA;
+  const dispatcher = options.proxyUrl ? new ProxyAgent(options.proxyUrl) : undefined;
+
+  const res = await undiciFetch(safeUrl, {
+    headers: { ...browserHeaders(ua) },
+    redirect: 'follow',
+    signal: AbortSignal.timeout(timeoutMs),
+    ...(dispatcher ? { dispatcher } : {}),
+  });
+  const body = await res.text();
+  return { ok: res.ok, status: res.status, body };
+}
+
+// ---------------------------------------------------------------------------
 // Convenience: fetch with Googlebot UA (bypasses paywalls that check UA)
 // ---------------------------------------------------------------------------
 export async function curlFetchGooglebot(url: string, timeoutSec = 20) {
