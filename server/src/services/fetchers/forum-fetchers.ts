@@ -50,46 +50,76 @@ const WORKER_PROXY_TOKEN = process.env.WORKER_PROXY_TOKEN || '';
 let redditToken: { access_token: string; expires_at: number } | null = null;
 
 // Reddit blocks datacenter IPs: the .rss feed answers 429 on a burst and .json
-// is a hard 403 without OAuth (which we can't register). Residential proxies each
-// give one sticky IP with a per-minute quota — a single IP gets ~50% 429, but two
-// independent IPs (VN + SG, already paid for) tried in turn land a clean 200 most
-// of the time. Native (VPS IP) is tried first since it's free when not throttled.
-// Order matters: cheapest/least-throttled first, then rotate residential IPs.
-const REDDIT_RSS_PROXIES: string[] = [
-  process.env.VN_PROXY_URL || '',
-  process.env.SCRAPLING_PROXY_URL || '',
-].filter(Boolean);
+// is a hard 403 without OAuth (which we can't register). Each IP we have (the
+// VPS itself + the VN and SG residential proxies) gets roughly ONE .rss request
+// before Reddit 429s it, and needs ~30s to recover. Probed directly: a real path
+// after a 30s rest returns 200; the same path hit 8s apart returns 429.
+//
+// So the win isn't "try harder per request" — it's pacing. We model each IP as a
+// lane with its own cooldown clock, SHARED across every fetch in the process. A
+// fetch picks the lane that has rested longest; if none has rested enough it
+// waits. Because the clock is shared across posts and subreddits, the whole
+// enrich loop self-paces to Reddit's per-IP budget instead of burst-burning all
+// three IPs on the first post and starving the rest.
+const REDDIT_LANE_SUCCESS_COOLDOWN_MS = parseInt(process.env.REDDIT_LANE_COOLDOWN_MS || '30000', 10);
+// A 429 means that IP is already annoyed — rest it a bit longer than a clean hit.
+const REDDIT_LANE_PENALTY_COOLDOWN_MS = parseInt(process.env.REDDIT_LANE_PENALTY_MS || '45000', 10);
+// Cap how long a single fetch will block waiting for a free lane. Past this we
+// give up this one fetch (the post is skipped) rather than stall the whole run.
+const REDDIT_LANE_MAX_WAIT_MS = parseInt(process.env.REDDIT_LANE_MAX_WAIT_MS || '40000', 10);
 
-// Fetch a Reddit .rss URL resilient to per-IP 429s: try the VPS IP first, then
-// each residential proxy in turn. Returns the first response that isn't a 429 /
-// block. Reddit's .rss is the only endpoint still open to us (.json => 403), so
-// both listings and per-post comments go through here.
-async function fetchRedditRss(url: string, timeoutMs = 15000): Promise<{ ok: boolean; status: number; xml: string }> {
-  // Attempt 1: native VPS IP (free, no proxy) — often 200 when quota isn't spent.
-  try {
-    const res = await fetch(url, {
-      headers: { 'User-Agent': randomUA(), Accept: 'application/rss+xml, application/xml, text/xml' },
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-    if (res.ok) {
-      const xml = await res.text();
-      if (!isBlockedHtml(xml)) return { ok: true, status: 200, xml };
-    }
-  } catch {
-    // fall through to proxies
+interface RedditLane {
+  id: string;
+  proxyUrl: string | null; // null = native VPS IP (no proxy)
+  nextAvailableAt: number; // epoch ms; this lane is rested once now >= this
+}
+
+// Native IP first (free), then each residential proxy. Built once at module load.
+const redditLanes: RedditLane[] = [
+  { id: 'native', proxyUrl: null, nextAvailableAt: 0 },
+  ...[process.env.VN_PROXY_URL || '', process.env.SCRAPLING_PROXY_URL || '']
+    .filter(Boolean)
+    .map((proxyUrl, i) => ({ id: `proxy${i + 1}`, proxyUrl, nextAvailableAt: 0 })),
+];
+
+async function fetchRedditLane(lane: RedditLane, url: string, timeoutMs: number): Promise<{ ok: boolean; status: number; xml: string }> {
+  if (lane.proxyUrl) {
+    const res = await cookieAwareFetch(url, { proxyUrl: lane.proxyUrl, timeoutMs, userAgent: randomUA() });
+    return { ok: res.ok && res.status === 200 && !isBlockedHtml(res.body), status: res.status, xml: res.body };
   }
+  const res = await fetch(url, {
+    headers: { 'User-Agent': randomUA(), Accept: 'application/rss+xml, application/xml, text/xml' },
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  const body = res.ok ? await res.text() : '';
+  return { ok: res.ok && !isBlockedHtml(body), status: res.status, xml: body };
+}
 
-  // Attempts 2..N: each residential proxy IP in turn.
+// Fetch a Reddit .rss URL while respecting each IP's cooldown. Reddit's .rss is
+// the only endpoint still open to us (.json => 403), so both listings and
+// per-post comments go through here.
+async function fetchRedditRss(url: string, timeoutMs = 15000): Promise<{ ok: boolean; status: number; xml: string }> {
   let lastStatus = 429;
-  for (const proxyUrl of REDDIT_RSS_PROXIES) {
+  // At most one pass over the lanes per call: pick the soonest-rested lane, wait
+  // for it (up to the cap), try it. On 429 penalize it and fall to the next lane.
+  for (let attempt = 0; attempt < redditLanes.length; attempt++) {
+    const lane = redditLanes.reduce((a, b) => (a.nextAvailableAt <= b.nextAvailableAt ? a : b));
+    const waitMs = lane.nextAvailableAt - Date.now();
+    if (waitMs > REDDIT_LANE_MAX_WAIT_MS) break; // every lane still cooling — bail
+    if (waitMs > 0) await sleep(waitMs);
+
     try {
-      const res = await cookieAwareFetch(url, { proxyUrl, timeoutMs, userAgent: randomUA() });
+      const res = await fetchRedditLane(lane, url, timeoutMs);
       lastStatus = res.status;
-      if (res.ok && res.status === 200 && !isBlockedHtml(res.body)) {
-        return { ok: true, status: 200, xml: res.body };
+      if (res.ok) {
+        lane.nextAvailableAt = Date.now() + REDDIT_LANE_SUCCESS_COOLDOWN_MS;
+        return res;
       }
+      // 429 / block → rest this lane longer, try the next-soonest.
+      lane.nextAvailableAt = Date.now() + REDDIT_LANE_PENALTY_COOLDOWN_MS;
     } catch {
-      // try next proxy
+      // Network/timeout error — give this lane a normal rest and move on.
+      lane.nextAvailableAt = Date.now() + REDDIT_LANE_SUCCESS_COOLDOWN_MS;
     }
   }
 
