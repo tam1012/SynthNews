@@ -60,12 +60,17 @@ async function fallbackResolveFetch(url: string, init?: RequestInit): Promise<Re
     return { ok: false, status: 400, url, headers: { get: () => 'text/plain' }, text: async () => '' };
   }
 
-  // Native first.
+  // Native first. When the server answers with any non-blocked response
+  // (200, 404, 500, ...), return it immediately — there is no point wasting
+  // time on the Worker proxy or Scrapling for a URL that simply doesn't
+  // exist. Fall through to the heavier methods only when native fetch throws
+  // (network error / DNS / timeout) or the response looks like an anti-bot
+  // challenge page.
   try {
     const res = await fetch(safeUrl, init);
     const text = await res.text();
-    if (res.ok && !looksBlocked(res.status, text)) {
-      return { ok: true, status: res.status, url: res.url || safeUrl, headers: res.headers, text: async () => text };
+    if (!looksBlocked(res.status, text)) {
+      return { ok: res.ok, status: res.status, url: res.url || safeUrl, headers: res.headers, text: async () => text };
     }
   } catch {}
 
