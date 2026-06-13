@@ -26,6 +26,19 @@ export function isMsnSource(source: Pick<SourceRow, 'type' | 'url'>): boolean {
   return source.type === 'web' && isMsnUrl(source.url);
 }
 
+export function isSohuUrl(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.replace(/^www\./, '').toLowerCase();
+    return host === 'sohu.com' || host.endsWith('.sohu.com');
+  } catch {
+    return false;
+  }
+}
+
+export function isSohuSource(source: Pick<SourceRow, 'type' | 'url'>): boolean {
+  return source.type === 'web' && isSohuUrl(source.url);
+}
+
 export function isRedditSource(source: Pick<SourceRow, 'url'>): boolean {
   return isHost(source.url, ['reddit.com', 'www.reddit.com']);
 }
@@ -48,6 +61,7 @@ export function getFetcherKeyForSource(source: Pick<SourceRow, 'type' | 'url'>):
   if (isRedditSource(source)) return 'reddit';
   if (isVozSource(source)) return 'voz';
   if (isMsnSource(source)) return 'msn';
+  if (isSohuSource(source)) return 'sohu';
   if (isGitHubTrendingSource(source)) return 'github-trending';
   if (source.type === 'rss') return 'rss';
   if (source.type === 'web') return 'html';

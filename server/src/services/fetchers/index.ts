@@ -4,6 +4,7 @@ import { msnFetcher } from './msn-fetcher.js';
 import { redditFetcher } from './reddit-fetcher.js';
 import { rssFetcher } from './rss-fetcher.js';
 import { vozFetcher } from './voz-fetcher.js';
+import { sohuFetcher } from './sohu-fetcher.js';
 import { SourceFetcher } from './types.js';
 
 export const sourceFetchers: SourceFetcher[] = [
@@ -11,6 +12,7 @@ export const sourceFetchers: SourceFetcher[] = [
   vozFetcher,
   githubTrendingFetcher,
   msnFetcher,
+  sohuFetcher,
   rssFetcher,
   htmlFetcher,
 ];
