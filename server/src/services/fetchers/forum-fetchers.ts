@@ -156,6 +156,81 @@ async function fetchOldRedditHtml(postPath: string, timeoutMs = 20000): Promise<
   return null;
 }
 
+// Fetch old.reddit.com subreddit listing via residential proxy. The listing page
+// carries all hot posts with title, link, author, and timestamp — one request
+// replaces the .rss listing that Reddit rate-limits aggressively on AI-heavy subs.
+// Uses the same burst-safe proxy path as comment enrichment.
+async function fetchOldRedditListing(subreddit: string, timeoutMs = 20000): Promise<string | null> {
+  const url = `https://old.reddit.com/r/${encodeURIComponent(subreddit)}/`;
+  for (const proxyUrl of OLD_REDDIT_PROXIES) {
+    try {
+      const res = await proxyFetchFollow(url, { proxyUrl, timeoutMs, userAgent: randomUA() });
+      if (res.ok && res.status === 200 && res.body.includes('data-type="link"')) {
+        return res.body;
+      }
+    } catch {
+      // try next proxy
+    }
+  }
+  return null;
+}
+
+interface OldRedditListingItem {
+  title: string;
+  link: string;
+  guid: string;
+  pubDate: string;
+  creator: string;
+  contentSnippet: string;
+  content: string;
+}
+
+// Parse an old.reddit.com listing page into RSS-compatible items. Extracts
+// title, permalink, author, and datetime from each div.thing[data-type="link"].
+// The link is always the Reddit permalink (for dedup + comment fetching); for
+// link posts the external URL is discarded here — the per-post enrichment step
+// recovers it when fetching comments.
+function parseOldRedditListingHtml(html: string): OldRedditListingItem[] {
+  const $ = cheerio.load(html);
+  const items: OldRedditListingItem[] = [];
+
+  $('div.thing[data-type="link"]').each((_, el) => {
+    const $el = $(el);
+
+    // Permalink: a.comments always points to the Reddit post
+    const commentsHref = $el.find('a.comments').first().attr('href') || '';
+    const permalink = commentsHref.startsWith('/') ? `https://www.reddit.com${commentsHref}` : commentsHref;
+
+    // Title
+    const titleEl = $el.find('a.title').first();
+    const title = normalizeWhitespace(titleEl.text());
+    if (!title || !permalink) return;
+
+    // Author (from data-author attribute on the thing div)
+    const author = $el.attr('data-author') || '';
+
+    // Timestamp
+    const timeEl = $el.find('time').first();
+    const pubDate = timeEl.attr('datetime') || new Date().toISOString();
+
+    // Selftext (only for self-posts; empty for link posts)
+    const selftext = normalizeWhitespace($el.find('.expando .usertext-body .md').first().text());
+    const contentHtml = $el.find('.expando .usertext-body .md').first().html() || '';
+
+    items.push({
+      title,
+      link: permalink,
+      guid: permalink,
+      pubDate,
+      creator: author,
+      contentSnippet: selftext || title,
+      content: contentHtml || `<p>${title}</p>`,
+    });
+  });
+
+  return items;
+}
+
 // Parse an old.reddit comment-page HTML into post content + comments. The page
 // markup is stable server-rendered HTML: the link/self post is a single
 // div.thing[data-type=link] (selftext lives in .usertext-body .md, an external
@@ -651,28 +726,44 @@ export async function scrapeRedditSource(source: SourceRow): Promise<ScrapeResul
     return result;
   }
 
+  const MAX_ARTICLES_PER_SOURCE = parsePositiveInt(process.env.MAX_ARTICLES_PER_SOURCE, 15);
+
   try {
-    const rssUrl = `https://www.reddit.com/r/${subreddit}/hot/.rss`;
-    // Native VPS IP -> VN proxy -> SG proxy, first non-429/non-blocked wins.
-    const listing = await fetchRedditRss(rssUrl);
-    let xml = listing.xml;
-    if (!listing.ok) {
-      // Last resort: stealth browser via scrapling (slow, but clears some blocks).
-      console.warn(`[reddit] rss proxies failed for ${rssUrl} (status ${listing.status}), falling back to Playwright`);
-      xml = await scraplingFetchWithFallback(rssUrl, {
-        mode: 'stealth',
-        rawText: true,
-        blockResources: true,
-        waitMs: 1500,
-      }, {
-        rawText: true,
-        blockHeavyResources: true,
-        settleMs: 1500,
-        userAgent: randomUA(),
-      });
+    // Primary: old.reddit.com listing via residential proxy (burst-safe — no
+    // per-IP cooldown). Reddit's .rss endpoint 429s aggressively on AI-related
+    // subs even through proxies; old.reddit HTML handles 10+ concurrent requests
+    // without rate-limiting, same path proven by comment enrichment.
+    let items: RssParser.Item[] = [];
+    const oldRedditHtml = await fetchOldRedditListing(subreddit);
+    if (oldRedditHtml) {
+      const parsed = parseOldRedditListingHtml(oldRedditHtml);
+      items = parsed.slice(0, MAX_ARTICLES_PER_SOURCE) as unknown as RssParser.Item[];
+      console.log(`[reddit] listing strategy=oldhtml subreddit=r/${subreddit} count=${items.length}`);
     }
 
-    const items = (await parseForumFeedItems(xml)).slice(0, parsePositiveInt(process.env.MAX_ARTICLES_PER_SOURCE, 15));
+    // Fallback: existing .rss path (lane-based pacing + scrapling last resort).
+    // Only triggered when old.reddit.com is unreachable or returns no posts.
+    if (items.length === 0) {
+      const rssUrl = `https://www.reddit.com/r/${subreddit}/hot/.rss`;
+      const listing = await fetchRedditRss(rssUrl);
+      let xml = listing.xml;
+      if (!listing.ok) {
+        console.warn(`[reddit] rss proxies failed for ${rssUrl} (status ${listing.status}), falling back to Playwright`);
+        xml = await scraplingFetchWithFallback(rssUrl, {
+          mode: 'stealth',
+          rawText: true,
+          blockResources: true,
+          waitMs: 1500,
+        }, {
+          rawText: true,
+          blockHeavyResources: true,
+          settleMs: 1500,
+          userAgent: randomUA(),
+        });
+      }
+      items = (await parseForumFeedItems(xml)).slice(0, MAX_ARTICLES_PER_SOURCE);
+      console.log(`[reddit] listing strategy=rss subreddit=r/${subreddit} count=${items.length}`);
+    }
     result.itemsFound = items.length;
 
     let enrichedCount = 0;

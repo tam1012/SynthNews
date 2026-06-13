@@ -37,11 +37,12 @@ function getSourceScrapeTimeoutMs(source: any): number {
 
   const name = String(source.name || '').toLowerCase();
   const url = String(source.url || '').toLowerCase();
-  // Reddit comments now come from old.reddit HTML through the residential proxy
-  // (~3s/post, burst-safe — no per-IP cooldown). A sub enriches up to ~15 posts,
-  // so ~45-75s; 120s leaves headroom for listing + DB writes without the long
-  // 180s window the old per-IP pacing needed.
-  if (name.includes('reddit') || url.includes('reddit.com')) return 120_000;
+  // Reddit listing now uses old.reddit HTML first (burst-safe through residential
+  // proxy), with RSS lane-based fallback. Comment enrichment uses the same proxy
+  // path (~3s/post). A sub enriches up to ~15 posts, so ~45-75s for comments +
+  // ~15s for listing. 180s gives headroom for proxy retries, listing fallback,
+  // and DB writes without false-positive timeouts.
+  if (name.includes('reddit') || url.includes('reddit.com')) return 180_000;
   // VOZ now passes through Cloudflare Turnstile (~15s solve per page);
   // a full 15-thread sweep with multi-page reads needs serious headroom.
   if (name.includes('voz') || url.includes('voz.vn')) return 600_000;
