@@ -49,26 +49,32 @@ export function Home() {
   const [selectedDigestId, setSelectedDigestId] = useState<string | null>(() => linkedDigestId);
   const [userSelectedDate, setUserSelectedDate] = useState<string | null>(() => linkedDate);
 
-  // Sync tab when URL changes (e.g. sidebar navigation)
+  // Sync tab and date when URL changes (e.g. sidebar navigation)
   useEffect(() => {
     const path = location.pathname;
-    // Also handle tab-prefixed date URLs like /news/13062026
-    const tabDateMatch = path.match(/^\/(news|tech|voz|reddit|digest|saved)\/(\d{2})(\d{2})(\d{4})$/);
-    let pathDate: string | null = null;
+    // URL formats: /, /<tab>, /<dateSlug>, /<dateSlug>/<tab>
+    const VALID_TABS = ['news', 'tech', 'voz', 'reddit', 'saved'];
+    let pathDate: string | null = parseDateDeepLinkPath(path);
     let newTab: 'all' | 'news' | 'tech' | 'voz' | 'reddit' | 'digest' | 'saved' = 'all';
-    if (tabDateMatch) {
-      newTab = tabDateMatch[1] as typeof newTab;
-      const [, , dd, mm, yyyy] = tabDateMatch;
-      pathDate = `${yyyy}-${mm}-${dd}`;
-    } else {
-      pathDate = parseDateDeepLinkPath(path);
-      if (path === '/voz') newTab = 'voz';
-      else if (path === '/reddit') newTab = 'reddit';
-      else if (path === '/digest') newTab = 'digest';
-      else if (path === '/news') newTab = 'news';
-      else if (path === '/tech') newTab = 'tech';
-      else if (path === '/saved') newTab = 'saved';
+
+    // /:dateSlug/:tabSlug (e.g. /13062026/news)
+    if (!pathDate) {
+      const dateTabMatch = path.match(/^\/(\d{2})(\d{2})(\d{4})\/(news|tech|voz|reddit|saved)$/);
+      if (dateTabMatch) {
+        const [, dd, mm, yyyy, tabName] = dateTabMatch;
+        pathDate = `${yyyy}-${mm}-${dd}`;
+        newTab = tabName as typeof newTab;
+      }
     }
+
+    // Bare tab paths (e.g. /news, /saved)
+    if (path === '/voz') newTab = 'voz';
+    else if (path === '/reddit') newTab = 'reddit';
+    else if (path === '/digest') newTab = 'digest';
+    else if (path === '/news') newTab = 'news';
+    else if (path === '/tech') newTab = 'tech';
+    else if (path === '/saved') newTab = 'saved';
+
     if (pathDate) {
       setUserSelectedDate(pathDate);
       setSelected(null);
@@ -164,12 +170,13 @@ export function Home() {
   }, [sortedDates, userSelectedDate, linkedDate]);
 
   // Wrapper to keep setSelectedDate API for the rest of the component
+  // URL format: /<date> for all tab, /<date>/<tab> for other tabs
   const setSelectedDate = useCallback((date: string | null) => {
     setUserSelectedDate(date);
     const datePath = formatDateDeepLink(date);
     if (datePath) {
-      const tabPrefix = tab === 'all' ? '' : `/${tab}`;
-      navigate(`${tabPrefix}${datePath}`, { replace: true });
+      const suffix = tab === 'all' ? '' : `/${tab}`;
+      navigate(`${datePath}${suffix}`, { replace: true });
     }
   }, [navigate, tab]);
 
@@ -455,19 +462,22 @@ export function Home() {
   }, [selected]);
 
   // Navigate helper: sync tab to URL (no React Router re-render).
-  // Preserve the selected date so the URL stays like /news/13062026.
+  // URL format: / for all+no-date, /<tab> for bare tab, /<date>/<tab> or /<date> for all
   const navigateTab = useCallback((t: 'all' | 'news' | 'tech' | 'voz' | 'reddit' | 'digest' | 'saved') => {
     setTab(t);
     const explicitDate = linkedDate || userSelectedDate;
     const datePath = formatDateDeepLink(explicitDate);
-    const tabPath = t === 'all' ? '/' : `/${t}`;
-    const path = datePath ? `${tabPath}${datePath}` : tabPath;
+    let path: string;
+    if (datePath && t !== 'all') path = `${datePath}/${t}`;
+    else if (datePath) path = datePath;  // all tab with date
+    else path = t === 'all' ? '/' : `/${t}`;  // bare tab, no date
     window.history.replaceState(null, '', path);
   }, [linkedDate, userSelectedDate]);
 
   const currentFeedPath = useMemo(() => {
     const explicitDate = linkedDate || userSelectedDate;
-    if (tab === 'all' && explicitDate) return formatDateDeepLink(explicitDate) || '/';
+    if (explicitDate && tab === 'all') return formatDateDeepLink(explicitDate) || '/';
+    if (explicitDate) return `${formatDateDeepLink(explicitDate)}/${tab}`;
     return tab === 'all' ? '/' : `/${tab}`;
   }, [linkedDate, tab, userSelectedDate]);
 
