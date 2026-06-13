@@ -269,7 +269,7 @@ export function hideTinyImage(img: HTMLImageElement) {
 
 /* ── main component ── */
 
-export type FeedTab = 'all' | 'news' | 'tech' | 'voz' | 'reddit';
+export type FeedTab = 'all' | 'news' | 'tech' | 'voz' | 'reddit' | 'saved';
 
 export function classifyArticle(article: any): FeedTab {
   const name = (article.source_name || '').toLowerCase();

@@ -40,11 +40,12 @@ export function Home() {
     if (path === '/digest') return 'digest' as const;
     if (path === '/news') return 'news' as const;
     if (path === '/tech') return 'tech' as const;
+    if (path === '/saved') return 'saved' as const;
     return 'all' as const;
   }, []); // only on mount
 
   const [selected, setSelected] = useState<any | null>(null);
-  const [tab, setTab] = useState<'all' | 'news' | 'tech' | 'voz' | 'reddit' | 'digest'>(initialTab);
+  const [tab, setTab] = useState<'all' | 'news' | 'tech' | 'voz' | 'reddit' | 'digest' | 'saved'>(initialTab);
   const [selectedDigestId, setSelectedDigestId] = useState<string | null>(() => linkedDigestId);
   const [userSelectedDate, setUserSelectedDate] = useState<string | null>(() => linkedDate);
 
@@ -52,12 +53,13 @@ export function Home() {
   useEffect(() => {
     const path = location.pathname;
     const pathDate = parseDateDeepLinkPath(path);
-    let newTab: 'all' | 'news' | 'tech' | 'voz' | 'reddit' | 'digest' = 'all';
+    let newTab: 'all' | 'news' | 'tech' | 'voz' | 'reddit' | 'digest' | 'saved' = 'all';
     if (path === '/voz') newTab = 'voz';
     else if (path === '/reddit') newTab = 'reddit';
     else if (path === '/digest') newTab = 'digest';
     else if (path === '/news') newTab = 'news';
     else if (path === '/tech') newTab = 'tech';
+    else if (path === '/saved') newTab = 'saved';
     if (pathDate) {
       setUserSelectedDate(pathDate);
       setSelected(null);
@@ -110,6 +112,9 @@ export function Home() {
   const [bookmarkedArticleIds, setBookmarkedArticleIds] = useState<string[]>(() => loadBookmarkedArticles());
   const [mutedTags, setMutedTags] = useState<string[]>(() => loadMutedTags());
   const [bookmarkedOnly, setBookmarkedOnly] = useState(false);
+  const [externalUrl, setExternalUrl] = useState('');
+  const [externalUrlState, setExternalUrlState] = useState<'idle' | 'loading' | 'done' | 'error'>('idle');
+  const [externalUrlMessage, setExternalUrlMessage] = useState('');
   const [deepLinkLoading, setDeepLinkLoading] = useState(hasArticleDeepLink);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showScrollTop, setShowScrollTop] = useState(false);
@@ -284,13 +289,34 @@ export function Home() {
 
   const handleToggleBookmark = useCallback((articleId: string) => {
     setBookmarkedArticleIds(prev => toggleListValue(prev, articleId));
-  }, []);
+    const isCurrentlyBookmarked = bookmarkedArticleIds.includes(articleId);
+    (isCurrentlyBookmarked ? api.unsaveArticle(articleId) : api.saveArticle(articleId))
+      .catch(() => setBookmarkedArticleIds(prev => toggleListValue(prev, articleId)));
+  }, [bookmarkedArticleIds]);
 
   const handleMuteCurrentTopic = useCallback(() => {
     if (!filterTag) return;
     setMutedTags(prev => toggleListValue(prev, filterTag));
     setFilterTag('');
   }, [filterTag]);
+
+  const handleSaveExternal = useCallback(async () => {
+    const trimmed = externalUrl.trim();
+    if (!trimmed) return;
+    setExternalUrlState('loading');
+    setExternalUrlMessage('Đang fetch bài viết...');
+    try {
+      const res = await api.saveExternalArticle(trimmed);
+      if (res?.success) {
+        setExternalUrlState('done');
+        setExternalUrlMessage(res.data?.message || 'Đã thêm vào hàng đợi.');
+        setExternalUrl('');
+      }
+    } catch (err: any) {
+      setExternalUrlState('error');
+      setExternalUrlMessage(err.message || 'Không thể thêm URL.');
+    }
+  }, [externalUrl]);
 
   const clearPersonalizationFilters = useCallback(() => {
     setBookmarkedOnly(false);
@@ -417,7 +443,7 @@ export function Home() {
   }, [selected]);
 
   // Navigate helper: sync tab to URL (no React Router re-render)
-  const navigateTab = useCallback((t: 'all' | 'news' | 'tech' | 'voz' | 'reddit' | 'digest') => {
+  const navigateTab = useCallback((t: 'all' | 'news' | 'tech' | 'voz' | 'reddit' | 'digest' | 'saved') => {
     setTab(t);
     const path = t === 'all' ? '/' : `/${t}`;
     window.history.replaceState(null, '', path);
@@ -644,6 +670,28 @@ export function Home() {
                   >
                     ☆ Đọc sau
                   </button>
+                  {tab === 'saved' && (
+                    <div className="saved-url-input-row">
+                      <input
+                        type="url"
+                        className="saved-url-input"
+                        placeholder="Dán URL bài viết..."
+                        value={externalUrl}
+                        onChange={(e) => { setExternalUrl(e.target.value); setExternalUrlState('idle'); setExternalUrlMessage(''); }}
+                        onKeyDown={(e) => { if (e.key === 'Enter') handleSaveExternal(); }}
+                      />
+                      <button
+                        className="btn btn-sm"
+                        onClick={handleSaveExternal}
+                        disabled={externalUrlState === 'loading'}
+                      >
+                        {externalUrlState === 'loading' ? '...' : 'Thêm'}
+                      </button>
+                      {externalUrlMessage && (
+                        <span className={`saved-url-msg saved-url-${externalUrlState}`}>{externalUrlMessage}</span>
+                      )}
+                    </div>
+                  )}
                   {filterTag && (
                     <button
                       className="compact-sort-btn"

@@ -3,7 +3,7 @@ export const LOCAL_DATE_TEXT_SQL = `TO_CHAR(${LOCAL_DATE_SQL}, 'YYYY-MM-DD')`;
 export const PUBLIC_ARTICLE_FRESHNESS_SQL = `COALESCE(a.published_at, a.created_at) <= NOW() + INTERVAL '2 hours'`;
 
 const VALID_SUMMARY_STATUSES = ['pending', 'processing', 'done', 'failed', 'skipped'];
-const VALID_FEED_TABS = ['all', 'news', 'tech', 'voz', 'reddit'];
+const VALID_FEED_TABS = ['all', 'news', 'tech', 'voz', 'reddit', 'saved'];
 const VALID_ARTICLE_SORTS = ['latest', 'hot'];
 const VALID_QUALITY_ISSUES = ['missing_tldr', 'missing_summary_short', 'missing_tags', 'missing_hot_score', 'short_summary'];
 
@@ -78,6 +78,8 @@ function appendFeedTabClauses(clauses: string[], feedTab?: string) {
   } else if (feedTab === 'tech') {
     clauses.push(`NOT (s.name ILIKE '%reddit%' OR a.url ILIKE '%reddit.com%' OR a.title ILIKE '[r/%' OR s.name ILIKE '%voz%' OR a.url ILIKE '%voz.vn%')`);
     clauses.push(`COALESCE(s.feed_category, 'news') = 'tech'`);
+  } else if (feedTab === 'saved') {
+    clauses.push(`a.is_saved = true`);
   }
 }
 

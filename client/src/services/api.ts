@@ -15,7 +15,7 @@ const NETWORK_TIMEOUT_MS = 12_000;
 // in the background and refreshes the cache for the next render.
 const SWR_SOFT_TIMEOUT_MS = 2_500;
 
-type ArticleFeedTab = 'all' | 'news' | 'tech' | 'voz' | 'reddit';
+type ArticleFeedTab = 'all' | 'news' | 'tech' | 'voz' | 'reddit' | 'saved';
 type ArticleSearchOptions = {
   limit?: number;
   date?: string;
@@ -230,6 +230,11 @@ export const api = {
     method: 'POST',
     body: JSON.stringify({ ids }),
   }),
+
+  // Saved articles
+  saveArticle: (id: string) => request<any>(`/articles/${id}/save`, { method: 'POST' }),
+  unsaveArticle: (id: string) => request<any>(`/articles/${id}/unsave`, { method: 'POST' }),
+  saveExternalArticle: (url: string) => request<any>('/articles/save-external', { method: 'POST', body: JSON.stringify({ url }) }),
 
   // Digests
   getLatestDigest: (lang?: string) => request<any>(`/digests/latest?lang=${lang || 'vi'}`),

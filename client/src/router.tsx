@@ -20,6 +20,7 @@ export function Router() {
           <Route path="/tech" element={<Home />} />
           <Route path="/voz" element={<Home />} />
           <Route path="/reddit" element={<Home />} />
+          <Route path="/saved" element={<Home />} />
           <Route path="/digest" element={<Home />} />
           <Route path="/:dateSlug" element={<Home />} />
           <Route path="/article/:articleId" element={<Home />} />

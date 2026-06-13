@@ -255,6 +255,10 @@ async function runArticleFetchJob() {
           await updateRescuedArticle(rescueArticleId, articleInput);
         } else {
           await insertArticleIfNew(articleInput);
+          // Bài thêm thủ công từ URL bên ngoài: đánh dấu is_saved = true
+          if (job.payload_json?.isManualSave) {
+            await query('UPDATE articles SET is_saved = true WHERE url = $1', [job.url]);
+          }
         }
       }
       await markArticleFetchJobDone(job.id);

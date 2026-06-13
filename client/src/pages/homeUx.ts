@@ -1,4 +1,4 @@
-export type ReaderTab = 'all' | 'news' | 'tech' | 'voz' | 'reddit' | 'digest';
+export type ReaderTab = 'all' | 'news' | 'tech' | 'voz' | 'reddit' | 'digest' | 'saved';
 export type ReaderLoadingState = 'feed-only' | 'split';
 
 const DATE_DEEP_LINK_RE = /^\/(\d{2})(\d{2})(\d{4})$/;

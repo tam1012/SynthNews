@@ -12,6 +12,7 @@ export function MobileBottomNav() {
     { label: 'Tech', href: '/tech' },
     { label: 'VOZ', href: '/voz' },
     { label: 'Reddit', href: '/reddit' },
+    { label: 'Đã lưu', href: '/saved' },
     { label: 'Bản tin', href: '/digest' },
     { label: 'Nguồn tin', href: '/sources' },
     { label: 'Admin', href: '/admin' },

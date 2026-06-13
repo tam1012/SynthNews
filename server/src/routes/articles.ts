@@ -106,6 +106,8 @@ articles.get('/tags', async (c) => {
   } else if (feedTab === 'tech') {
     where += ` AND NOT (s.name ILIKE '%reddit%' OR a.url ILIKE '%reddit.com%' OR a.title ILIKE '[r/%' OR s.name ILIKE '%voz%' OR a.url ILIKE '%voz.vn%')`;
     where += ` AND COALESCE(s.feed_category, 'news') = 'tech'`;
+  } else if (feedTab === 'saved') {
+    where += ` AND a.is_saved = true`;
   }
 
   const rows = await getMany(
@@ -344,6 +346,64 @@ articles.post('/batch/delete', async (c) => {
   });
 
   return c.json({ success: true, data: { requested: ids.length, deleted } });
+});
+
+// ========== Saved Items ==========
+
+articles.post('/:id/save', async (c) => {
+  const { id } = c.req.param();
+  const existing = await getOne('SELECT id FROM articles WHERE id = $1', [id]);
+  if (!existing) {
+    return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Article not found' } }, 404);
+  }
+  await query(`UPDATE articles SET is_saved = true WHERE id = $1`, [id]);
+  return c.json({ success: true, data: { saved: true } });
+});
+
+articles.post('/:id/unsave', async (c) => {
+  const { id } = c.req.param();
+  const existing = await getOne('SELECT id FROM articles WHERE id = $1', [id]);
+  if (!existing) {
+    return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Article not found' } }, 404);
+  }
+  await query(`UPDATE articles SET is_saved = false WHERE id = $1`, [id]);
+  return c.json({ success: true, data: { saved: false } });
+});
+
+articles.post('/save-external', async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+  const url = (body.url || '').trim();
+  if (!url) {
+    return c.json({ success: false, error: { code: 'VALIDATION', message: 'url is required' } }, 400);
+  }
+  try {
+    new URL(url);
+  } catch {
+    return c.json({ success: false, error: { code: 'VALIDATION', message: 'Invalid URL' } }, 400);
+  }
+
+  // Check if URL already exists as an article
+  const existing = await getOne('SELECT id, is_saved FROM articles WHERE url = $1', [url]);
+  if (existing) {
+    if (!existing.is_saved) {
+      await query('UPDATE articles SET is_saved = true WHERE id = $1', [existing.id]);
+    }
+    return c.json({ success: true, data: { articleId: existing.id, alreadyExists: true, message: 'Bài viết đã có trong hệ thống, đã thêm vào Saved' } });
+  }
+
+  // Create fetch job for Manual source
+  const jobId = generateId('afj');
+  await query(
+    `INSERT INTO article_fetch_jobs (id, source_id, url, title, external_id, published_at, payload_json, status, retry_count)
+     VALUES ($1, 'src_manual', $2, $2, NULL, NULL, jsonb_build_object('isManualSave', true), 'discovered', 0)
+     ON CONFLICT (source_id, url) DO NOTHING`,
+    [jobId, url]
+  );
+
+  // Kick off fetch job in background
+  import('../jobs/scheduler.js').then(m => m.runArticleFetchJob()).catch(console.error);
+
+  return c.json({ success: true, data: { jobId, message: 'Đã thêm vào hàng đợi. Bài sẽ xuất hiện sau ~30-60 giây.' } });
 });
 
 articles.post('/:id/reset-summary', async (c) => {
