@@ -24,6 +24,11 @@ export function isSohuSource(source: Pick<SourceRow, 'type' | 'url'>): boolean {
 // are also SPA — content loads via JS, so we use Scrapling (headless browser)
 // to render them.
 
+// Sohu xchannel pages include social-media-style posts with very short content.
+// CJK min in article-writer is 160 chars; use that as the skip threshold so
+// short posts are marked done (not retried) instead of failing every cycle.
+const SOHU_MIN_CONTENT_LENGTH = 160;
+
 const SOHU_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 const DEFAULT_XCHANNEL = '/xchannel/TURBd01EQXhOVEl6'; // 000001523 = news homepage
 
@@ -356,11 +361,11 @@ export const sohuFetcher: SourceFetcher = {
     try {
       html = await fetchPageHtml(jobUrl);
       const staticArticle = extractSohuArticleFromHtml(html, job.title, job.published_at);
-      if (staticArticle.content.length >= 100) {
+      if (staticArticle.content.length >= SOHU_MIN_CONTENT_LENGTH) {
         const excerpt = truncate(staticArticle.content, 500);
         return {
           source,
-          externalId: job.external_id || extractSohuArticleId(jobUrl),
+          externalId: job.external_id || extractSohuArticleId(job.url),
           url: jobUrl,
           title: staticArticle.title,
           publishedAt: staticArticle.publishedAt,
@@ -371,7 +376,7 @@ export const sohuFetcher: SourceFetcher = {
           metadata: { extractor },
         };
       }
-      console.warn(`[sohu] fetchArticle: static HTML content too short (${staticArticle.content.length}), trying Scrapling ${jobUrl}`);
+      console.warn(`[sohu] fetchArticle: static HTML content too short (${staticArticle.content.length} < ${SOHU_MIN_CONTENT_LENGTH}), trying Scrapling ${jobUrl}`);
     } catch (err: any) {
       console.warn(`[sohu] fetchArticle: native fetch failed for ${jobUrl}, trying Scrapling: ${err.message}`);
     }
@@ -395,8 +400,9 @@ export const sohuFetcher: SourceFetcher = {
     const extracted = extractSohuArticleFromHtml(html, job.title, job.published_at);
     const content = extracted.content;
 
-    if (!content || content.length < 100) {
-      throw new Error('Article content too short');
+    if (!content || content.length < SOHU_MIN_CONTENT_LENGTH) {
+      console.warn(`[sohu] fetchArticle: content too short after Scrapling (${content?.length || 0} < ${SOHU_MIN_CONTENT_LENGTH}), skipping ${jobUrl}`);
+      return null;
     }
 
     const excerpt = truncate(content, 500);
