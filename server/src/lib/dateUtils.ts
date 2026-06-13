@@ -3,6 +3,7 @@
 // publishes "2026-05-20T15:30:00" meaning Vietnam local time, not UTC).
 const LANGUAGE_TIMEZONE_OFFSETS: Record<string, string> = {
   vi: '+07:00',
+  zh: '+08:00',
 };
 
 export function getDefaultTimezoneForLanguage(language: string | null | undefined): string {

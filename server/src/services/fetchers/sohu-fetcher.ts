@@ -1,4 +1,5 @@
 import { normalizePublicHttpUrlWithDns, truncate } from '../../lib/utils.js';
+import { normalizeDate, getDefaultTimezoneForLanguage } from '../../lib/dateUtils.js';
 import { SourceFetcher, SourceRow } from './types.js';
 import type { DiscoveredArticle } from '../article-fetch-queue.js';
 import type { ArticleInsertInput } from './article-writer.js';
@@ -363,12 +364,13 @@ export const sohuFetcher: SourceFetcher = {
       const staticArticle = extractSohuArticleFromHtml(html, job.title, job.published_at);
       if (staticArticle.content.length >= SOHU_MIN_CONTENT_LENGTH) {
         const excerpt = truncate(staticArticle.content, 500);
+        const tz = getDefaultTimezoneForLanguage(source.language);
         return {
           source,
           externalId: job.external_id || extractSohuArticleId(job.url),
           url: jobUrl,
           title: staticArticle.title,
-          publishedAt: staticArticle.publishedAt,
+          publishedAt: normalizeDate(staticArticle.publishedAt, { defaultTimezone: tz }),
           rawExcerpt: excerpt,
           rawContent: staticArticle.content,
           contentHashSeed: `${staticArticle.title}${staticArticle.content.substring(0, 200)}`,
@@ -406,13 +408,14 @@ export const sohuFetcher: SourceFetcher = {
     }
 
     const excerpt = truncate(content, 500);
+    const tz = getDefaultTimezoneForLanguage(source.language);
 
     return {
       source,
       externalId: job.external_id || extractSohuArticleId(jobUrl),
       url: jobUrl,
       title: extracted.title,
-      publishedAt: extracted.publishedAt,
+      publishedAt: normalizeDate(extracted.publishedAt, { defaultTimezone: tz }),
       rawExcerpt: excerpt,
       rawContent: content,
       contentHashSeed: `${extracted.title}${content.substring(0, 200)}`,
