@@ -108,6 +108,29 @@ function findArticles(obj: any, depth: number = 0): SohuArticleItem[] {
   return results;
 }
 
+// Scan rendered HTML for Sohu article links (/a/{id}) in the DOM.
+// After Scrapling renders + scrolls, new articles appear as <a> tags outside
+// blockRenderData. This function extracts them from the full HTML.
+function findArticlesInHtml(html: string): SohuArticleItem[] {
+  const results: SohuArticleItem[] = [];
+  const seen = new Set<string>();
+  // Match <a> tags with href containing /a/{digits}
+  const linkPattern = /<a[^>]+href=["']([^"']*\/a\/\d+[^"']*)["'][^>]*>([\s\S]*?)<\/a>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = linkPattern.exec(html)) !== null) {
+    const href = match[1];
+    const idMatch = href.match(/\/a\/(\d+)/);
+    if (!idMatch || seen.has(idMatch[1])) continue;
+    seen.add(idMatch[1]);
+    // Extract title from inner text (strip HTML tags)
+    const innerText = match[2].replace(/<[^>]+>/g, '').trim();
+    if (innerText.length > 0) {
+      results.push({ url: normalizeSohuUrl(href), title: innerText, cover: null });
+    }
+  }
+  return results;
+}
+
 // Strip scm tracking params from Sohu URLs
 function cleanSohuUrl(url: string): string {
   try {
@@ -281,27 +304,43 @@ export const sohuFetcher: SourceFetcher = {
     }
 
     const articles = findArticles(data);
+
+    // Also scan the full rendered HTML for article links — after Scrapling
+    // auto-scroll, new articles appear as <a> tags in the DOM outside
+    // blockRenderData. Merge both sets, blockRenderData titles take priority.
+    const htmlArticles = usedScrapling ? findArticlesInHtml(html) : [];
     const seen = new Set<string>();
     const discovered: DiscoveredArticle[] = [];
 
+    // blockRenderData articles first (better metadata: title + cover)
     for (const a of articles) {
       const id = extractSohuArticleId(a.url);
       if (!id || seen.has(id)) continue;
       seen.add(id);
-
       discovered.push({
         sourceId: source.id,
         url: cleanSohuUrl(a.url),
         title: a.title,
         externalId: id,
-        payload: {
-          discovery: 'sohu:xchannel',
-          imageUrl: a.cover,
-        },
+        payload: { discovery: 'sohu:xchannel', imageUrl: a.cover },
       });
     }
 
-    console.log(`[sohu] discover: found ${discovered.length} articles${usedScrapling ? ' (Scrapling auto-scroll)' : ' (static HTML)'}`);
+    // HTML-scraped articles (from DOM after scrolling)
+    for (const a of htmlArticles) {
+      const id = extractSohuArticleId(a.url);
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      discovered.push({
+        sourceId: source.id,
+        url: cleanSohuUrl(a.url),
+        title: a.title,
+        externalId: id,
+        payload: { discovery: 'sohu:html-scan' },
+      });
+    }
+
+    console.log(`[sohu] discover: found ${discovered.length} articles (${articles.length} from blockRenderData + ${htmlArticles.length} from HTML scan)`);
     return discovered;
   },
 
