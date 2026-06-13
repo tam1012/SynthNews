@@ -229,32 +229,55 @@ export const sohuFetcher: SourceFetcher = {
     const xchannelUrl = `${xchannelBase}${xchannelPath}`;
 
     console.log(`[sohu] discover: fetching xchannel ${xchannelUrl}`);
-    const html = await fetchPageHtml(xchannelUrl);
+
+    // Sohu xchannel uses infinite-scroll — SSR blockRenderData only has ~6 articles.
+    // Use Scrapling with auto-scroll to render the full page and trigger lazy-loading.
+    let html = '';
+    let usedScrapling = false;
+    try {
+      const { scraplingFetch } = await import('./scrapling-fetch.js');
+      html = await scraplingFetch(xchannelUrl, {
+        mode: 'stealth',
+        blockResources: false,
+        scrollCount: 5,
+        scrollDelayMs: 1500,
+        waitMs: 12000,
+        timeoutMs: 60000,
+      });
+      usedScrapling = true;
+      console.log(`[sohu] discover: Scrapling auto-scroll render complete (${html.length} bytes)`);
+    } catch (scrollErr: any) {
+      console.warn(`[sohu] discover: Scrapling auto-scroll failed, falling back to static HTML: ${scrollErr.message}`);
+      html = await fetchPageHtml(xchannelUrl);
+    }
 
     const data = extractBlockRenderData(html);
     if (!data) {
-      console.warn('[sohu] discover: no blockRenderData found, trying Scrapling fallback');
-      // Fallback: try Scrapling to render the page
-      const { scraplingFetch } = await import('./scrapling-fetch.js');
-      const rendered = await scraplingFetch(xchannelUrl, {
-        mode: 'stealth',
-        blockResources: true,
-        waitMs: 2000,
-        timeoutMs: 30000,
-      });
-      const renderedData = extractBlockRenderData(rendered);
-      if (!renderedData) throw new Error('Could not extract blockRenderData from Sohu page');
-      const articles = findArticles(renderedData);
-      return articles.map(a => ({
-        sourceId: source.id,
-        url: cleanSohuUrl(a.url),
-        title: a.title,
-        externalId: extractSohuArticleId(a.url),
-        payload: {
-          discovery: 'sohu:xchannel',
-          imageUrl: a.cover,
-        },
-      }));
+      if (!usedScrapling) {
+        throw new Error('Could not extract blockRenderData from Sohu page');
+      }
+      // Scrapling rendered but no blockRenderData — try static HTML as last resort
+      console.warn('[sohu] discover: no blockRenderData in Scrapling render, trying static HTML');
+      const staticHtml = await fetchPageHtml(xchannelUrl);
+      const staticData = extractBlockRenderData(staticHtml);
+      if (!staticData) throw new Error('Could not extract blockRenderData from Sohu page');
+      const articles = findArticles(staticData);
+      const seen = new Set<string>();
+      const discovered: DiscoveredArticle[] = [];
+      for (const a of articles) {
+        const id = extractSohuArticleId(a.url);
+        if (!id || seen.has(id)) continue;
+        seen.add(id);
+        discovered.push({
+          sourceId: source.id,
+          url: cleanSohuUrl(a.url),
+          title: a.title,
+          externalId: id,
+          payload: { discovery: 'sohu:xchannel', imageUrl: a.cover },
+        });
+      }
+      console.log(`[sohu] discover: found ${discovered.length} articles (static fallback)`);
+      return discovered;
     }
 
     const articles = findArticles(data);
@@ -278,7 +301,7 @@ export const sohuFetcher: SourceFetcher = {
       });
     }
 
-    console.log(`[sohu] discover: found ${discovered.length} articles`);
+    console.log(`[sohu] discover: found ${discovered.length} articles${usedScrapling ? ' (Scrapling auto-scroll)' : ' (static HTML)'}`);
     return discovered;
   },
 

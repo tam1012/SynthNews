@@ -57,6 +57,8 @@ class FetchOptions(BaseModel):
     block_ads: Optional[bool] = False
     network_idle: Optional[bool] = None
     cookie_header: Optional[str] = None
+    scroll_count: Optional[int] = None
+    scroll_delay_ms: Optional[int] = None
 
 
 class FetchRequest(BaseModel):
@@ -294,8 +296,33 @@ def _stealth_fetch_sync(url: str, options: FetchOptions, timeout_ms: int) -> str
 
         kwargs["page_setup"] = _page_setup
 
+    if options.scroll_count and options.scroll_count > 0:
+        scroll_count = options.scroll_count
+        scroll_delay_ms = options.scroll_delay_ms or 1500
+        existing_setup = kwargs.get("page_setup")
+
+        def _scroll_setup(page):
+            if existing_setup:
+                existing_setup(page)
+            scroll_js = (
+                "(function(){"
+                f"var n=0,max={scroll_count},delay={scroll_delay_ms};"
+                "function s(){if(n>=max)return;window.scrollTo(0,document.body.scrollHeight);n++;setTimeout(s,delay);}"
+                "if(document.readyState==='complete'){setTimeout(s,500);}"
+                "else{window.addEventListener('load',function(){setTimeout(s,500);});}"
+                "})();"
+            )
+            try:
+                page.add_init_script(scroll_js)
+            except Exception:
+                pass
+
+        kwargs["page_setup"] = _scroll_setup
+        total_scroll_ms = scroll_count * scroll_delay_ms + 3000
+        kwargs["wait"] = max(kwargs.get("wait", 0), total_scroll_ms)
+
     if options.wait_ms and options.wait_ms > 0:
-        kwargs["wait"] = options.wait_ms
+        kwargs["wait"] = max(kwargs.get("wait", 0), options.wait_ms)
 
     if options.wait_selector:
         kwargs["wait_selector"] = options.wait_selector

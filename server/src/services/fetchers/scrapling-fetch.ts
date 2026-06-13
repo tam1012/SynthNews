@@ -71,6 +71,11 @@ export interface ScraplingFetchOptions {
   networkIdle?: boolean;
   /** Raw Cookie header for hosts where the operator provides a browser session. */
   cookieHeader?: string;
+  /** Number of times to scroll to the bottom of the page after load, to trigger
+   *  lazy-loading / infinite-scroll content (e.g. Sohu xchannel). */
+  scrollCount?: number;
+  /** Delay in ms between each scroll. Default 1500. */
+  scrollDelayMs?: number;
 }
 
 interface ScraplingResponse {
@@ -155,6 +160,8 @@ export async function scraplingFetch(url: string, options: ScraplingFetchOptions
           solve_cloudflare: solveCloudflare,
           proxy: proxy || undefined,
           cookie_header: options.cookieHeader || undefined,
+          scroll_count: options.scrollCount || undefined,
+          scroll_delay_ms: options.scrollDelayMs || undefined,
         },
       }),
       signal: AbortSignal.timeout(effectiveTimeout + 5000),
