@@ -242,7 +242,7 @@ export const sohuFetcher: SourceFetcher = {
       mode: 'stealth',
       blockResources: true,
       waitMs: 2000,
-      timeoutMs: 45000,
+      timeoutMs: 120000, // Sohu articles are 800KB+ SPAs; Scrapling has limited concurrency
     });
 
     if (!html || html.length < 200) {
