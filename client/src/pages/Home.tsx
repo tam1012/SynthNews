@@ -80,9 +80,22 @@ export function Home() {
       setFilterTag('');
     }
   }, [location.pathname]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Keep the date in the URL when switching tabs via sidebar (NavLink strips it).
+  // When the current path is just /<tab> but we have a selected date, add the date
+  // suffix so the URL reflects what feed the user is actually looking at.
   useEffect(() => {
-    if (location.pathname === '/digest') setSelectedDigestId(linkedDigestId);
-  }, [linkedDigestId, location.pathname]);
+    if (!selectedDate || tab === 'digest') return;
+    const path = location.pathname;
+    if (path.startsWith('/article')) return;
+    const bareTabPaths = ['/voz', '/reddit', '/news', '/tech', '/saved'];
+    const isBareTab = bareTabPaths.includes(path) || (tab === 'all' && path === '/');
+    if (!isBareTab) return;
+    const datePath = formatDateDeepLink(selectedDate);
+    if (!datePath) return;
+    const tabPrefix = tab === 'all' ? '' : `/${tab}`;
+    window.history.replaceState(null, '', `${tabPrefix}${datePath}`);
+  }, [tab, selectedDate, location.pathname]);
   const [filterSource, setFilterSource] = useState<string>('all');
   const [filterTag, setFilterTag] = useState<string>('');
   const [showFilter, setShowFilter] = useState(false);
@@ -182,7 +195,7 @@ export function Home() {
     () => {
       // Wait for dates to load before fetching articles (prevents empty flash)
       if (datesLoading && !datesRaw) return Promise.resolve({ data: [], meta: { total: 0, page: 1, totalPages: 0 } });
-      return api.getArticles({ page: 1, limit: FEED_PAGE_SIZE, status: 'done', date: tab === 'saved' ? undefined : (selectedDate || undefined), sourceId: filterSource === 'all' ? undefined : filterSource, feedTab: tab === 'digest' ? 'all' : tab, tag: filterTag || undefined });
+      return api.getArticles({ page: 1, limit: FEED_PAGE_SIZE, status: 'done', date: selectedDate || undefined, sourceId: filterSource === 'all' ? undefined : filterSource, feedTab: tab === 'digest' ? 'all' : tab, tag: filterTag || undefined });
     },
     [selectedDate, filterSource, datesLoading, tab, filterTag]
   );
@@ -193,7 +206,7 @@ export function Home() {
     setLoadMoreError(null);
   }, [raw]);
 
-  const allArticles: any[] = useMemo(() => tab === 'saved' ? articlePages : filterArticlesBySelectedDate(articlePages, selectedDate), [articlePages, selectedDate, tab]);
+  const allArticles: any[] = useMemo(() => filterArticlesBySelectedDate(articlePages, selectedDate), [articlePages, selectedDate]);
   const isShowingOfflineCache = Boolean(raw?.offline || raw?.stale || datesRaw?.offline || datesRaw?.stale);
 
   const articles: any[] = useMemo(() => filterPersonalizedArticles(allArticles, {
