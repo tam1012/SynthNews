@@ -170,7 +170,7 @@ export function Home() {
     () => {
       // Wait for dates to load before fetching articles (prevents empty flash)
       if (datesLoading && !datesRaw) return Promise.resolve({ data: [], meta: { total: 0, page: 1, totalPages: 0 } });
-      return api.getArticles({ page: 1, limit: FEED_PAGE_SIZE, status: 'done', date: selectedDate || undefined, sourceId: filterSource === 'all' ? undefined : filterSource, feedTab: tab === 'digest' ? 'all' : tab, tag: filterTag || undefined });
+      return api.getArticles({ page: 1, limit: FEED_PAGE_SIZE, status: 'done', date: tab === 'saved' ? undefined : (selectedDate || undefined), sourceId: filterSource === 'all' ? undefined : filterSource, feedTab: tab === 'digest' ? 'all' : tab, tag: filterTag || undefined });
     },
     [selectedDate, filterSource, datesLoading, tab, filterTag]
   );
