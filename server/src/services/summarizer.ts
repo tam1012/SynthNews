@@ -241,7 +241,35 @@ Example 4 — avoid stiff word-by-word translation:
   WRONG: "Động thái này được kỳ vọng sẽ giảm thiểu một cách đáng kể các rủi ro tín dụng có liên quan."
   RIGHT: "Động thái này được kỳ vọng giúp giảm mạnh rủi ro tín dụng."
 
-The ONLY things that stay in English: proper nouns, brand/product names, ticker symbols, code, metrics, hashtags, and specialist dev terms with no good Vietnamese equivalent. Everything else must read as if originally written in Vietnamese.
+COUNTRY & TERRITORY NAMES — MUST translate to standard Vietnamese:
+All country and territory names must be written in their standard Vietnamese form. Do NOT leave them in English or Pinyin. Common mappings:
+  South Korea → Hàn Quốc | North Korea → Triều Tiên | Japan → Nhật Bản | China → Trung Quốc
+  Chinese Taipei → Đài Bắc Trung Hoa | Thailand → Thái Lan | India → Ấn Độ | Russia → Nga
+  United States / US → Mỹ | United Kingdom / UK → Anh | France → Pháp | Germany → Đức
+  Italy → Ý | Spain → Tây Ban Nha | Netherlands → Hà Lan | Poland → Ba Lan
+  Australia → Úc | Cambodia → Campuchia | Laos → Lào | Myanmar → Myanmar
+  Saudi Arabia → Ả Rập Xê Út | Turkey / Türkiye → Thổ Nhĩ Kỳ | Egypt → Ai Cập
+  Vietnam → Việt Nam (NEVER write "Vietnam" in Vietnamese text)
+  WRONG: "South Korea đối đầu Vietnam trong trận chung kết."
+  RIGHT: "Hàn Quốc đối đầu Việt Nam trong trận chung kết."
+
+CHINESE PROPER NOUNS — MUST use Hán-Việt (Sino-Vietnamese) transliteration:
+Chinese person names and place names have established Hán-Việt equivalents. Always use them instead of Pinyin or English transliterations.
+  Person names:
+  Xi Jinping → Tập Cận Bình | Li Qiang → Lý Cường | Wang Yi → Vương Nghị
+  Mao Zedong → Mao Trạch Đông | Deng Xiaoping → Đặng Tiểu Bình
+  Place names:
+  Beijing → Bắc Kinh | Shanghai → Thượng Hải | Chongqing → Trùng Khánh
+  Guangzhou → Quảng Châu | Shenzhen → Thâm Quyến | Nanjing → Nam Kinh
+  Wuhan → Vũ Hán | Chengdu → Thành Đô | Hangzhou → Hàng Châu
+  Tianjin → Thiên Tân | Xi'an → Tây An | Hong Kong → Hồng Kông | Macau → Ma Cao
+  Regions: Xinjiang → Tân Cương | Tibet → Tây Tạng | Taiwan → Đài Loan
+  Sichuan → Tứ Xuyên | Guangdong → Quảng Đông | Fujian → Phúc Kiến | Hubei → Hồ Bắc
+  General rule: If a Chinese name has a known Hán-Việt form, always use it. When unsure, keep the Pinyin but add Hán-Việt in parentheses on first mention.
+  WRONG: "Xi Jinping đã gặp lãnh đạo tại Chongqing."
+  RIGHT: "Tập Cận Bình đã gặp lãnh đạo tại Trùng Khánh."
+
+The ONLY things that stay in English: brand/product names, ticker symbols, code, metrics, hashtags, and specialist dev terms with no good Vietnamese equivalent. Country names, Chinese proper nouns, and other translatable terms must always be in Vietnamese. Everything else must read as if originally written in Vietnamese.
 `;
 }
 
