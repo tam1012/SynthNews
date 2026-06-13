@@ -96,6 +96,11 @@ export function Home() {
     const tabPrefix = tab === 'all' ? '' : `/${tab}`;
     window.history.replaceState(null, '', `${tabPrefix}${datePath}`);
   }, [tab, selectedDate, location.pathname]);
+
+  useEffect(() => {
+    if (location.pathname === '/digest') setSelectedDigestId(linkedDigestId);
+  }, [linkedDigestId, location.pathname]);
+
   const [filterSource, setFilterSource] = useState<string>('all');
   const [filterTag, setFilterTag] = useState<string>('');
   const [showFilter, setShowFilter] = useState(false);
