@@ -255,17 +255,49 @@ All country and territory names must be written in their standard Vietnamese for
 
 CHINESE PROPER NOUNS — MUST use Hán-Việt (Sino-Vietnamese) transliteration:
 Chinese person names and place names have established Hán-Việt equivalents. Always use them instead of Pinyin or English transliterations.
-  Person names:
+
+Leadership (current):
   Xi Jinping → Tập Cận Bình | Li Qiang → Lý Cường | Wang Yi → Vương Nghị
-  Mao Zedong → Mao Trạch Đông | Deng Xiaoping → Đặng Tiểu Bình
-  Place names:
-  Beijing → Bắc Kinh | Shanghai → Thượng Hải | Chongqing → Trùng Khánh
-  Guangzhou → Quảng Châu | Shenzhen → Thâm Quyến | Nanjing → Nam Kinh
-  Wuhan → Vũ Hán | Chengdu → Thành Đô | Hangzhou → Hàng Châu
-  Tianjin → Thiên Tân | Xi'an → Tây An | Hong Kong → Hồng Kông | Macau → Ma Cao
-  Regions: Xinjiang → Tân Cương | Tibet → Tây Tạng | Taiwan → Đài Loan
+  Zhao Leji → Triệu Lạc Tế | Wang Huning → Vương Hỗ Ninh | Cai Qi → Thái Kỳ
+  Ding Xuexiang → Đinh Tiết Tường | Han Zheng → Hàn Chính | Li Xi → Lý Hy
+
+Key officials & frequent names:
+  Qin Cương → Tần Cương | He Lifeng → Hà Lập Phong | Pan Sheng → Phan Thắng
+  Hu Chunhua → Hồ Xuân Hoa | Chen Miner → Trần Mẫn Nhĩ | Yuan Jiajun → Viên Gia Quân
+
+Place names — Tier 1 cities:
+  Beijing → Bắc Kinh | Shanghai → Thượng Hải | Guangzhou → Quảng Châu | Shenzhen → Thâm Quyến
+
+Place names — major cities:
+  Chongqing → Trùng Khánh | Nanjing → Nam Kinh | Wuhan → Vũ Hán | Chengdu → Thành Đô
+  Hangzhou → Hàng Châu | Tianjin → Thiên Tân | Xi'an → Tây An | Changsha → Trường Sa
+  Zhengzhou → Trịnh Châu | Harbin → Cáp Nhĩ Tân | Kunming → Côn Minh | Dalian → Đại Liên
+  Qingdao → Thanh Đảo | Xiamen → Hạ Môn | Ningbo → Ninh Ba | Jinan → Tế Nam
+  Fuzhou → Phúc Châu | Hefei → Hợp Phì | Nanning → Nam Ninh | Guiyang → Quý Dương
+  Lanzhou → Lan Châu | Taiyuan → Thái Nguyên | Urumqi → Ô Lỗ Mật Tề
+  Hong Kong → Hồng Kông | Macau → Ma Cao
+
+Place names — provinces/regions:
   Sichuan → Tứ Xuyên | Guangdong → Quảng Đông | Fujian → Phúc Kiến | Hubei → Hồ Bắc
-  General rule: If a Chinese name has a known Hán-Việt form, always use it. When unsure, keep the Pinyin but add Hán-Việt in parentheses on first mention.
+  Hunan → Hồ Nam | Zhejiang → Chiết Giang | Jiangsu → Giang Tô | Shandong → Sơn Đông
+  Henan → Hà Nam | Hebei → Hà Bắc | Anhui → An Huy | Jiangxi → Giang Tây
+  Yunnan → Vân Nam | Guizhou → Quý Châu | Heilongjiang → Hắc Long Giang
+  Jilin → Cát Lâm | Liaoning → Liêu Ninh | Gansu → Cam Túc
+  Shanxi (province) → Sơn Tây | Shaanxi → Thiểm Tây
+  Inner Mongolia → Nội Mông Cổ | Xinjiang → Tân Cương | Tibet → Tây Tạng | Taiwan → Đài Loan
+  Hainan → Hải Nam | Ningxia → Ninh Hạ | Qinghai → Thanh Hải
+
+Organizations:
+  中国共产党 / CPC → Đảng Cộng sản Trung Quốc | 国务院 → Quốc vụ院 | 全国人大 → Đại hội Đại biểu Nhân dân Toàn quốc
+  新华社 → Tân Hoa xã | 人民日报 → Nhân Dân nhật báo | 中央电视台 / CCTV → Đài Truyền hình Trung ương
+  外交部 → Bộ Ngoại giao | 国防部 → Bộ Quốc phòng | 财政部 → Bộ Tài chính | 央行 / 人民银行 → Ngân hàng Nhân dân Trung Quốc
+
+Major companies (keep Pinyin + Vietnamese context):
+  Huawei → Hoa Vi | Tencent → Tencent | Alibaba → Alibaba | ByteDance → ByteDance
+  Xiaomi → Xiaomi | BYD → BYD | CATL → CATL | Baidu → Baidu | JD.com → JD.com
+  Pinduoduo → Pinduoduo | Meituan → Meituan | Nio → Nio | Li Auto → Lý Tưởng
+
+General rule: If a Chinese name has a known Hán-Việt form, always use it. When unsure, keep the Pinyin but add Hán-Việt in parentheses on first mention.
   WRONG: "Xi Jinping đã gặp lãnh đạo tại Chongqing."
   RIGHT: "Tập Cận Bình đã gặp lãnh đạo tại Trùng Khánh."
 
