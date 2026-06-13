@@ -52,14 +52,23 @@ export function Home() {
   // Sync tab when URL changes (e.g. sidebar navigation)
   useEffect(() => {
     const path = location.pathname;
-    const pathDate = parseDateDeepLinkPath(path);
+    // Handle tab-prefixed date URLs like /news/13062026
+    const tabDateMatch = path.match(/^\/(news|tech|voz|reddit|digest|saved)\/(\d{2})(\d{2})(\d{4})$/);
+    let pathDate: string | null = null;
     let newTab: 'all' | 'news' | 'tech' | 'voz' | 'reddit' | 'digest' | 'saved' = 'all';
-    if (path === '/voz') newTab = 'voz';
-    else if (path === '/reddit') newTab = 'reddit';
-    else if (path === '/digest') newTab = 'digest';
-    else if (path === '/news') newTab = 'news';
-    else if (path === '/tech') newTab = 'tech';
-    else if (path === '/saved') newTab = 'saved';
+    if (tabDateMatch) {
+      newTab = tabDateMatch[1] as typeof newTab;
+      const [, , dd, mm, yyyy] = tabDateMatch;
+      pathDate = `${yyyy}-${mm}-${dd}`;
+    } else {
+      pathDate = parseDateDeepLinkPath(path);
+      if (path === '/voz') newTab = 'voz';
+      else if (path === '/reddit') newTab = 'reddit';
+      else if (path === '/digest') newTab = 'digest';
+      else if (path === '/news') newTab = 'news';
+      else if (path === '/tech') newTab = 'tech';
+      else if (path === '/saved') newTab = 'saved';
+    }
     if (pathDate) {
       setUserSelectedDate(pathDate);
       setSelected(null);
@@ -158,8 +167,11 @@ export function Home() {
   const setSelectedDate = useCallback((date: string | null) => {
     setUserSelectedDate(date);
     const datePath = formatDateDeepLink(date);
-    if (datePath) navigate(datePath, { replace: true });
-  }, [navigate]);
+    if (datePath) {
+      const tabPrefix = tab === 'all' ? '' : `/${tab}`;
+      navigate(`${tabPrefix}${datePath}`, { replace: true });
+    }
+  }, [navigate, tab]);
 
   const selectedDateIdx = useMemo(
     () => sortedDates.findIndex(d => d.date === selectedDate),
@@ -181,7 +193,7 @@ export function Home() {
     setLoadMoreError(null);
   }, [raw]);
 
-  const allArticles: any[] = useMemo(() => filterArticlesBySelectedDate(articlePages, selectedDate), [articlePages, selectedDate]);
+  const allArticles: any[] = useMemo(() => tab === 'saved' ? articlePages : filterArticlesBySelectedDate(articlePages, selectedDate), [articlePages, selectedDate, tab]);
   const isShowingOfflineCache = Boolean(raw?.offline || raw?.stale || datesRaw?.offline || datesRaw?.stale);
 
   const articles: any[] = useMemo(() => filterPersonalizedArticles(allArticles, {
@@ -445,13 +457,17 @@ export function Home() {
   // Navigate helper: sync tab to URL (no React Router re-render)
   const navigateTab = useCallback((t: 'all' | 'news' | 'tech' | 'voz' | 'reddit' | 'digest' | 'saved') => {
     setTab(t);
-    const path = t === 'all' ? '/' : `/${t}`;
+    const explicitDate = linkedDate || userSelectedDate;
+    const datePath = formatDateDeepLink(explicitDate);
+    const tabPath = t === 'all' ? '/' : `/${t}`;
+    const path = datePath ? `${tabPath}${datePath}` : tabPath;
     window.history.replaceState(null, '', path);
-  }, []);
+  }, [linkedDate, userSelectedDate]);
 
   const currentFeedPath = useMemo(() => {
     const explicitDate = linkedDate || userSelectedDate;
     if (tab === 'all' && explicitDate) return formatDateDeepLink(explicitDate) || '/';
+    if (explicitDate) return `/${tab}${formatDateDeepLink(explicitDate)}`;
     return tab === 'all' ? '/' : `/${tab}`;
   }, [linkedDate, tab, userSelectedDate]);
 
