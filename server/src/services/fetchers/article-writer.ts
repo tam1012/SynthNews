@@ -17,6 +17,8 @@ interface ArticleWriterSource {
 }
 
 export const MIN_ARTICLE_TEXT_LENGTH = parseInt(typeof process !== 'undefined' ? process.env.MIN_ARTICLE_TEXT_LENGTH || '500' : '500', 10);
+const SHORT_WIRE_TEXT_LENGTH = 450;
+const CJK_ARTICLE_TEXT_LENGTH = 160;
 const FUTURE_PUBLISHED_AT_TOLERANCE_MS = 2 * 60 * 60 * 1000;
 
 export class ArticleContentTooShortError extends Error {
@@ -28,6 +30,27 @@ export class ArticleContentTooShortError extends Error {
 
 function normalizeTextLength(value: string): number {
   return value.replace(/\s+/g, ' ').trim().length;
+}
+
+function isCjkLanguage(language: string | null | undefined): boolean {
+  return /^(zh|ja|ko)(-|$)/i.test(language || '');
+}
+
+function countCjkCharacters(value: string): number {
+  const matches = value.match(/[\u3400-\u9fff\uf900-\ufaff]/g);
+  return matches ? matches.length : 0;
+}
+
+export function getEffectiveMinArticleTextLength(input: Pick<ArticleInsertInput, 'source' | 'rawContent' | 'rawExcerpt'>): number {
+  const baseMin = Math.max(1, MIN_ARTICLE_TEXT_LENGTH || 500);
+  const text = `${input.rawContent || ''} ${input.rawExcerpt || ''}`;
+  const cjkChars = countCjkCharacters(text);
+
+  if (isCjkLanguage(input.source.language) || cjkChars >= CJK_ARTICLE_TEXT_LENGTH) {
+    return Math.min(baseMin, CJK_ARTICLE_TEXT_LENGTH);
+  }
+
+  return Math.min(baseMin, SHORT_WIRE_TEXT_LENGTH);
 }
 
 export function sanitizePublishedAtForInsert(
@@ -64,7 +87,7 @@ function mergeMetadataWithPublishDateWarning(metadata: any, warning: ReturnType<
 
 export function validateArticleContent(input: ArticleInsertInput): void {
   const contentType = input.contentType || 'article';
-  const minLength = Math.max(1, MIN_ARTICLE_TEXT_LENGTH || 500);
+  const minLength = getEffectiveMinArticleTextLength(input);
   const length = Math.max(normalizeTextLength(input.rawContent || ''), normalizeTextLength(input.rawExcerpt || ''));
 
   if (contentType === 'article' && length < minLength) {

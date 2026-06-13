@@ -3,7 +3,6 @@ import { SourceFetcher, SourceRow } from './types.js';
 import type { DiscoveredArticle } from '../article-fetch-queue.js';
 import type { ArticleInsertInput } from './article-writer.js';
 import { insertArticleIfNew } from './article-writer.js';
-import { getDefaultTimezoneForLanguage } from '../../lib/dateUtils.js';
 import { browserHeaders, randomUA, isWorkerProxyConfigured, shouldSkipWorkerProxy, workerProxyFetch, WorkerProxyUnavailableError, isBlockedHtml } from './http-utils.js';
 
 export function isSohuUrl(url: string): boolean {
@@ -32,6 +31,13 @@ interface SohuArticleItem {
   url: string;
   title: string;
   cover?: string | null;
+}
+
+interface SohuArticleExtraction {
+  title: string;
+  content: string;
+  publishedAt: string | null;
+  imageUrl: string | null;
 }
 
 // Sohu article IDs are numeric: /a/1035819867_161795
@@ -112,6 +118,53 @@ function cleanSohuUrl(url: string): string {
   } catch {
     return url;
   }
+}
+
+function decodeBasicHtmlEntities(value: string): string {
+  return value
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
+}
+
+function htmlToPlainText(html: string): string {
+  return decodeBasicHtmlEntities(html
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' '))
+    .replace(/\s+/g, ' ')
+    .replace(/\s*返回搜狐，查看更多\s*$/u, '')
+    .trim();
+}
+
+function getMetaContent(html: string, selector: RegExp): string | null {
+  const match = html.match(selector);
+  return match ? decodeBasicHtmlEntities(match[1]).trim() : null;
+}
+
+function extractSohuArticleFromHtml(html: string, fallbackTitle: string, fallbackPublishedAt: string | null): SohuArticleExtraction {
+  const articleMatch = html.match(/<article[^>]*>([\s\S]*?)<\/article>/i);
+  const content = articleMatch ? htmlToPlainText(articleMatch[1]) : htmlToPlainText(html);
+
+  const rawTitle =
+    getMetaContent(html, /<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["'][^>]*>/i) ||
+    getMetaContent(html, /<title[^>]*>([\s\S]*?)<\/title>/i) ||
+    fallbackTitle;
+  const title = rawTitle.replace(/[_\s]*搜狐.*$/u, '').trim() || fallbackTitle || rawTitle;
+
+  const publishedAt =
+    fallbackPublishedAt ||
+    getMetaContent(html, /<meta[^>]*property=["']og:release_date["'][^>]*content=["']([^"']+)["'][^>]*>/i) ||
+    getMetaContent(html, /<meta[^>]*itemprop=["']datePublished["'][^>]*content=["']([^"']+)["'][^>]*>/i);
+
+  const imageUrl =
+    getMetaContent(html, /<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']+)["'][^>]*>/i) ||
+    null;
+
+  return { title, content, publishedAt, imageUrl };
 }
 
 async function fetchPageWithRetry(url: string): Promise<string> {
@@ -233,80 +286,54 @@ export const sohuFetcher: SourceFetcher = {
     const jobUrl = await normalizePublicHttpUrlWithDns(job.url, false);
     if (!jobUrl) throw new Error('Article URL must be a public http(s) URL');
 
-    console.log(`[sohu] fetchArticle: rendering ${jobUrl} via Scrapling`);
+    console.log(`[sohu] fetchArticle: fetching ${jobUrl}`);
 
-    // Sohu article pages are SPAs — content loads via JS. Use Scrapling
-    // headless browser to render the page and extract the <article> body.
+    let html = '';
+    let extractor = 'sohu:static-html';
+    try {
+      html = await fetchPageHtml(jobUrl);
+      const staticArticle = extractSohuArticleFromHtml(html, job.title, job.published_at);
+      if (staticArticle.content.length >= 100) {
+        const excerpt = truncate(staticArticle.content, 500);
+        return {
+          source,
+          externalId: job.external_id || extractSohuArticleId(jobUrl),
+          url: jobUrl,
+          title: staticArticle.title,
+          publishedAt: staticArticle.publishedAt,
+          rawExcerpt: excerpt,
+          rawContent: staticArticle.content,
+          contentHashSeed: `${staticArticle.title}${staticArticle.content.substring(0, 200)}`,
+          imageUrl: job.payload_json?.imageUrl || staticArticle.imageUrl,
+          metadata: { extractor },
+        };
+      }
+      console.warn(`[sohu] fetchArticle: static HTML content too short (${staticArticle.content.length}), trying Scrapling ${jobUrl}`);
+    } catch (err: any) {
+      console.warn(`[sohu] fetchArticle: native fetch failed for ${jobUrl}, trying Scrapling: ${err.message}`);
+    }
+
+    // Some Sohu surfaces are still SPA shells. Use Scrapling only after the
+    // cheaper static HTML path fails, so short news pages don't occupy browser
+    // slots until they hit the article-fetch timeout.
+    extractor = 'sohu:scrapling';
     const { scraplingFetch } = await import('./scrapling-fetch.js');
-    const html = await scraplingFetch(jobUrl, {
+    html = await scraplingFetch(jobUrl, {
       mode: 'stealth',
       blockResources: true,
       waitMs: 2000,
-      timeoutMs: 120000, // Sohu articles are 800KB+ SPAs; Scrapling has limited concurrency
+      timeoutMs: 90000,
     });
 
     if (!html || html.length < 200) {
       throw new Error('Scrapling returned empty or too-short HTML');
     }
 
-    // Extract article content from <article> tag
-    const articleMatch = html.match(/<article[^>]*>([\s\S]*?)<\/article>/i);
-    let content = '';
-    if (articleMatch) {
-      content = articleMatch[1]
-        .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-        .replace(/<[^>]+>/g, ' ')
-        .replace(/&nbsp;/g, ' ')
-        .replace(/&amp;/g, '&')
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
-        .replace(/&quot;/g, '"')
-        .replace(/\s+/g, ' ')
-        .trim();
-    } else {
-      // Fallback: strip tags from full body
-      content = html
-        .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-        .replace(/<[^>]+>/g, ' ')
-        .replace(/&nbsp;/g, ' ')
-        .replace(/&amp;/g, '&')
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
-        .replace(/\s+/g, ' ')
-        .trim();
-    }
+    const extracted = extractSohuArticleFromHtml(html, job.title, job.published_at);
+    const content = extracted.content;
 
     if (!content || content.length < 100) {
       throw new Error('Article content too short');
-    }
-
-    // Extract title from <title> tag as fallback
-    let title = job.title;
-    if (!title || title.length < 2) {
-      const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
-      if (titleMatch) {
-        const rawTitle = titleMatch[1]
-          .replace(/<[^>]+>/g, '')
-          .replace(/&nbsp;/g, ' ')
-          .replace(/&amp;/g, '&')
-          .replace(/\s+/g, ' ')
-          .trim();
-        // Sohu titles end with "_频道_搜狐" or similar suffixes
-        title = rawTitle.replace(/[_\s]*[_\s]*_.*$/, '').trim() || rawTitle;
-      }
-    }
-
-    // Extract published date from meta
-    let publishedAt = job.published_at;
-    if (!publishedAt) {
-      const dateMatch = html.match(/<meta[^>]*property=["']og:release_date["'][^>]*content=["']([^"']+)["'][^>]*>/i)
-        || html.match(/<meta[^>]*itemprop=["']datePublished["'][^>]*content=["']([^"']+)["'][^>]*>/i);
-      if (dateMatch) {
-        const tz = getDefaultTimezoneForLanguage(source.language);
-        publishedAt = dateMatch[1]; // already ISO-ish
-      }
     }
 
     const excerpt = truncate(content, 500);
@@ -315,13 +342,13 @@ export const sohuFetcher: SourceFetcher = {
       source,
       externalId: job.external_id || extractSohuArticleId(jobUrl),
       url: jobUrl,
-      title,
-      publishedAt,
+      title: extracted.title,
+      publishedAt: extracted.publishedAt,
       rawExcerpt: excerpt,
       rawContent: content,
-      contentHashSeed: `${title}${content.substring(0, 200)}`,
-      imageUrl: job.payload_json?.imageUrl || null,
-      metadata: { extractor: 'sohu:scrapling' },
+      contentHashSeed: `${extracted.title}${content.substring(0, 200)}`,
+      imageUrl: job.payload_json?.imageUrl || extracted.imageUrl,
+      metadata: { extractor },
     };
   },
 

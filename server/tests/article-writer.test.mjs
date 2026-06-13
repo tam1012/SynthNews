@@ -237,6 +237,68 @@ test('insert article rejects short article content before insert', async () => {
   );
 });
 
+test('insert article accepts concise English wire content above the short-wire floor', async () => {
+  let inserted = false;
+  const { insertArticleIfNew } = loadTsModule('../src/services/fetchers/article-writer.ts', {
+    '../../db/index.js': {
+      getOne: async () => null,
+      getMany: async () => [],
+      query: async () => {
+        inserted = true;
+        return { rowCount: 1 };
+      },
+    },
+    '../../lib/utils.js': {
+      createContentHash: () => 'hash',
+      generateId: () => 'art_test',
+      truncate: (value) => value,
+    },
+    '../../lib/htmlEntities.js': { decodeHtmlEntities: decodeHTML },
+  });
+
+  const result = await insertArticleIfNew({
+    source: { id: 'src_en', language: 'en' },
+    url: 'https://example.com/short-wire',
+    title: 'Short wire update',
+    rawExcerpt: '',
+    rawContent: 'A'.repeat(481),
+  });
+
+  assert.equal(result, true);
+  assert.equal(inserted, true);
+});
+
+test('insert article accepts concise CJK articles with enough Han characters', async () => {
+  let inserted = false;
+  const { insertArticleIfNew } = loadTsModule('../src/services/fetchers/article-writer.ts', {
+    '../../db/index.js': {
+      getOne: async () => null,
+      getMany: async () => [],
+      query: async () => {
+        inserted = true;
+        return { rowCount: 1 };
+      },
+    },
+    '../../lib/utils.js': {
+      createContentHash: () => 'hash',
+      generateId: () => 'art_test',
+      truncate: (value) => value,
+    },
+    '../../lib/htmlEntities.js': { decodeHtmlEntities: decodeHTML },
+  });
+
+  const result = await insertArticleIfNew({
+    source: { id: 'src_zh', language: 'zh' },
+    url: 'https://example.com/short-cjk',
+    title: 'Short CJK update',
+    rawExcerpt: '',
+    rawContent: '\u4e2d'.repeat(191),
+  });
+
+  assert.equal(result, true);
+  assert.equal(inserted, true);
+});
+
 test('insert article allows short video content', async () => {
   let inserted = false;
   const { insertArticleIfNew } = loadTsModule('../src/services/fetchers/article-writer.ts', {
