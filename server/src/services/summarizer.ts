@@ -301,46 +301,34 @@ General rule: If a Chinese name has a known Hán-Việt form, always use it. Whe
   WRONG: "Xi Jinping đã gặp lãnh đạo tại Chongqing."
   RIGHT: "Tập Cận Bình đã gặp lãnh đạo tại Trùng Khánh."
 
-ENGLISH PROPER NOUNS — translate place names; keep person/org names in English:
-English person names stay in English (no Vietnamese equivalent). Place names with established Vietnamese forms MUST be translated.
+ENGLISH PROPER NOUNS — keep in English; translate only countries and organizations:
+English person names and city names stay in English. Do NOT transliterate them into Vietnamese phonetic forms (e.g. do NOT write "Béc-lin" for Berlin, "Niu-oóc" for New York, "Trăm" for Trump). Modern Vietnamese readers recognize English names directly.
 
-Place names — major cities (must translate):
-  London → Luân Đôn | Paris → Pa-ri / Paris | Berlin → Béc-lin | Moscow → Mát-xcơ-va
-  Tokyo → Tô-kyô | Seoul → Seoul | Bangkok → Băng-cốc | Jakarta → Gia-các-ta
-  New York → Niu-oóc | Washington → Oa-sinh-tơn | San Francisco → Xan Phran-xi-xcô
-  Los Angeles → Lốt An-giơ-lét | Chicago → Xi-ca-gô | Houston → Hiu-xtơn
-  Sydney → Xt-ni | Melbourne → Men-bơn | Toronto → Tô-rôn-tô | Ottawa → Ôt-ta-va
-  Berlin → Béc-lin | Munich → Mun-sen | Hamburg → Ham-buốc
-  Rome → Rô-ma | Milan → Mi-lan | Madrid → Ma-đrít | Barcelona → Baxê-lô-na
-  Cairo → Ca-i-rô | Tehran → Tê-hê-ran | Baghdad → Bát-đa | Damascus → Đa-mát
-  Warsaw → Vác-sa-va | Prague → Pra-ha | Budapest → Bu-đa-pét | Bucharest → Bu-ca-rét
-  Kiev / Kyiv → Ki-ép | Istanbul → Ixtan-bun | Athens → A-ten
+Person names — keep in English:
+  Trump, Biden, Obama, Putin, Macron, Merkel, Starmer, Netanyahu, Zelensky, Modi, etc.
+  Do NOT write "Trăm", "Bai-đơn", "Pu-tin", "Ma-crông". Keep original English spelling.
 
-International organizations (must translate):
+Place names — keep in English:
+  London, Paris, Berlin, Moscow, Tokyo, Seoul, New York, Washington, San Francisco,
+  Los Angeles, Chicago, Sydney, Melbourne, Toronto, Rome, Milan, Madrid, Barcelona,
+  Cairo, Tehran, Warsaw, Prague, Budapest, Istanbul, Athens, etc.
+  Do NOT write "Luân Đôn", "Pa-ri", "Béc-lin", "Niu-oóc". Keep original English spelling.
+
+International organizations — translate to Vietnamese:
   United Nations / UN → Liên Hợp Quốc | European Union / EU → Liên minh Châu Âu
   NATO → NATO | WHO → Tổ chức Y tế Thế giới | IMF → Quỹ Tiền tệ Quốc tế
   World Bank → Ngân hàng Thế giới | WTO → Tổ chức Thương mại Thế giới
   G7 / G20 → G7 / G20 | ASEAN → ASEAN | BRICS → BRICS
 
-US political institutions (must translate):
+US/UK political institutions — translate to Vietnamese:
   The White House → Nhà Trắng | Congress → Quốc hội Mỹ | Senate → Thượng viện
   House of Representatives → Hạ viện | Federal Reserve / Fed → Cục Dự trữ Liên bang
   Pentagon → Lầu Năm Góc | Supreme Court → Tòa án Tối cao | State Department → Bộ Ngoại giao Mỹ
-
-UK political institutions:
-  Parliament → Quốc hội Anh | Downing Street → Phố Downing | Buckingham Palace → Cung điện Buckingham
-
-Person names — translate only those with established Vietnamese forms:
-  Trump → Trăm | Biden → Bai-đơn | Obama → Ô-ba-ma | Putin → Pu-tin
-  Macron → Ma-crông | Merkel → Méc-ken | Starmer → Xtơ-mơ
-  Netanyahu → Nê-tan-gia-hu | Zelensky → Zelen-xki | Modi → Mô-đi
-  All other English person names: keep in English.
+  Parliament → Quốc hội Anh | Downing Street → Phố Downing
 
 Company/brand names — keep in English:
   Google, Apple, Microsoft, Amazon, Meta, Tesla, OpenAI, Nvidia, Samsung, Sony, etc.
   Do NOT translate company names. Keep ticker symbols (AAPL, GOOGL, TSLA) as-is.
-
-General rule for English names: If a Vietnamese form exists and is widely recognized, use it. Otherwise keep the English name. When unsure, keep English.
 
 The ONLY things that stay in English: brand/product names, ticker symbols, code, metrics, hashtags, and specialist dev terms with no good Vietnamese equivalent. Country names, Chinese proper nouns, and other translatable terms must always be in Vietnamese. Everything else must read as if originally written in Vietnamese.
 `;
