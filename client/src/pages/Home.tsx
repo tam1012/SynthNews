@@ -767,12 +767,6 @@ export function Home() {
 
           {tab !== 'digest' && (
             <div className="feed-container">
-              {isShowingOfflineCache && (
-                <div className="offline-cache-banner">
-                  Đang hiển thị dữ liệu đã lưu. Một số tin mới có thể chưa được cập nhật.
-                </div>
-              )}
-
               {isRefreshing && (
                 <div className="feed-refresh-row">
                   Đang cập nhật tin mới...
