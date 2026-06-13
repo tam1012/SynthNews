@@ -423,10 +423,18 @@ TRANSLATION QUALITY:
 - Quotes must be translated into Vietnamese with attribution preserved (e.g., "CEO cho biết...", "Theo báo cáo của...").
 - Keep the original article's flow and structure — do NOT reorganize or restructure.
 
+MARKDOWN FORMATTING (make it readable and visually clear):
+- Use ## headings to separate logical sections of the article. If the original has sections, translate those headings. If the original is a continuous text, create natural headings based on topic shifts (e.g. "## Bối cảnh vụ việc", "## Phản ứng từ các bên", "## Diễn biến mới nhất").
+- **Bold** proper nouns, organization names, key figures, and important terms INSIDE sentences.
+- Use bullet points (- ) when the original has lists, or when listing multiple items (companies, people, data points).
+- Use > blockquotes for notable quotes from people in the article.
+- Use \`code\` for technical terms, product names, or metrics.
+- The translation should look polished and easy to scan — not a wall of plain text.
+
 STRUCTURE:
 - Start with a <tldr> tag: 1-2 natural Vietnamese sentences, max 200 characters, summarizing the main point; no markdown and no prefix.
-- Then the FULL translated article, preserving the original structure. Use ## headings if the original has sections.
-- Do NOT add headings that don't exist in the original.
+- Then the FULL translated article with markdown formatting as described above.
+- Every paragraph from the original must appear in the translation — do NOT skip any content.
 
 Title: ${article.title}
 Source: ${article.source_name}
