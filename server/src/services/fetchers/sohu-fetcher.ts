@@ -166,10 +166,14 @@ export const sohuFetcher: SourceFetcher = {
   async discover(source): Promise<DiscoveredArticle[]> {
     const baseUrl = source.url;
     // If source URL is a bare homepage (news.sohu.com), use the default
-    // xchannel path to get the article list.
-    const xchannelUrl = baseUrl.includes('/xchannel/')
-      ? baseUrl
-      : baseUrl.replace(/\/?$/, DEFAULT_XCHANNEL);
+    // xchannel path on www.sohu.com (the xchannel endpoint lives there).
+    const xchannelBase = baseUrl.includes('/xchannel/')
+      ? new URL(baseUrl).origin
+      : 'https://www.sohu.com';
+    const xchannelPath = baseUrl.includes('/xchannel/')
+      ? new URL(baseUrl).pathname
+      : DEFAULT_XCHANNEL;
+    const xchannelUrl = `${xchannelBase}${xchannelPath}`;
 
     console.log(`[sohu] discover: fetching xchannel ${xchannelUrl}`);
     const html = await fetchPageHtml(xchannelUrl);
