@@ -262,10 +262,11 @@ export const sohuFetcher: SourceFetcher = {
       html = await scraplingFetch(xchannelUrl, {
         mode: 'stealth',
         blockResources: false,
+        networkIdle: false,
         scrollCount: 5,
         scrollDelayMs: 1500,
         waitMs: 12000,
-        timeoutMs: 60000,
+        timeoutMs: 90000,
       });
       usedScrapling = true;
       console.log(`[sohu] discover: Scrapling auto-scroll render complete (${html.length} bytes)`);
