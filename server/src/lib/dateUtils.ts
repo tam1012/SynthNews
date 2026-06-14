@@ -25,8 +25,9 @@ export interface NormalizeDateOptions {
 const MIN_PLAUSIBLE_YEAR = 2000;
 const MAX_PLAUSIBLE_YEAR = new Date().getUTCFullYear() + 1;
 
-export function normalizeDate(value: string | null | undefined, options: NormalizeDateOptions = {}): string | null {
+export function normalizeDate(value: string | Date | null | undefined, options: NormalizeDateOptions = {}): string | null {
   if (!value) return null;
+  if (value instanceof Date) return isNaN(value.getTime()) ? null : value.toISOString();
   let normalized = value.trim();
   if (!normalized) return null;
 
