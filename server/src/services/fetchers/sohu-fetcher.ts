@@ -26,9 +26,9 @@ export function isSohuSource(source: Pick<SourceRow, 'type' | 'url'>): boolean {
 // to render them.
 
 // Sohu xchannel pages include social-media-style posts with very short content.
-// CJK min in article-writer is 160 chars; use that as the skip threshold so
-// short posts are marked done (not retried) instead of failing every cycle.
-const SOHU_MIN_CONTENT_LENGTH = 160;
+// Skip articles shorter than the summarizer minimum (500 chars) at fetch time
+// to avoid wasting Scrapling bandwidth on content that will be skipped anyway.
+const SOHU_MIN_CONTENT_LENGTH = 500;
 
 const SOHU_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 const DEFAULT_XCHANNEL = '/xchannel/TURBd01EQXhOVEl6'; // 000001523 = news homepage
