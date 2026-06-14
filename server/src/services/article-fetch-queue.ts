@@ -157,7 +157,6 @@ export function buildFindShortContentArticlesSql(limit: number, minLength = 500)
               SELECT 1 FROM article_fetch_jobs j
               WHERE j.source_id = a.source_id
                 AND j.url = a.url
-                AND j.status IN ('discovered', 'fetching', 'failed')
                 AND coalesce(j.payload_json->>'rescueArticleId', '') = a.id
             )
             AND s.type IN ('rss', 'web')
