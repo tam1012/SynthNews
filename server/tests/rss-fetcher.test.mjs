@@ -358,7 +358,7 @@ test('RSS fetchArticle rejects queued blocked Google News publisher domains', as
     parser_config: null,
   });
 
-  assert.equal(items.length, 0);
+  assert.equal(result, null);
 });
 
 test('RSS discover reports sanitized feed diagnostics when parser rejects non-feed HTML', async () => {

@@ -121,6 +121,10 @@ export function buildResetRetryableArticleFetchJobsSql(limit: number): SqlStatem
   return {
     sql: `UPDATE article_fetch_jobs
           SET status = 'discovered',
+              skip_reason = NULL,
+              error_type = NULL,
+              last_http_status = NULL,
+              next_attempt_at = NULL,
               updated_at = NOW()
           WHERE id IN (
             SELECT id FROM article_fetch_jobs
@@ -226,11 +230,16 @@ export async function requeueShortContentArticles(limit: number, minLength = 500
       `INSERT INTO article_fetch_jobs (id, source_id, url, title, external_id, published_at, payload_json, status, retry_count, last_error)
        VALUES ($1, $2, $3, $4, $5, $6, $7, 'discovered', 0, NULL)
        ON CONFLICT (source_id, url) DO UPDATE SET
-         status = CASE WHEN article_fetch_jobs.status = 'done' THEN 'discovered' ELSE article_fetch_jobs.status END,
-         payload_json = EXCLUDED.payload_json,
-         last_error = NULL,
-         updated_at = NOW()
-       WHERE article_fetch_jobs.status = 'done'
+          status = CASE WHEN article_fetch_jobs.status IN ('done', 'skipped') THEN 'discovered' ELSE article_fetch_jobs.status END,
+          payload_json = EXCLUDED.payload_json,
+          retry_count = CASE WHEN article_fetch_jobs.status IN ('done', 'skipped') THEN 0 ELSE article_fetch_jobs.retry_count END,
+          last_error = NULL,
+          skip_reason = NULL,
+          error_type = NULL,
+          last_http_status = NULL,
+          next_attempt_at = NULL,
+          updated_at = NOW()
+       WHERE article_fetch_jobs.status IN ('done', 'skipped')
        RETURNING id`,
       [row.id, row.source_id, row.url, row.title, row.external_id, row.published_at, row.payload_json]
     );
@@ -246,7 +255,13 @@ export async function claimArticleFetchJobs(limit: number): Promise<ArticleFetch
 }
 
 export async function markArticleFetchJobDone(id: string): Promise<void> {
-  await query(`UPDATE article_fetch_jobs SET status = 'done', last_error = NULL WHERE id = $1`, [id]);
+  await query(
+    `UPDATE article_fetch_jobs
+     SET status = 'done', last_error = NULL,
+         skip_reason = NULL, error_type = NULL, last_http_status = NULL, next_attempt_at = NULL
+     WHERE id = $1`,
+    [id]
+  );
 }
 
 export async function markArticleFetchJobFailed(id: string, err: unknown): Promise<void> {

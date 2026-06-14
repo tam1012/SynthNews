@@ -39,6 +39,7 @@ const baseStubs = {
   },
   '../../lib/dateUtils.js': {
     getDefaultTimezoneForLanguage: () => '+08:00',
+    normalizeDate: (v) => v,
   },
   './article-writer.js': {
     insertArticleIfNew: async () => true,
@@ -57,7 +58,7 @@ const baseStubs = {
 test('SOHU fetchArticle parses static article HTML before using Scrapling', async () => {
   let fetchCount = 0;
   let scraplingCalled = false;
-  const articleBody = '\u4e2d'.repeat(191);
+  const articleBody = '\u4e2d'.repeat(600);
   const html = `<html><head>
     <title>Static Sohu title_搜狐</title>
     <meta property="og:release_date" content="2026-06-13 10:51">
@@ -76,6 +77,7 @@ test('SOHU fetchArticle parses static article HTML before using Scrapling', asyn
       fetchCount++;
       return { ok: true, text: async () => html };
     },
+    console: { log: () => {}, warn: () => {} },
   });
 
   const article = await sohuFetcher.fetchArticle({
@@ -99,7 +101,7 @@ test('SOHU fetchArticle parses static article HTML before using Scrapling', asyn
 
   assert.equal(fetchCount, 1);
   assert.equal(scraplingCalled, false);
-  assert.match(article.rawContent, /^\u4e2d{191}/);
+  assert.match(article.rawContent, /^\u4e2d{600}/);
   assert.equal(article.metadata.extractor, 'sohu:static-html');
   assert.equal(article.publishedAt, '2026-06-13 10:51');
 });

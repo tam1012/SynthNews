@@ -354,7 +354,7 @@ export const sohuFetcher: SourceFetcher = {
     return limited;
   },
 
-  async fetchArticle(job, source): Promise<ArticleInsertInput | null> {
+  async fetchArticle(job, source, context): Promise<ArticleInsertInput | null> {
     const jobUrl = await normalizePublicHttpUrlWithDns(job.url, false);
     if (!jobUrl) throw new Error('Article URL must be a public http(s) URL');
 

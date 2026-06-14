@@ -20,7 +20,7 @@ export async function reserveHostedFetchAttempt(provider: string, cap: number): 
          updated_at = NOW()
        RETURNING used_count
      )
-     SELECT used_count, used_count <= $2 AS allowed FROM upserted`,
+     SELECT used_count, used_count < $2 AS allowed FROM upserted`,
     [provider, cap]
   );
 

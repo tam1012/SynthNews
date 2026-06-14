@@ -29,14 +29,8 @@ import {
 } from '../lib/scrapeTiming.js';
 import { buildNullArticleSkipReason } from '../services/fetchers/fetch-job-errors.js';
 
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
-  let timeoutId: NodeJS.Timeout;
-  const timeout = new Promise<never>((_, reject) => {
-    timeoutId = setTimeout(() => reject(new Error(`${label} timed out after ${Math.round(timeoutMs / 1000)}s`)), timeoutMs);
-  });
 
-  return Promise.race([promise, timeout]).finally(() => clearTimeout(timeoutId));
-}
+
 
 async function withAbortTimeout<T>(
   timeoutMs: number,
@@ -213,6 +207,7 @@ async function runArticleFetchJob() {
   const jobs = await claimArticleFetchJobs(limit);
   let succeeded = 0;
   let failed = 0;
+  let skipped = 0;
 
   const domainLastFetch = new Map<string, number>();
   const PER_DOMAIN_MIN_DELAY_MS = parseInt(process.env.FETCH_PER_DOMAIN_DELAY_MS || '10000');
@@ -258,22 +253,24 @@ async function runArticleFetchJob() {
           }
         }
         await markArticleFetchJobDone(job.id);
+        succeeded++;
       } else {
         await markArticleFetchJobSkipped(job.id, buildNullArticleSkipReason(job.source_type));
+        skipped++;
       }
-      succeeded++;
     } catch (err) {
       if (err instanceof ArticleContentTooShortError) {
         await markArticleFetchJobSkipped(job.id, err.message);
+        skipped++;
       } else {
         await markArticleFetchJobFailed(job.id, err);
+        failed++;
       }
-      failed++;
     }
     domainLastFetch.set(domain, Date.now());
   }
 
-  console.log(`  Article fetch jobs: processed=${jobs.length}, succeeded=${succeeded}, failed=${failed}`);
+  console.log(`  Article fetch jobs: processed=${jobs.length}, succeeded=${succeeded}, skipped=${skipped}, failed=${failed}`);
 }
 
 // Summarize articles pending
