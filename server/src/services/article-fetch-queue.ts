@@ -78,7 +78,7 @@ export function buildClaimArticleFetchJobsSql(limit: number): SqlStatement {
             SELECT id
             FROM article_fetch_jobs
             WHERE status = 'discovered'
-            ORDER BY created_at DESC
+            ORDER BY created_at ASC
             FOR UPDATE SKIP LOCKED
             LIMIT $1
           ), claimed AS (

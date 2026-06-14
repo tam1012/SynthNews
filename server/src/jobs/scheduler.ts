@@ -341,10 +341,16 @@ async function runRetryJob() {
     }
 
     // Nếu có bài được reset hoặc Reddit enriched, gọi ngay summarize job
-    const totalReset = (stuckResult.rowCount || 0) + (failedResult.rowCount || 0) + redditEnriched;
-    if (totalReset > 0) {
-      console.log(`  Triggering summarizer for ${totalReset} retried articles...`);
-      await runSummarizeJob();
+    const summaryReset = (stuckResult.rowCount || 0) + (failedResult.rowCount || 0) + redditEnriched;
+    if (summaryReset > 0) {
+      console.log(`  Triggering summarizer for ${summaryReset} retried articles...`);
+      await runWithJobLock('summarize', runSummarizeJob);
+    }
+
+    const fetchReset = (fetchFailedResult.rowCount || 0) + shortContentRetry.enqueued;
+    if (fetchReset > 0) {
+      console.log(`  Triggering article fetch for ${fetchReset} retried fetch jobs...`);
+      await runWithJobLock('article-fetch', runArticleFetchJob);
     }
   } catch (err: any) {
     console.error(`  Retry error: ${err.message}`);

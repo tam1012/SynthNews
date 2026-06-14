@@ -71,6 +71,7 @@ test('claim pending article fetch jobs uses FOR UPDATE SKIP LOCKED', () => {
   assert.match(statement.sql, /status = 'discovered'/);
   assert.match(statement.sql, /FOR UPDATE SKIP LOCKED/);
   assert.match(statement.sql, /SET status = 'fetching'/);
+  assert.match(statement.sql, /ORDER BY created_at ASC/);
   assert.deepEqual(Array.from(statement.params), [7]);
 });
 

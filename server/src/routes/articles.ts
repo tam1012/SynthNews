@@ -264,7 +264,7 @@ articles.post('/fetch-jobs/batch/retry', async (c) => {
 
   const result = await query(
     `UPDATE article_fetch_jobs
-     SET status = 'discovered', last_error = NULL, updated_at = NOW()
+     SET status = 'discovered', retry_count = 0, last_error = NULL, updated_at = NOW()
      WHERE id = ANY($1::text[])`,
     [ids]
   );
@@ -296,7 +296,7 @@ articles.post('/fetch-jobs/:id/retry', async (c) => {
 
   await query(
     `UPDATE article_fetch_jobs
-     SET status = 'discovered', last_error = NULL, updated_at = NOW()
+     SET status = 'discovered', retry_count = 0, last_error = NULL, updated_at = NOW()
      WHERE id = $1`,
     [id]
   );
