@@ -110,6 +110,10 @@ export function buildResetStuckArticleFetchJobsSql(): SqlStatement {
     sql: `UPDATE article_fetch_jobs
           SET status = 'discovered',
               last_error = 'Reset stale fetching state',
+              skip_reason = NULL,
+              error_type = NULL,
+              last_http_status = NULL,
+              next_attempt_at = NULL,
               updated_at = NOW()
           WHERE status = 'fetching'
             AND updated_at < NOW() - INTERVAL '10 minutes'`,

@@ -344,6 +344,13 @@ async function runRetryJob() {
     const failedResult = await query(failedStatement.sql, failedStatement.params);
     console.log(`  Reset ${failedResult.rowCount} failed articles for retry`);
 
+    // Reset 'fetching' bị kẹt > 10 phút (zombie jobs từ crash/deploy)
+    const fetchStuckStatement = buildResetStuckArticleFetchJobsSql();
+    const fetchStuckResult = await query(fetchStuckStatement.sql, fetchStuckStatement.params);
+    if (fetchStuckResult.rowCount && fetchStuckResult.rowCount > 0) {
+      console.log(`  Reset ${fetchStuckResult.rowCount} stuck fetching jobs`);
+    }
+
     const fetchFailedStatement = buildResetRetryableArticleFetchJobsSql(15);
     const fetchFailedResult = await query(fetchFailedStatement.sql, fetchFailedStatement.params);
     console.log(`  Reset ${fetchFailedResult.rowCount} failed article fetch jobs for retry`);
@@ -370,7 +377,7 @@ async function runRetryJob() {
       await runWithJobLock('summarize', runSummarizeJob);
     }
 
-    const fetchReset = (fetchFailedResult.rowCount || 0) + shortContentRetry.enqueued;
+    const fetchReset = (fetchStuckResult.rowCount || 0) + (fetchFailedResult.rowCount || 0) + shortContentRetry.enqueued;
     if (fetchReset > 0) {
       console.log(`  Triggering article fetch for ${fetchReset} retried fetch jobs...`);
       await runWithJobLock('article-fetch', runArticleFetchJob);
