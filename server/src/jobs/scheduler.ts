@@ -6,7 +6,7 @@ import { generateId, sleep } from '../lib/utils.js';
 import { rescrapeArticle, runForumRescrapeJob } from '../services/rescrape.js';
 import { getFetcherForSource } from '../services/fetchers/registry.js';
 import { sourceFetchers, SourceRow } from '../services/fetchers/index.js';
-import { ArticleInsertInput, insertArticleIfNew, validateArticleContent } from '../services/fetchers/article-writer.js';
+import { ArticleInsertInput, ArticleContentTooShortError, insertArticleIfNew, validateArticleContent } from '../services/fetchers/article-writer.js';
 import {
   buildResetRetryableArticleFetchJobsSql,
   buildResetStuckArticleFetchJobsSql,
@@ -263,7 +263,11 @@ async function runArticleFetchJob() {
       }
       succeeded++;
     } catch (err) {
-      await markArticleFetchJobFailed(job.id, err);
+      if (err instanceof ArticleContentTooShortError) {
+        await markArticleFetchJobSkipped(job.id, err.message);
+      } else {
+        await markArticleFetchJobFailed(job.id, err);
+      }
       failed++;
     }
     domainLastFetch.set(domain, Date.now());
