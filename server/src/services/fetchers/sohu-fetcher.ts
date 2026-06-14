@@ -381,6 +381,13 @@ export const sohuFetcher: SourceFetcher = {
           metadata: { extractor },
         };
       }
+      // If the full static HTML is short, the page itself has little content —
+      // Scrapling won't extract more. Only fall through to Scrapling when the
+      // page is substantial but extraction failed (e.g. SPA needing JS render).
+      if (html.length < 500) {
+        console.warn(`[sohu] fetchArticle: static HTML too short (${html.length} bytes), skipping Scrapling for ${jobUrl}`);
+        return null;
+      }
       console.warn(`[sohu] fetchArticle: static HTML content too short (${staticArticle.content.length} < ${SOHU_MIN_CONTENT_LENGTH}), trying Scrapling ${jobUrl}`);
     } catch (err: any) {
       console.warn(`[sohu] fetchArticle: native fetch failed for ${jobUrl}, trying Scrapling: ${err.message}`);
