@@ -37,6 +37,8 @@
 //   DATADOME_DOMAINS=reuters.com,bloomberg.com   (hosts that defeat ScrapingAnt
 //     datacenter — skip it, end the chain with residential)
 
+import { reserveHostedFetchAttempt } from './hosted-fetch-usage.js';
+
 function parsePositiveInt(value: string | undefined, fallback: number): number {
   const parsed = parseInt(value || '', 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
@@ -325,13 +327,13 @@ export async function hostedFetch(url: string, timeoutMs = 60000): Promise<{ htm
 
   for (const provider of providerChainFor(url)) {
     if (!provider.hasKey()) continue;
-    if (!withinBudget(provider)) {
-      errors.push(`${provider.name}: daily cap reached (${provider.cap}/24h)`);
+    const reservation = await reserveHostedFetchAttempt(provider.name, provider.cap);
+    if (!reservation.allowed) {
+      errors.push(`${provider.name}: daily cap reached (${reservation.usedCount}/${provider.cap}/24h)`);
       continue;
     }
 
     anyAttempted = true;
-    provider.used++;
     try {
       const html = await provider.fetch(url, timeoutMs);
       if (looksBlockedOrEmpty(html)) {
