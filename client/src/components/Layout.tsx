@@ -67,7 +67,7 @@ export function Layout() {
           setFontSize={setFontSize}
         />
         <div className="app-main">
-          <MobileTopNav onOpenSettings={() => setShowSettingsSheet(true)} />
+          <MobileTopNav onOpenSettings={() => setShowSettingsSheet(true)} onOpenSearch={() => setShowSearch(true)} />
           <main className="app-content">
             <Outlet />
           </main>
