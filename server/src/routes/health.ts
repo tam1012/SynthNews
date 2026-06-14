@@ -201,6 +201,46 @@ health.get('/', async (c) => {
     const runtime = getRuntimeInfo(Boolean(dbCheck));
     const publicChecks = await publicChecksPromise;
 
+    const topFetchErrors = await getMany(
+      `SELECT COALESCE(error_type, 'unknown') AS error_type,
+              COALESCE(last_http_status::text, '') AS http_status,
+              COUNT(*)::int AS count,
+              MAX(updated_at) AS last_seen_at
+       FROM article_fetch_jobs
+       WHERE status = 'failed'
+         AND updated_at > NOW() - INTERVAL '24 hours'
+       GROUP BY COALESCE(error_type, 'unknown'), COALESCE(last_http_status::text, '')
+       ORDER BY count DESC, last_seen_at DESC
+       LIMIT 10`
+    );
+
+    const topSummaryErrors = await getMany(
+      `SELECT LEFT(COALESCE(last_summary_error, 'unknown'), 160) AS error,
+              COUNT(*)::int AS count,
+              MAX(updated_at) AS last_seen_at
+       FROM articles
+       WHERE summary_status = 'failed'
+         AND updated_at > NOW() - INTERVAL '24 hours'
+       GROUP BY LEFT(COALESCE(last_summary_error, 'unknown'), 160)
+       ORDER BY count DESC, last_seen_at DESC
+       LIMIT 10`
+    );
+
+    const lowYieldSources = await getMany(
+      `SELECT s.id, s.name,
+              COUNT(l.id)::int AS runs,
+              COALESCE(SUM(l.items_found), 0)::int AS items_found,
+              COALESCE(SUM(l.items_inserted), 0)::int AS items_inserted
+       FROM sources s
+       JOIN scrape_logs l ON l.source_id = s.id
+       WHERE l.started_at > NOW() - INTERVAL '24 hours'
+       GROUP BY s.id, s.name
+       HAVING COALESCE(SUM(l.items_found), 0) >= 20
+          AND COALESCE(SUM(l.items_inserted), 0) = 0
+       ORDER BY items_found DESC
+       LIMIT 10`
+    );
+
     return c.json({
       success: true,
       data: {
@@ -241,6 +281,11 @@ health.get('/', async (c) => {
         scrapling,
         forum,
         recentLogs,
+        diagnostics: {
+          topFetchErrors,
+          topSummaryErrors,
+          lowYieldSources,
+        },
       },
     });
   } catch (err: any) {

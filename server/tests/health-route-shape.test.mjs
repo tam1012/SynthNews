@@ -23,3 +23,12 @@ test('admin health trigger endpoints use advisory lock background jobs', () => {
   assert.match(source, /triggerLockedJobInBackground/);
   assert.match(source, /already running/);
 });
+
+test('admin health response includes pipeline diagnostics', () => {
+  const source = readFileSync(resolve(__dirname, '../src/routes/health.ts'), 'utf8');
+
+  assert.match(source, /oldest_discovered_age_minutes/);
+  assert.match(source, /topFetchErrors/);
+  assert.match(source, /topSummaryErrors/);
+  assert.match(source, /lowYieldSources/);
+});
