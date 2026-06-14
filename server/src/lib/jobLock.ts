@@ -17,6 +17,24 @@ export interface BackgroundJobTriggerResult {
   status: 'started' | 'already_running';
 }
 
+function startBackgroundJob<T>(
+  name: string,
+  fn: () => Promise<T>,
+  cleanup?: () => Promise<void>
+): BackgroundJobTriggerResult {
+  void (async () => {
+    try {
+      await fn();
+    } catch (err) {
+      console.error(`Background job ${name} failed:`, err);
+    } finally {
+      if (cleanup) await cleanup();
+    }
+  })();
+
+  return { name, status: 'started' };
+}
+
 async function tryAcquireJobLock(name: string): Promise<JobLockLease | null> {
   const client = await pool.connect();
   const lockKey = lockKeyForName(name);
@@ -69,15 +87,12 @@ export async function triggerLockedJobInBackground<T>(
   const lease = await tryAcquireJobLock(name);
   if (!lease) return { name, status: 'already_running' };
 
-  void (async () => {
-    try {
-      await fn();
-    } catch (err) {
-      console.error(`Background job ${name} failed:`, err);
-    } finally {
-      await lease.release();
-    }
-  })();
+  return startBackgroundJob(name, fn, () => lease.release());
+}
 
-  return { name, status: 'started' };
+export async function triggerQueueWorkerInBackground<T>(
+  name: string,
+  fn: () => Promise<T>
+): Promise<BackgroundJobTriggerResult> {
+  return startBackgroundJob(name, fn);
 }

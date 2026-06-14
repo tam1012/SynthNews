@@ -17,10 +17,15 @@ test('admin health response includes deploy, runtime, and public check groups', 
   assert.match(source, /publicChecks,/);
 });
 
-test('admin health trigger endpoints use advisory lock background jobs', () => {
+test('admin health trigger endpoints lock singleton jobs and run queue workers immediately', () => {
   const source = readFileSync(resolve(__dirname, '../src/routes/health.ts'), 'utf8');
 
   assert.match(source, /triggerLockedJobInBackground/);
+  assert.match(source, /triggerQueueWorkerInBackground/);
+  assert.match(source, /triggerLockedJobInBackground\('scrape', runScrapeJob\)/);
+  assert.match(source, /triggerQueueWorkerInBackground\('article-fetch', runArticleFetchJob\)/);
+  assert.match(source, /triggerQueueWorkerInBackground\('summarize', runSummarizeJob\)/);
+  assert.match(source, /triggerLockedJobInBackground\('digest', runDigestJob\)/);
   assert.match(source, /already running/);
 });
 

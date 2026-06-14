@@ -67,3 +67,26 @@ test('triggerLockedJobInBackground starts job and releases advisory lock after c
   assert.equal(calls.some((call) => String(call.sql).includes('pg_advisory_unlock')), true);
   assert.equal(calls.at(-1).release, false);
 });
+
+test('triggerQueueWorkerInBackground starts a queue batch without advisory lock', async () => {
+  const calls = [];
+  const fakePool = {
+    connect: async () => {
+      throw new Error('queue worker trigger must not acquire advisory lock');
+    },
+  };
+  const { triggerQueueWorkerInBackground } = loadJobLock(fakePool);
+
+  let ran = false;
+  const result = await triggerQueueWorkerInBackground('summarize', async () => {
+    calls.push('ran');
+    ran = true;
+  });
+
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(result.name, 'summarize');
+  assert.equal(result.status, 'started');
+  assert.equal(ran, true);
+  assert.deepEqual(calls, ['ran']);
+});

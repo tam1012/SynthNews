@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { getOne, getMany } from '../db/index.js';
 import { runScrapeJob, runArticleFetchJob, runSummarizeJob, runDigestJob, runCleanupJob } from '../jobs/scheduler.js';
-import { triggerLockedJobInBackground } from '../lib/jobLock.js';
+import { triggerLockedJobInBackground, triggerQueueWorkerInBackground } from '../lib/jobLock.js';
 import { getDeployInfo, getPublicChecks, getRuntimeInfo } from '../lib/runtime-status.js';
 
 const health = new Hono();
@@ -302,12 +302,12 @@ health.post('/trigger/scrape', async (c) => {
 });
 
 health.post('/trigger/fetch-articles', async (c) => {
-  const result = await triggerLockedJobInBackground('article-fetch', runArticleFetchJob);
+  const result = await triggerQueueWorkerInBackground('article-fetch', runArticleFetchJob);
   return c.json({ success: true, data: { ...result, message: result.status === 'started' ? 'Triggered article fetch job' : 'Article fetch job is already running' } });
 });
 
 health.post('/trigger/summarize', async (c) => {
-  const result = await triggerLockedJobInBackground('summarize', runSummarizeJob);
+  const result = await triggerQueueWorkerInBackground('summarize', runSummarizeJob);
   return c.json({ success: true, data: { ...result, message: result.status === 'started' ? 'Triggered summarize job' : 'Summarize job is already running' } });
 });
 
