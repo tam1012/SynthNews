@@ -37,18 +37,28 @@ const MAX_DISCOVER = parseInt(process.env.MAX_ARTICLES_PER_SOURCE ?? '20', 10);
 
 // ---- Discovery helpers ----
 
-async function fetchPacUid(): Promise<string | null> {
+function generateFallbackQimei36(): string {
+  const hex = '0123456789abcdef';
+  let id = '';
+  for (let i = 0; i < 36; i++) id += hex[Math.floor(Math.random() * 16)];
+  return id;
+}
+
+async function fetchPacUid(): Promise<string> {
   try {
     const res = await fetch(PAC_UID_URL, {
       headers: { 'User-Agent': QQ_NEWS_UA, 'Accept': 'application/json, */*' },
       signal: AbortSignal.timeout(10000),
     });
-    if (!res.ok) return null;
-    const data = await res.json() as any;
-    return data?.data?.pac_uid ?? null;
+    if (res.ok) {
+      const data = await res.json() as any;
+      const pacUid = data?.data?.pac_uid;
+      if (pacUid) return pacUid;
+    }
   } catch {
-    return null;
+    // endpoint may be unavailable; fall through to generated id
   }
+  return generateFallbackQimei36();
 }
 
 async function fetchQqNewsJson(feedUrl: string): Promise<any> {
@@ -158,16 +168,12 @@ export const qqNewsFetcher: SourceFetcher = {
 
     try {
       const pacUid = await fetchPacUid();
-      if (!pacUid) {
-        console.warn('[qq-news] discover: failed to obtain pac_uid');
-        return discovered;
-      }
 
       // If source URL is a QQ News API endpoint, use it directly (replacing {PAC_UID} placeholders).
       // Otherwise build a default hot-module-list request from the channel page URL.
       let feedUrl: string;
       if (source.url.includes('i.news.qq.com')) {
-        feedUrl = source.url.replace(/\{PAC_UID\}/g, pacUid);
+        feedUrl = source.url.replace(/%7B\s*PAC_UID\s*%7D/gi, pacUid).replace(/%7BPAC_UID%7D/gi, pacUid).replace(/\{PAC_UID\}/gi, pacUid);
       } else {
         const channelId = source.parser_config?.channel_id ?? 'news_news_top';
         feedUrl = `${HOT_MODULE_URL}?channel_id=${encodeURIComponent(channelId)}&qimei36=${encodeURIComponent(pacUid)}`;
