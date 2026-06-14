@@ -19,18 +19,15 @@ export function isSohuSource(source: Pick<SourceRow, 'type' | 'url'>): boolean {
   return source.type === 'web' && isSohuUrl(source.url);
 }
 
-// Sohu is a JS-rendered SPA. The homepage (news.sohu.com) is a pure shell with
-// no article links in the static HTML. Article lists are embedded in
-// `window.blockRenderData` JSON inside xchannel pages. Article detail pages
-// are also SPA — content loads via JS, so we use Scrapling (headless browser)
-// to render them.
+// Sohu xchannel pages: article list is embedded in `window.blockRenderData` JSON
+// in the static SSR HTML (~6 articles). No browser needed.
+// Sohu article detail pages on www.sohu.com are SPA shells, but m.sohu.com
+// (mobile) serves full content in static HTML. We rewrite URLs to m.sohu.com
+// for article fetch, making the entire pipeline browser-free.
 
-// Sohu xchannel pages include social-media-style posts with very short content.
-// Skip articles shorter than the summarizer minimum (500 chars) at fetch time
-// to avoid wasting Scrapling bandwidth on content that will be skipped anyway.
-const SOHU_MIN_CONTENT_LENGTH = 500;
+// CJK minimum — matches article-writer.ts CJK_ARTICLE_TEXT_LENGTH
+const SOHU_MIN_CONTENT_LENGTH = 160;
 
-const SOHU_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 const DEFAULT_XCHANNEL = '/xchannel/TURBd01EQXhOVEl6'; // 000001523 = news homepage
 
 interface SohuArticleItem {
@@ -57,6 +54,18 @@ function normalizeSohuUrl(rawUrl: string): string {
   if (rawUrl.startsWith('//')) return `https:${rawUrl}`;
   if (rawUrl.startsWith('http')) return rawUrl;
   return `https://www.sohu.com${rawUrl.startsWith('/') ? '' : '/'}${rawUrl}`;
+}
+
+// Rewrite www.sohu.com article URL to m.sohu.com for static HTML content
+function toMobileSohuUrl(url: string): string {
+  return url.replace(/\/\/(?:www\.)?sohu\.com\//, '//m.sohu.com/');
+}
+
+// Skip items that are clearly not news articles (social posts, videos, ads)
+function isLikelyArticle(title: string): boolean {
+  if (title.length < 10) return false;
+  if (/^(视频|图片|组图|直播|广告|推广)/.test(title)) return false;
+  return true;
 }
 
 // Extract the JSON object from `window.blockRenderData = {...};` in HTML.
@@ -114,29 +123,6 @@ function findArticles(obj: any, depth: number = 0): SohuArticleItem[] {
   return results;
 }
 
-// Scan rendered HTML for Sohu article links (/a/{id}) in the DOM.
-// After Scrapling renders + scrolls, new articles appear as <a> tags outside
-// blockRenderData. This function extracts them from the full HTML.
-function findArticlesInHtml(html: string): SohuArticleItem[] {
-  const results: SohuArticleItem[] = [];
-  const seen = new Set<string>();
-  // Match <a> tags with href containing /a/{digits}
-  const linkPattern = /<a[^>]+href=["']([^"']*\/a\/\d+[^"']*)["'][^>]*>([\s\S]*?)<\/a>/gi;
-  let match: RegExpExecArray | null;
-  while ((match = linkPattern.exec(html)) !== null) {
-    const href = match[1];
-    const idMatch = href.match(/\/a\/(\d+)/);
-    if (!idMatch || seen.has(idMatch[1])) continue;
-    seen.add(idMatch[1]);
-    // Extract title from inner text (strip HTML tags)
-    const innerText = match[2].replace(/<[^>]+>/g, '').trim();
-    if (innerText.length > 0) {
-      results.push({ url: normalizeSohuUrl(href), title: innerText, cover: null });
-    }
-  }
-  return results;
-}
-
 // Strip scm tracking params from Sohu URLs
 function cleanSohuUrl(url: string): string {
   try {
@@ -175,6 +161,7 @@ function getMetaContent(html: string, selector: RegExp): string | null {
 }
 
 function extractSohuArticleFromHtml(html: string, fallbackTitle: string, fallbackPublishedAt: string | null): SohuArticleExtraction {
+  // m.sohu.com wraps article content in <article> tag
   const articleMatch = html.match(/<article[^>]*>([\s\S]*?)<\/article>/i);
   const content = articleMatch ? htmlToPlainText(articleMatch[1]) : htmlToPlainText(html);
 
@@ -197,7 +184,6 @@ function extractSohuArticleFromHtml(html: string, fallbackTitle: string, fallbac
 }
 
 async function fetchPageWithRetry(url: string): Promise<string> {
-  // Try native fetch up to 3 times
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
       const response = await fetch(url, {
@@ -218,11 +204,9 @@ async function fetchPageWithRetry(url: string): Promise<string> {
 }
 
 async function fetchPageHtml(url: string): Promise<string> {
-  // Native fetch with retries
   try {
     return await fetchPageWithRetry(url);
   } catch (nativeErr: any) {
-    // Worker proxy fallback
     if (isWorkerProxyConfigured() && !shouldSkipWorkerProxy(url)) {
       try {
         console.warn(`sohu-fetcher: native fetch failed for ${url}, trying Worker proxy: ${nativeErr.message}`);
@@ -247,8 +231,6 @@ export const sohuFetcher: SourceFetcher = {
 
   async discover(source): Promise<DiscoveredArticle[]> {
     const baseUrl = source.url;
-    // If source URL is a bare homepage (news.sohu.com), use the default
-    // xchannel path on www.sohu.com (the xchannel endpoint lives there).
     const xchannelBase = baseUrl.includes('/xchannel/')
       ? new URL(baseUrl).origin
       : 'https://www.sohu.com';
@@ -259,70 +241,26 @@ export const sohuFetcher: SourceFetcher = {
 
     console.log(`[sohu] discover: fetching xchannel ${xchannelUrl}`);
 
-    // Sohu xchannel uses infinite-scroll — SSR blockRenderData only has ~6 articles.
-    // Use Scrapling with auto-scroll to render the full page and trigger lazy-loading.
-    let html = '';
-    let usedScrapling = false;
-    try {
-      const { scraplingFetch } = await import('./scrapling-fetch.js');
-      html = await scraplingFetch(xchannelUrl, {
-        mode: 'stealth',
-        blockResources: false,
-        networkIdle: false,
-        scrollCount: 5,
-        scrollDelayMs: 1500,
-        waitMs: 12000,
-        timeoutMs: 90000,
-      });
-      usedScrapling = true;
-      console.log(`[sohu] discover: Scrapling auto-scroll render complete (${html.length} bytes)`);
-    } catch (scrollErr: any) {
-      console.warn(`[sohu] discover: Scrapling auto-scroll failed, falling back to static HTML: ${scrollErr.message}`);
-      html = await fetchPageHtml(xchannelUrl);
-    }
+    // Static HTML only — no Scrapling. xchannel SSR includes ~6 articles
+    // in window.blockRenderData. Scrape runs every 5 min, so ~72 articles/hour.
+    const html = await fetchPageHtml(xchannelUrl);
 
     const data = extractBlockRenderData(html);
     if (!data) {
-      if (!usedScrapling) {
-        throw new Error('Could not extract blockRenderData from Sohu page');
-      }
-      // Scrapling rendered but no blockRenderData — try static HTML as last resort
-      console.warn('[sohu] discover: no blockRenderData in Scrapling render, trying static HTML');
-      const staticHtml = await fetchPageHtml(xchannelUrl);
-      const staticData = extractBlockRenderData(staticHtml);
-      if (!staticData) throw new Error('Could not extract blockRenderData from Sohu page');
-      const articles = findArticles(staticData);
-      const seen = new Set<string>();
-      const discovered: DiscoveredArticle[] = [];
-      for (const a of articles) {
-        const id = extractSohuArticleId(a.url);
-        if (!id || seen.has(id)) continue;
-        seen.add(id);
-        discovered.push({
-          sourceId: source.id,
-          url: cleanSohuUrl(a.url),
-          title: a.title,
-          externalId: id,
-          payload: { discovery: 'sohu:xchannel', imageUrl: a.cover },
-        });
-      }
-      console.log(`[sohu] discover: found ${discovered.length} articles (static fallback)`);
-      return discovered;
+      throw new Error('Could not extract blockRenderData from Sohu page');
     }
 
     const articles = findArticles(data);
-
-    // Also scan the full rendered HTML for article links — after Scrapling
-    // auto-scroll, new articles appear as <a> tags in the DOM outside
-    // blockRenderData. Merge both sets, blockRenderData titles take priority.
-    const htmlArticles = usedScrapling ? findArticlesInHtml(html) : [];
     const seen = new Set<string>();
     const discovered: DiscoveredArticle[] = [];
 
-    // blockRenderData articles first (better metadata: title + cover)
     for (const a of articles) {
       const id = extractSohuArticleId(a.url);
       if (!id || seen.has(id)) continue;
+      if (!isLikelyArticle(a.title)) {
+        console.log(`[sohu] discover: skipped non-article "${a.title}"`);
+        continue;
+      }
       seen.add(id);
       discovered.push({
         sourceId: source.id,
@@ -333,24 +271,10 @@ export const sohuFetcher: SourceFetcher = {
       });
     }
 
-    // HTML-scraped articles (from DOM after scrolling)
-    for (const a of htmlArticles) {
-      const id = extractSohuArticleId(a.url);
-      if (!id || seen.has(id)) continue;
-      seen.add(id);
-      discovered.push({
-        sourceId: source.id,
-        url: cleanSohuUrl(a.url),
-        title: a.title,
-        externalId: id,
-        payload: { discovery: 'sohu:html-scan' },
-      });
-    }
-
     const maxDiscover = parseInt(process.env.MAX_ARTICLES_PER_SOURCE || '20', 10);
     const limited = discovered.slice(0, maxDiscover);
 
-    console.log(`[sohu] discover: found ${discovered.length} articles (${articles.length} from blockRenderData + ${htmlArticles.length} from HTML scan), returning ${limited.length}`);
+    console.log(`[sohu] discover: found ${discovered.length} articles from blockRenderData, returning ${limited.length}`);
     return limited;
   },
 
@@ -358,62 +282,23 @@ export const sohuFetcher: SourceFetcher = {
     const jobUrl = await normalizePublicHttpUrlWithDns(job.url, false);
     if (!jobUrl) throw new Error('Article URL must be a public http(s) URL');
 
-    console.log(`[sohu] fetchArticle: fetching ${jobUrl}`);
+    // Rewrite to mobile URL — m.sohu.com serves full content in static HTML,
+    // while www.sohu.com is a SPA that needs browser rendering.
+    const mobileUrl = toMobileSohuUrl(jobUrl);
 
-    let html = '';
-    let extractor = 'sohu:static-html';
-    try {
-      html = await fetchPageHtml(jobUrl);
-      const staticArticle = extractSohuArticleFromHtml(html, job.title, job.published_at);
-      if (staticArticle.content.length >= SOHU_MIN_CONTENT_LENGTH) {
-        const excerpt = truncate(staticArticle.content, 500);
-        const tz = getDefaultTimezoneForLanguage(source.language);
-        return {
-          source,
-          externalId: job.external_id || extractSohuArticleId(job.url),
-          url: jobUrl,
-          title: staticArticle.title,
-          publishedAt: normalizeDate(staticArticle.publishedAt, { defaultTimezone: tz }),
-          rawExcerpt: excerpt,
-          rawContent: staticArticle.content,
-          contentHashSeed: `${staticArticle.title}${staticArticle.content.substring(0, 200)}`,
-          imageUrl: job.payload_json?.imageUrl || staticArticle.imageUrl,
-          metadata: { extractor },
-        };
-      }
-      // If the full static HTML is short, the page itself has little content —
-      // Scrapling won't extract more. Only fall through to Scrapling when the
-      // page is substantial but extraction failed (e.g. SPA needing JS render).
-      if (html.length < 500) {
-        console.warn(`[sohu] fetchArticle: static HTML too short (${html.length} bytes), skipping Scrapling for ${jobUrl}`);
-        return null;
-      }
-      console.warn(`[sohu] fetchArticle: static HTML content too short (${staticArticle.content.length} < ${SOHU_MIN_CONTENT_LENGTH}), trying Scrapling ${jobUrl}`);
-    } catch (err: any) {
-      console.warn(`[sohu] fetchArticle: native fetch failed for ${jobUrl}, trying Scrapling: ${err.message}`);
-    }
+    console.log(`[sohu] fetchArticle: fetching ${mobileUrl}`);
 
-    // Some Sohu surfaces are still SPA shells. Use Scrapling only after the
-    // cheaper static HTML path fails, so short news pages don't occupy browser
-    // slots until they hit the article-fetch timeout.
-    extractor = 'sohu:scrapling';
-    const { scraplingFetch } = await import('./scrapling-fetch.js');
-    html = await scraplingFetch(jobUrl, {
-      mode: 'stealth',
-      blockResources: true,
-      waitMs: 2000,
-      timeoutMs: 90000,
-    });
-
+    const html = await fetchPageHtml(mobileUrl);
     if (!html || html.length < 200) {
-      throw new Error('Scrapling returned empty or too-short HTML');
+      console.warn(`[sohu] fetchArticle: HTML too short (${html?.length || 0} bytes), skipping ${mobileUrl}`);
+      return null;
     }
 
     const extracted = extractSohuArticleFromHtml(html, job.title, job.published_at);
     const content = extracted.content;
 
     if (!content || content.length < SOHU_MIN_CONTENT_LENGTH) {
-      console.warn(`[sohu] fetchArticle: content too short after Scrapling (${content?.length || 0} < ${SOHU_MIN_CONTENT_LENGTH}), skipping ${jobUrl}`);
+      console.warn(`[sohu] fetchArticle: content too short (${content?.length || 0} < ${SOHU_MIN_CONTENT_LENGTH}), skipping ${mobileUrl}`);
       return null;
     }
 
@@ -422,7 +307,7 @@ export const sohuFetcher: SourceFetcher = {
 
     return {
       source,
-      externalId: job.external_id || extractSohuArticleId(jobUrl),
+      externalId: job.external_id || extractSohuArticleId(job.url),
       url: jobUrl,
       title: extracted.title,
       publishedAt: normalizeDate(extracted.publishedAt, { defaultTimezone: tz }),
@@ -430,7 +315,7 @@ export const sohuFetcher: SourceFetcher = {
       rawContent: content,
       contentHashSeed: `${extracted.title}${content.substring(0, 200)}`,
       imageUrl: job.payload_json?.imageUrl || extracted.imageUrl,
-      metadata: { extractor },
+      metadata: { extractor: 'sohu:mobile-html' },
     };
   },
 
