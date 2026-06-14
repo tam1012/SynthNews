@@ -347,8 +347,11 @@ export const sohuFetcher: SourceFetcher = {
       });
     }
 
-    console.log(`[sohu] discover: found ${discovered.length} articles (${articles.length} from blockRenderData + ${htmlArticles.length} from HTML scan)`);
-    return discovered;
+    const maxDiscover = parseInt(process.env.MAX_ARTICLES_PER_SOURCE || '20', 10);
+    const limited = discovered.slice(0, maxDiscover);
+
+    console.log(`[sohu] discover: found ${discovered.length} articles (${articles.length} from blockRenderData + ${htmlArticles.length} from HTML scan), returning ${limited.length}`);
+    return limited;
   },
 
   async fetchArticle(job, source): Promise<ArticleInsertInput | null> {
