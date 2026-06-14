@@ -52,6 +52,7 @@ services:
 
   app:
     build: .
+    image: newstamhv-app:latest
     container_name: newstamhv-app
     restart: unless-stopped
     security_opt:
@@ -139,7 +140,7 @@ services:
       start_period: 30s
 
   reuters-cookie-refresh:
-    build: .
+    image: newstamhv-app:latest
     container_name: newstamhv-reuters-cookie-refresh
     restart: unless-stopped
     security_opt:

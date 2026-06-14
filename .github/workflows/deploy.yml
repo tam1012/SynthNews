@@ -3,6 +3,18 @@ name: Deploy to VPS
 on:
   push:
     branches: [ "main" ]
+    paths-ignore:
+      - "*.md"
+      - "docs/**"
+      - "*.png"
+      - "*.jpg"
+      - "*.jpeg"
+      - ".gitignore"
+      - "LICENSE"
+
+concurrency:
+  group: deploy-main
+  cancel-in-progress: false
 
 jobs:
   deploy:
@@ -17,12 +29,22 @@ jobs:
         key: ${{ secrets.VPS_SSH_KEY }}
         script: |
           cd /home/ubuntu/newstamhv
+
+          echo "=== DEPLOY START: $(date '+%Y-%m-%d %H:%M:%S %Z') ==="
+
+          echo "--- git pull: $(date '+%H:%M:%S') ---"
           git pull --ff-only origin main
+
           export NVM_DIR="$HOME/.nvm"
           [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+
+          echo "--- docker compose build + up: $(date '+%H:%M:%S') ---"
           docker compose up -d --build
+
+          echo "--- health check (local): $(date '+%H:%M:%S') ---"
           for i in {1..20}; do
             if curl -fsS http://127.0.0.1:3001/api/health/live >/dev/null; then
+              echo "local health OK at attempt $i"
               break
             fi
             if [ "$i" = "20" ]; then
@@ -32,6 +54,7 @@ jobs:
             sleep 3
           done
 
+          echo "--- smoke test (API): $(date '+%H:%M:%S') ---"
           node <<'NODE'
           const base = 'http://127.0.0.1:3001';
           const assert = (condition, message) => {
@@ -58,6 +81,7 @@ jobs:
           assert(articles.data.length > 0, '/api/articles returned no done articles');
           NODE
 
+          echo "--- smoke test (Puppeteer): $(date '+%H:%M:%S') ---"
           docker compose exec -T app node --input-type=module <<'NODE'
           import puppeteer from 'puppeteer-core';
 
@@ -74,8 +98,10 @@ jobs:
           }
           NODE
 
+          echo "--- smoke test (public): $(date '+%H:%M:%S') ---"
           for i in {1..30}; do
             if curl -fsS https://synthnews.site/api/health/live >/dev/null; then
+              echo "public health OK at attempt $i"
               break
             fi
             if [ "$i" = "30" ]; then
@@ -89,6 +115,7 @@ jobs:
 
           for i in {1..12}; do
             if curl -fsS https://synthnews.site/api/articles?limit=3\&status=done | grep -q '"success":true'; then
+              echo "public articles OK at attempt $i"
               break
             fi
             if [ "$i" = "12" ]; then
@@ -102,5 +129,4 @@ jobs:
 
           docker compose ps
 
-          docker builder prune -af --keep-storage=2GB || true
-          docker image prune -af || true
+          echo "=== DEPLOY DONE: $(date '+%Y-%m-%d %H:%M:%S %Z') ==="
