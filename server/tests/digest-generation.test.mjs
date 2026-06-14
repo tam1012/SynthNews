@@ -188,7 +188,15 @@ test('forum summary prompt requires translating foreign-language comments into V
       truncateSummaryError: (err) => String(err?.message || err),
     },
     '../lib/summaryOutput.js': {
-      parseAiSummaryOutput: () => ({ editorialMarkdown: 'ok', tags: [] }),
+      parseAiSummaryOutput: () => ({
+        tldr: 'ok',
+        summaryShort: 'ok',
+        hotScore: 4,
+        tags: [],
+        editorialMarkdown: 'Nội dung hợp lệ '.repeat(20),
+        usedStructuredOutput: true,
+        isUsable: true,
+      }),
     },
     '../lib/summaryValidation.js': {
       assertUsableSummaryOutput: (parsed) => parsed,
@@ -231,4 +239,136 @@ test('forum summary prompt requires translating foreign-language comments into V
   assert.match(capturedPrompt, /do not copy/i);
   assert.match(capturedPrompt, /specialist terms/i);
   assert.match(capturedPrompt, /Write in natural Vietnamese/i);
+});
+
+test('news translation prompt prevents repetitive Vietnam timezone conversions', async () => {
+  let capturedPrompt = '';
+  const { summarizeArticle } = loadTsModule('../src/services/summarizer.ts', {
+    '../db/index.js': {},
+    '../lib/utils.js': {
+      generateId: (prefix) => `${prefix}_test`,
+      truncate: (value) => value,
+    },
+    '../lib/tldr.js': {
+      normalizeTldr: (value) => value,
+    },
+    '../lib/summaryRetryPolicy.js': {
+      truncateSummaryError: (err) => String(err?.message || err),
+    },
+    '../lib/summaryOutput.js': {
+      parseAiSummaryOutput: () => ({
+        tldr: 'ok',
+        summaryShort: 'ok',
+        hotScore: 4,
+        tags: [],
+        editorialMarkdown: 'Nội dung hợp lệ '.repeat(20),
+        usedStructuredOutput: true,
+        isUsable: true,
+      }),
+    },
+    '../lib/summaryValidation.js': {
+      assertUsableSummaryOutput: (parsed) => parsed,
+    },
+    './ai-client.js': {
+      callAi: async (prompt) => {
+        capturedPrompt = prompt;
+        return '{}';
+      },
+    },
+    './prompt-settings.js': {},
+    './post-summarize-cluster.js': {
+      maybeClusterAfterSummarize: async () => ({ attached: false, reason: 'stub' }),
+    },
+    '../lib/promptConfig.js': {},
+    '../lib/promoFilter.js': {
+      isPromoTitle: () => false,
+      buildPromoClassifyPrompt: () => '',
+      isPromoClassification: () => false,
+      shouldRunPromoClassification: () => false,
+    },
+  });
+
+  await summarizeArticle({
+    id: 'art_schedule',
+    title: 'Germany vs Curacao: how to watch',
+    raw_excerpt: '',
+    raw_content: 'Germany will face Curacao at Houston Stadium. Kickoff is 12:00 CDT, 13:00 ET, 10:00 PT, 18:00 in the UK and 3:00am Monday AEST. '.repeat(8),
+    language: 'en',
+    source_name: 'CNET',
+  }, {
+    output_language: 'Vietnamese',
+    topic_priorities: ['Sports'],
+    allowed_tags: ['Sports'],
+    digest_headings: ['Sports'],
+    custom_context: '',
+  });
+
+  assert.match(capturedPrompt, /Do not append Vietnam time after every listed timezone/i);
+  assert.match(capturedPrompt, /convert the primary event time once/i);
+});
+
+test('news translation prompt prevents repetitive VND conversions for repeated amounts', async () => {
+  let capturedPrompt = '';
+  const { summarizeArticle } = loadTsModule('../src/services/summarizer.ts', {
+    '../db/index.js': {},
+    '../lib/utils.js': {
+      generateId: (prefix) => `${prefix}_test`,
+      truncate: (value) => value,
+    },
+    '../lib/tldr.js': {
+      normalizeTldr: (value) => value,
+    },
+    '../lib/summaryRetryPolicy.js': {
+      truncateSummaryError: (err) => String(err?.message || err),
+    },
+    '../lib/summaryOutput.js': {
+      parseAiSummaryOutput: () => ({
+        tldr: 'ok',
+        summaryShort: 'ok',
+        hotScore: 4,
+        tags: [],
+        editorialMarkdown: 'Nội dung hợp lệ '.repeat(20),
+        usedStructuredOutput: true,
+        isUsable: true,
+      }),
+    },
+    '../lib/summaryValidation.js': {
+      assertUsableSummaryOutput: (parsed) => parsed,
+    },
+    './ai-client.js': {
+      callAi: async (prompt) => {
+        capturedPrompt = prompt;
+        return '{}';
+      },
+    },
+    './prompt-settings.js': {},
+    './post-summarize-cluster.js': {
+      maybeClusterAfterSummarize: async () => ({ attached: false, reason: 'stub' }),
+    },
+    '../lib/promptConfig.js': {},
+    '../lib/promoFilter.js': {
+      isPromoTitle: () => false,
+      buildPromoClassifyPrompt: () => '',
+      isPromoClassification: () => false,
+      shouldRunPromoClassification: () => false,
+    },
+  });
+
+  await summarizeArticle({
+    id: 'art_debt',
+    title: 'Man dies leaving overdue bank loan',
+    raw_excerpt: '',
+    raw_content: 'Chen borrowed 270,000 yuan in 2023. The 270,000 yuan loan became overdue after his death. The bank sued heirs for the 270,000 yuan principal plus interest. '.repeat(8),
+    language: 'zh',
+    source_name: 'Sohu',
+  }, {
+    output_language: 'Vietnamese',
+    topic_priorities: ['Society'],
+    allowed_tags: ['Society'],
+    digest_headings: ['Society'],
+    custom_context: '',
+  });
+
+  assert.match(capturedPrompt, /For repeated amounts, add the VND conversion only on the first mention/i);
+  assert.match(capturedPrompt, /Do not repeat the same VND parenthetical/i);
 });
