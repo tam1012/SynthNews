@@ -38,6 +38,25 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): 
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timeoutId));
 }
 
+async function withAbortTimeout<T>(
+  timeoutMs: number,
+  label: string,
+  fn: (signal: AbortSignal) => Promise<T>
+): Promise<T> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(new Error(`${label} timed out after ${Math.round(timeoutMs / 1000)}s`)), timeoutMs);
+  try {
+    return await fn(controller.signal);
+  } catch (err: any) {
+    if (controller.signal.aborted) {
+      throw new Error(`${label} timed out after ${Math.round(timeoutMs / 1000)}s`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 async function updateRescuedArticle(articleId: string, articleInput: ArticleInsertInput): Promise<void> {
   validateArticleContent(articleInput);
   await query(
@@ -92,15 +111,15 @@ async function runScrapeJob() {
 
     try {
       console.log(`  Scraping [${source.type}] ${source.name}...`);
-      const result = await withTimeout((async () => {
+      const result = await withAbortTimeout(getSourceScrapeTimeoutMs(source), `Scrape source ${source.name}`, async (signal) => {
         const fetcher = getFetcherForSource(source, sourceFetchers);
         if (fetcher.discover) {
-          const discovered = await fetcher.discover(source);
+          const discovered = await fetcher.discover(source, { signal });
           const enqueued = await enqueueDiscoveredArticles(discovered);
           return { itemsFound: discovered.length, itemsInserted: enqueued, errors: [] as string[] };
         }
         return scrapeSource(source);
-      })(), getSourceScrapeTimeoutMs(source), `Scrape source ${source.name}`);
+      });
 
       const nextRunDelayMinutes = computeScrapeNextDelayMinutes(
         source.fetch_interval_minutes,
@@ -223,10 +242,10 @@ async function runArticleFetchJob() {
         throw new Error(`Fetcher ${fetcher.key} does not support article fetch jobs`);
       }
 
-      const articleInput = await withTimeout(
-        fetcher.fetchArticle(job, source),
+      const articleInput = await withAbortTimeout(
         getArticleFetchTimeoutMs(job),
-        `Article fetch ${job.url}`
+        `Article fetch ${job.url}`,
+        (signal) => fetcher.fetchArticle!(job, source, { signal })
       );
       if (articleInput) {
         const rescueArticleId = typeof job.payload_json?.rescueArticleId === 'string' ? job.payload_json.rescueArticleId : null;

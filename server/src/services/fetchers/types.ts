@@ -29,10 +29,14 @@ export interface ScrapeResult {
   metadata?: Record<string, unknown>;
 }
 
+export interface FetcherRunContext {
+  signal?: AbortSignal;
+}
+
 export interface SourceFetcher {
   key: string;
   canHandle(source: Pick<SourceRow, 'type' | 'url'>): boolean;
-  fetch(source: SourceRow): Promise<ScrapeResult>;
-  discover?(source: SourceRow): Promise<DiscoveredArticle[]>;
-  fetchArticle?(job: ArticleFetchJobForFetcher, source: SourceRow): Promise<ArticleInsertInput | null>;
+  fetch(source: SourceRow, context?: FetcherRunContext): Promise<ScrapeResult>;
+  discover?(source: SourceRow, context?: FetcherRunContext): Promise<DiscoveredArticle[]>;
+  fetchArticle?(job: ArticleFetchJobForFetcher, source: SourceRow, context?: FetcherRunContext): Promise<ArticleInsertInput | null>;
 }

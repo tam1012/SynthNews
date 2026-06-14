@@ -76,6 +76,6 @@ test('article fetch jobs have bounded per-job timeout policy', () => {
 test('article fetch job runner wraps each fetcher call with timeout', () => {
   const source = readFileSync(resolve(__dirname, '../src/jobs/scheduler.ts'), 'utf8');
 
-  assert.match(source, /withTimeout\(\s*fetcher\.fetchArticle\(job, source\)/);
-  assert.match(source, /getArticleFetchTimeoutMs\(job\)/);
+  assert.match(source, /withAbortTimeout/);
+  assert.match(source, /fetcher\.fetchArticle!\(job, source, \{ signal \}\)/);
 });
