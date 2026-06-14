@@ -263,6 +263,37 @@ function isGithubTrendingUrl(url: string): boolean {
   }
 }
 
+function isSohuUrl(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.replace(/^www\./, '').toLowerCase();
+    return host === 'sohu.com' || host.endsWith('.sohu.com');
+  } catch {
+    return false;
+  }
+}
+
+function isSohuXchannelUrl(url: string): boolean {
+  try {
+    return isSohuUrl(url) && new URL(url).pathname.includes('/xchannel/');
+  } catch {
+    return false;
+  }
+}
+
+function sohuXchannelPreset(url: string): SourceDetectResult {
+  const result = resultBase(url);
+  result.type = 'web';
+  result.name = 'Sohu News';
+  result.detected = true;
+  result.detected_kind = 'sohu';
+  result.canonical_url = url;
+  result.preview = {
+    title: '搜狐新闻',
+    description: 'Sohu News xchannel',
+  };
+  return result;
+}
+
 function githubTrendingPreset(url: string): SourceDetectResult {
   const result = resultBase(url);
   result.type = 'web';
@@ -367,6 +398,10 @@ export async function resolveSourceUrl(rawUrl: string, fetcher: ResolveFetch = d
 
   if (isGithubTrendingUrl(normalized)) {
     return githubTrendingPreset(normalized);
+  }
+
+  if (isSohuXchannelUrl(normalized)) {
+    return sohuXchannelPreset(normalized);
   }
 
   const result = resultBase(normalized);
