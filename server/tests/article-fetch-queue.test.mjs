@@ -37,6 +37,7 @@ test('build discovered article job row with normalized public URL and discovered
     },
     '../lib/promoFilter.js': { matchPromoKeyword: () => null },
     './fetchers/blocklist.js': { getBlocklistMatch: async () => null, recordBlocklistHit: async () => {} },
+    './fetchers/fetch-job-errors.js': { classifyFetchJobError: () => ({ type: 'unknown', retryable: true, httpStatus: null }) },
     '../db/index.js': {},
   });
 
@@ -64,6 +65,7 @@ test('claim pending article fetch jobs uses FOR UPDATE SKIP LOCKED', () => {
     '../lib/utils.js': {},
     '../lib/promoFilter.js': { matchPromoKeyword: () => null },
     './fetchers/blocklist.js': { getBlocklistMatch: async () => null, recordBlocklistHit: async () => {} },
+    './fetchers/fetch-job-errors.js': { classifyFetchJobError: () => ({ type: 'unknown', retryable: true, httpStatus: null }) },
     '../db/index.js': {},
   });
   const statement = buildClaimArticleFetchJobsSql(7);
@@ -80,6 +82,7 @@ test('reset retryable article fetch jobs respects retry cap', () => {
     '../lib/utils.js': {},
     '../lib/promoFilter.js': { matchPromoKeyword: () => null },
     './fetchers/blocklist.js': { getBlocklistMatch: async () => null, recordBlocklistHit: async () => {} },
+    './fetchers/fetch-job-errors.js': { classifyFetchJobError: () => ({ type: 'unknown', retryable: true, httpStatus: null }) },
     '../db/index.js': {},
   });
   const statement = buildResetRetryableArticleFetchJobsSql(15);
@@ -96,6 +99,7 @@ test('short-content rescue query targets skipped RSS and web articles only', () 
     '../lib/utils.js': {},
     '../lib/promoFilter.js': { matchPromoKeyword: () => null },
     './fetchers/blocklist.js': { getBlocklistMatch: async () => null, recordBlocklistHit: async () => {} },
+    './fetchers/fetch-job-errors.js': { classifyFetchJobError: () => ({ type: 'unknown', retryable: true, httpStatus: null }) },
     '../db/index.js': {},
   });
   const statement = buildFindShortContentArticlesSql(15, 500);
@@ -134,6 +138,7 @@ test('requeue short-content articles stores rescue article id in fetch job paylo
     },
     '../lib/promoFilter.js': { matchPromoKeyword: () => null },
     './fetchers/blocklist.js': { getBlocklistMatch: async () => null, recordBlocklistHit: async () => {} },
+    './fetchers/fetch-job-errors.js': { classifyFetchJobError: () => ({ type: 'unknown', retryable: true, httpStatus: null }) },
   });
 
   const result = await requeueShortContentArticles(15, 500);

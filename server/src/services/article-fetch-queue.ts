@@ -2,6 +2,7 @@ import { getMany, query } from '../db/index.js';
 import { generateId, normalizePublicHttpUrl } from '../lib/utils.js';
 import { matchPromoKeyword } from '../lib/promoFilter.js';
 import { getBlocklistMatch, recordBlocklistHit } from './fetchers/blocklist.js';
+import { classifyFetchJobError } from './fetchers/fetch-job-errors.js';
 
 export const MAX_ARTICLE_FETCH_RETRIES = 3;
 
@@ -125,6 +126,8 @@ export function buildResetRetryableArticleFetchJobsSql(limit: number): SqlStatem
             SELECT id FROM article_fetch_jobs
             WHERE status = 'failed'
               AND retry_count < $1
+              AND (next_attempt_at IS NULL OR next_attempt_at <= NOW())
+              AND COALESCE(error_type, 'unknown') NOT IN ('not_found', 'invalid_url')
               AND updated_at < NOW() - INTERVAL '10 minutes'
             ORDER BY updated_at ASC
             LIMIT $2
@@ -247,12 +250,29 @@ export async function markArticleFetchJobDone(id: string): Promise<void> {
 }
 
 export async function markArticleFetchJobFailed(id: string, err: unknown): Promise<void> {
+  const classification = classifyFetchJobError(err);
+  const retryDelayMinutes = classification.retryable ? 10 : null;
   await query(
     `UPDATE article_fetch_jobs
      SET status = 'failed',
          retry_count = retry_count + 1,
-         last_error = $2
+         last_error = $2,
+         error_type = $3,
+         last_http_status = $4,
+         next_attempt_at = CASE WHEN $5::int IS NULL THEN NULL ELSE NOW() + ($5::int * INTERVAL '1 minute') END
      WHERE id = $1`,
-    [id, truncateFetchJobError(err)]
+    [id, truncateFetchJobError(err), classification.type, classification.httpStatus, retryDelayMinutes]
+  );
+}
+
+export async function markArticleFetchJobSkipped(id: string, reason: string): Promise<void> {
+  await query(
+    `UPDATE article_fetch_jobs
+     SET status = 'skipped',
+         skip_reason = $2,
+         last_error = NULL,
+         next_attempt_at = NULL
+     WHERE id = $1`,
+    [id, reason.substring(0, 500)]
   );
 }

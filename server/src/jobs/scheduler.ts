@@ -14,6 +14,7 @@ import {
   enqueueDiscoveredArticles,
   markArticleFetchJobDone,
   markArticleFetchJobFailed,
+  markArticleFetchJobSkipped,
   requeueShortContentArticles,
 } from '../services/article-fetch-queue.js';
 import {
@@ -26,6 +27,7 @@ import {
   computeScrapeFailureBackoffMinutes,
   getSourceScrapeTimeoutMs,
 } from '../lib/scrapeTiming.js';
+import { buildNullArticleSkipReason } from '../services/fetchers/fetch-job-errors.js';
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
   let timeoutId: NodeJS.Timeout;
@@ -232,13 +234,14 @@ async function runArticleFetchJob() {
           await updateRescuedArticle(rescueArticleId, articleInput);
         } else {
           await insertArticleIfNew(articleInput);
-          // Bài thêm thủ công từ URL bên ngoài: đánh dấu is_saved = true
           if (job.payload_json?.isManualSave) {
             await query('UPDATE articles SET is_saved = true WHERE url = $1', [job.url]);
           }
         }
+        await markArticleFetchJobDone(job.id);
+      } else {
+        await markArticleFetchJobSkipped(job.id, buildNullArticleSkipReason(job.source_type));
       }
-      await markArticleFetchJobDone(job.id);
       succeeded++;
     } catch (err) {
       await markArticleFetchJobFailed(job.id, err);

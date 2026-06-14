@@ -79,13 +79,15 @@ health.get('/', async (c) => {
        FROM articles`
     );
 
-    const articleFetchJobsCount = await getOne<{ total: string; discovered: string; fetching: string; done: string; failed: string; retryable_failed: string }>(
+    const articleFetchJobsCount = await getOne<{ total: string; discovered: string; fetching: string; done: string; failed: string; skipped: string; retryable_failed: string; oldest_discovered_age_minutes: string }>(
       `SELECT COUNT(*) as total,
               COUNT(*) FILTER (WHERE status = 'discovered') as discovered,
               COUNT(*) FILTER (WHERE status = 'fetching') as fetching,
               COUNT(*) FILTER (WHERE status = 'done') as done,
               COUNT(*) FILTER (WHERE status = 'failed') as failed,
-              COUNT(*) FILTER (WHERE status = 'failed' AND retry_count < 3) as retryable_failed
+              COUNT(*) FILTER (WHERE status = 'skipped') as skipped,
+              COUNT(*) FILTER (WHERE status = 'failed' AND retry_count < 3) as retryable_failed,
+              EXTRACT(EPOCH FROM (NOW() - MIN(created_at) FILTER (WHERE status = 'discovered'))) / 60 AS oldest_discovered_age_minutes
        FROM article_fetch_jobs`
     );
 
@@ -229,7 +231,9 @@ health.get('/', async (c) => {
           fetching: parseInt(articleFetchJobsCount?.fetching || '0'),
           done: parseInt(articleFetchJobsCount?.done || '0'),
           failed: parseInt(articleFetchJobsCount?.failed || '0'),
+          skipped: parseInt(articleFetchJobsCount?.skipped || '0'),
           retryable_failed: parseInt(articleFetchJobsCount?.retryable_failed || '0'),
+          oldest_discovered_age_minutes: Math.round(Number(articleFetchJobsCount?.oldest_discovered_age_minutes || 0)),
         },
         lastDigest: lastDigest || null,
         sourceQuality,

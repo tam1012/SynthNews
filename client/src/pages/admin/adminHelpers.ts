@@ -20,7 +20,7 @@ export type PromptConfigFormData = {
 export type AdminTab = 'overview' | 'stats' | 'queue' | 'quality' | 'fetchJobs' | 'ai' | 'prompt' | 'blocklist';
 export type SummaryQueueStatus = 'failed' | 'pending' | 'processing' | 'skipped' | 'done';
 export type QualityIssue = 'missing_tldr' | 'missing_summary_short' | 'missing_tags' | 'missing_hot_score' | 'short_summary';
-export type FetchJobStatus = 'failed' | 'discovered' | 'fetching' | 'done';
+export type FetchJobStatus = 'failed' | 'discovered' | 'fetching' | 'done' | 'skipped';
 export type AdminWorkItemSeverity = 'critical' | 'warning' | 'info' | 'ok';
 export type AdminPublicCheck = {
   key?: string;
@@ -136,6 +136,10 @@ export type AdminArticleFetchJob = {
   retry_count?: number | null;
   updated_at?: string | null;
   last_error?: string | null;
+  skip_reason?: string | null;
+  error_type?: string | null;
+  last_http_status?: number | null;
+  next_attempt_at?: string | null;
 };
 export type AdminHealth = {
   time?: string;
@@ -239,6 +243,7 @@ export const SUMMARY_QUEUE_STATUSES: { key: SummaryQueueStatus; label: string }[
 ];
 export const FETCH_JOB_STATUSES: { key: FetchJobStatus; label: string }[] = [
   { key: 'failed', label: 'Lỗi' },
+  { key: 'skipped', label: 'Bỏ qua' },
   { key: 'discovered', label: 'Chờ fetch' },
   { key: 'fetching', label: 'Đang fetch' },
   { key: 'done', label: 'Đã xong' },

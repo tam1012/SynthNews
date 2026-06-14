@@ -63,6 +63,7 @@ const schedulerStubs = {
     computeScrapeFailureBackoffMinutes: () => 60,
     getSourceScrapeTimeoutMs: () => 90_000,
   },
+  '../services/fetchers/fetch-job-errors.js': { classifyFetchJobError: () => ({ type: 'unknown', retryable: true, httpStatus: null }), buildNullArticleSkipReason: () => 'skipped' },
 };
 
 test('article fetch jobs have bounded per-job timeout policy', () => {

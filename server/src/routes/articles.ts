@@ -223,7 +223,7 @@ articles.get('/fetch-jobs', async (c) => {
   const params: any[] = [];
   let where = 'WHERE 1=1';
   if (status) {
-    if (!['discovered', 'fetching', 'done', 'failed'].includes(status)) {
+    if (!['discovered', 'fetching', 'done', 'failed', 'skipped'].includes(status)) {
       return c.json({ success: false, error: { code: 'VALIDATION', message: 'Invalid fetch job status' } }, 400);
     }
     params.push(status);
@@ -240,6 +240,7 @@ articles.get('/fetch-jobs', async (c) => {
   const rows = await getMany(
     `SELECT j.id, j.source_id, j.url, j.title, j.external_id, j.published_at,
             j.status, j.retry_count, j.last_error, j.created_at, j.updated_at,
+            j.skip_reason, j.error_type, j.last_http_status, j.next_attempt_at,
             s.name as source_name, s.type as source_type
      FROM article_fetch_jobs j
      LEFT JOIN sources s ON s.id = j.source_id

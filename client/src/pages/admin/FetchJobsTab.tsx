@@ -152,7 +152,7 @@ export function FetchJobsTab({ initialStatus }: { initialStatus?: FetchJobStatus
                   </div>
                   <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                     <span>{job.source_name || 'Không rõ nguồn'}</span>
-                    <span className={`badge badge-${job.status === 'done' ? 'success' : job.status === 'failed' ? 'error' : 'pending'}`}>
+                    <span className={`badge badge-${job.status === 'done' ? 'success' : job.status === 'failed' ? 'error' : job.status === 'skipped' ? 'error' : 'pending'}`}>
                       {statusLabel(job.status)}
                     </span>
                     <span>đã thử lại: {job.retry_count || 0}</span>
@@ -161,6 +161,21 @@ export function FetchJobsTab({ initialStatus }: { initialStatus?: FetchJobStatus
                   <a href={job.url} target="_blank" rel="noreferrer" style={{ display: 'block', fontSize: '0.75rem', marginTop: 6, overflowWrap: 'anywhere' }}>
                     {job.url}
                   </a>
+                  {job.skip_reason && (
+                    <div style={{ color: 'var(--color-text-muted)', fontSize: '0.75rem', marginTop: 4 }}>
+                      {job.skip_reason}
+                    </div>
+                  )}
+                  {job.error_type && (
+                    <div style={{ color: 'var(--color-text-muted)', fontSize: '0.75rem', marginTop: 2 }}>
+                      error: {job.error_type}{job.last_http_status ? ` (${job.last_http_status})` : ''}
+                    </div>
+                  )}
+                  {job.next_attempt_at && (
+                    <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: 2 }}>
+                      Retry sau: {new Date(job.next_attempt_at).toLocaleString('vi-VN')}
+                    </div>
+                  )}
                   {job.last_error && (
                     <div style={{ color: 'var(--color-error)', fontSize: '0.75rem', marginTop: 8, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
                       {String(job.last_error).substring(0, 500)}
