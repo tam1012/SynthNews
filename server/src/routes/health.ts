@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { getOne, getMany } from '../db/index.js';
 import { runScrapeJob, runArticleFetchJob, runSummarizeJob, runDigestJob, runCleanupJob } from '../jobs/scheduler.js';
+import { triggerLockedJobInBackground } from '../lib/jobLock.js';
 import { getDeployInfo, getPublicChecks, getRuntimeInfo } from '../lib/runtime-status.js';
 
 const health = new Hono();
@@ -246,30 +247,29 @@ health.get('/', async (c) => {
   }
 });
 
-// Manual trigger endpoints (POST, can auth)
 health.post('/trigger/scrape', async (c) => {
-  runScrapeJob().catch(console.error);
-  return c.json({ success: true, data: { message: 'Triggered scrape discovery job' } });
+  const result = await triggerLockedJobInBackground('scrape', runScrapeJob);
+  return c.json({ success: true, data: { ...result, message: result.status === 'started' ? 'Triggered scrape discovery job' : 'Scrape job is already running' } });
 });
 
 health.post('/trigger/fetch-articles', async (c) => {
-  runArticleFetchJob().catch(console.error);
-  return c.json({ success: true, data: { message: 'Triggered article fetch job' } });
+  const result = await triggerLockedJobInBackground('article-fetch', runArticleFetchJob);
+  return c.json({ success: true, data: { ...result, message: result.status === 'started' ? 'Triggered article fetch job' : 'Article fetch job is already running' } });
 });
 
 health.post('/trigger/summarize', async (c) => {
-  runSummarizeJob().catch(console.error);
-  return c.json({ success: true, data: { message: 'Triggered summarize job' } });
+  const result = await triggerLockedJobInBackground('summarize', runSummarizeJob);
+  return c.json({ success: true, data: { ...result, message: result.status === 'started' ? 'Triggered summarize job' : 'Summarize job is already running' } });
 });
 
 health.post('/trigger/digest', async (c) => {
-  runDigestJob().catch(console.error);
-  return c.json({ success: true, data: { message: 'Triggered digest job' } });
+  const result = await triggerLockedJobInBackground('digest', runDigestJob);
+  return c.json({ success: true, data: { ...result, message: result.status === 'started' ? 'Triggered digest job' : 'Digest job is already running' } });
 });
 
 health.post('/trigger/cleanup', async (c) => {
-  runCleanupJob().catch(console.error);
-  return c.json({ success: true, data: { message: 'Triggered cleanup job' } });
+  const result = await triggerLockedJobInBackground('cleanup', runCleanupJob);
+  return c.json({ success: true, data: { ...result, message: result.status === 'started' ? 'Triggered cleanup job' : 'Cleanup job is already running' } });
 });
 
 export { health };

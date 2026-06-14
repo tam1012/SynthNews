@@ -3,6 +3,7 @@ import { getMany, getOne, query, withTransaction } from '../db/index.js';
 import { LOCAL_DATE_SQL, LOCAL_DATE_TEXT_SQL, PUBLIC_ARTICLE_FRESHNESS_SQL, buildArticleListFilters, buildArticleListOrderBy, buildArticleSearchFilters } from '../lib/articleFilters.js';
 import { hasValidAdminToken } from '../lib/auth.js';
 import { decodeArticleRows, decodeArticleTextFields } from '../lib/htmlEntities.js';
+import { triggerLockedJobInBackground } from '../lib/jobLock.js';
 import { generateId } from '../lib/utils.js';
 
 const articles = new Hono();
@@ -269,7 +270,8 @@ articles.post('/fetch-jobs/batch/retry', async (c) => {
   );
 
   if (result.rowCount) {
-    import('../jobs/scheduler.js').then(m => m.runArticleFetchJob()).catch(console.error);
+    const { runArticleFetchJob } = await import('../jobs/scheduler.js');
+    await triggerLockedJobInBackground('article-fetch', runArticleFetchJob);
   }
 
   return c.json({ success: true, data: { requested: ids.length, updated: result.rowCount || 0 } });
@@ -299,7 +301,8 @@ articles.post('/fetch-jobs/:id/retry', async (c) => {
     [id]
   );
 
-  import('../jobs/scheduler.js').then(m => m.runArticleFetchJob()).catch(console.error);
+  const { runArticleFetchJob } = await import('../jobs/scheduler.js');
+  await triggerLockedJobInBackground('article-fetch', runArticleFetchJob);
 
   return c.json({ success: true, data: { retried: true } });
 });
@@ -328,7 +331,8 @@ articles.post('/batch/reset-summary', async (c) => {
   );
 
   if (result.rowCount) {
-    import('../jobs/scheduler.js').then(m => m.runSummarizeJob()).catch(console.error);
+    const { runSummarizeJob } = await import('../jobs/scheduler.js');
+    await triggerLockedJobInBackground('summarize', runSummarizeJob);
   }
 
   return c.json({ success: true, data: { requested: ids.length, updated: result.rowCount || 0 } });
@@ -401,7 +405,8 @@ articles.post('/save-external', async (c) => {
   );
 
   // Kick off fetch job in background
-  import('../jobs/scheduler.js').then(m => m.runArticleFetchJob()).catch(console.error);
+  const { runArticleFetchJob } = await import('../jobs/scheduler.js');
+  await triggerLockedJobInBackground('article-fetch', runArticleFetchJob);
 
   return c.json({ success: true, data: { jobId, message: 'Đã thêm vào hàng đợi. Bài sẽ xuất hiện sau ~30-60 giây.' } });
 });
@@ -422,7 +427,8 @@ articles.post('/:id/reset-summary', async (c) => {
   );
 
   // Trigger summarize job ngay lập tức (background, không chờ)
-  import('../jobs/scheduler.js').then(m => m.runSummarizeJob()).catch(console.error);
+  const { runSummarizeJob } = await import('../jobs/scheduler.js');
+  await triggerLockedJobInBackground('summarize', runSummarizeJob);
 
   const row = await getOne(
     `SELECT a.*, s.name as source_name, s.type as source_type
@@ -478,7 +484,8 @@ articles.post('/:id/uncluster', async (c) => {
     [id]
   );
 
-  import('../jobs/scheduler.js').then(m => m.runSummarizeJob()).catch(console.error);
+  const { runSummarizeJob: runSummarizeForUncluster } = await import('../jobs/scheduler.js');
+  await triggerLockedJobInBackground('summarize', runSummarizeForUncluster);
 
   return c.json({ success: true, message: 'Đã tách khỏi cụm và xếp lịch tóm tắt lại.' });
 });
@@ -600,7 +607,7 @@ articles.post('/:id/rescrape', async (c) => {
   if (isForum) {
     const updated = await rescrapeArticle(id, true);
     if (updated) {
-      runSummarizeJob().catch(console.error);
+      await triggerLockedJobInBackground('summarize', runSummarizeJob);
       return c.json({ success: true, message: 'Đã lấy lại nội dung forum và xếp lịch tóm tắt.' });
     }
     return c.json({
@@ -637,9 +644,9 @@ articles.post('/:id/rescrape', async (c) => {
 
   // Kick off the fetch job + summarize asynchronously
   if (typeof runArticleFetchJob === 'function') {
-    runArticleFetchJob().catch(console.error);
+    await triggerLockedJobInBackground('article-fetch', runArticleFetchJob);
   }
-  runSummarizeJob().catch(console.error);
+  await triggerLockedJobInBackground('summarize', runSummarizeJob);
 
   return c.json({ success: true, message: 'Đã xếp lịch fetch lại nội dung gốc và tóm tắt lại bằng AI.' });
 });

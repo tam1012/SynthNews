@@ -18,6 +18,9 @@ test('article routes expose bounded batch actions for admin queues', () => {
   assert.match(source, /summary_status = 'pending'/);
   assert.match(source, /runSummarizeJob/);
   assert.match(source, /runArticleFetchJob/);
+  assert.match(source, /triggerLockedJobInBackground/);
+  assert.match(source, /'article-fetch'/);
+  assert.match(source, /'summarize'/);
 });
 
 test('multi-step article mutations are wrapped in database transactions', () => {

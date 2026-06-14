@@ -16,3 +16,10 @@ test('admin health response includes deploy, runtime, and public check groups', 
   assert.match(source, /runtime,/);
   assert.match(source, /publicChecks,/);
 });
+
+test('admin health trigger endpoints use advisory lock background jobs', () => {
+  const source = readFileSync(resolve(__dirname, '../src/routes/health.ts'), 'utf8');
+
+  assert.match(source, /triggerLockedJobInBackground/);
+  assert.match(source, /already running/);
+});
