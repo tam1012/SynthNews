@@ -58,6 +58,11 @@ const schedulerStubs = {
     buildResetStuckProcessingSummariesSql: () => ({ sql: '', params: [] }),
   },
   '../lib/jobLock.js': { runWithJobLock: async (_name, fn) => fn() },
+  '../lib/scrapeTiming.js': {
+    computeScrapeNextDelayMinutes: () => 60,
+    computeScrapeFailureBackoffMinutes: () => 60,
+    getSourceScrapeTimeoutMs: () => 90_000,
+  },
 };
 
 test('article fetch jobs have bounded per-job timeout policy', () => {

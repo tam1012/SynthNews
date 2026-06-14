@@ -6,6 +6,11 @@ import { getFetcherForSource } from '../services/fetchers/registry.js';
 import { SourceRow, sourceFetchers } from '../services/fetchers/index.js';
 import { scrapeSource } from '../services/scraper.js';
 import { enqueueDiscoveredArticles } from '../services/article-fetch-queue.js';
+import {
+  computeScrapeFailureBackoffMinutes,
+  computeScrapeNextDelayMinutes,
+  getSourceScrapeTimeoutMs,
+} from '../lib/scrapeTiming.js';
 
 const sources = new Hono();
 
@@ -24,16 +29,6 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): 
     timeoutId = setTimeout(() => reject(new Error(`${label} timed out after ${Math.round(timeoutMs / 1000)}s`)), timeoutMs);
   });
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timeoutId));
-}
-
-function getSourceScrapeTimeoutMs(source: any): number {
-  const configured = Number(process.env.SOURCE_SCRAPE_TIMEOUT_MS || 0);
-  if (Number.isFinite(configured) && configured >= 10_000) return configured;
-  const name = String(source.name || '').toLowerCase();
-  const url = String(source.url || '').toLowerCase();
-  if (name.includes('reddit') || url.includes('reddit.com')) return 90_000;
-  if (name.includes('voz') || url.includes('voz.vn')) return 600_000;
-  return 90_000;
 }
 
 function getRedditRssUrl(url: string): string | null {
@@ -271,7 +266,6 @@ sources.post('/:id/scrape', async (c) => {
     const logId = generateId('log');
     try {
       const fetcher = getFetcherForSource(source, sourceFetchers);
-      const scrapeIntervalHours = Math.max(1, Math.ceil(source.fetch_interval_minutes / 60));
 
       const result = await withTimeout((async () => {
         if (fetcher.discover) {
@@ -282,9 +276,11 @@ sources.post('/:id/scrape', async (c) => {
         return scrapeSource(source);
       })(), getSourceScrapeTimeoutMs(source), `Scrape source ${source.name}`);
 
-      const nextRunDelayMinutes = result.errors.length > 0
-        ? Math.min(scrapeIntervalHours * 60 * 2, 24 * 60)
-        : scrapeIntervalHours * 60;
+      const nextRunDelayMinutes = computeScrapeNextDelayMinutes(
+        source.fetch_interval_minutes,
+        result.errors.length > 0,
+        () => 0.5
+      );
       const status = result.errors.length > 0 ? (result.itemsInserted > 0 ? 'partial' : 'failed') : 'success';
       const errorMessage = result.errors.length > 0 ? result.errors.join('; ').substring(0, 500) : null;
 
@@ -309,7 +305,7 @@ sources.post('/:id/scrape', async (c) => {
     } catch (err: any) {
       const message = (err.message || 'Unknown error').substring(0, 500);
       const failureCount = source.consecutive_failures + 1;
-      const backoffMinutes = Math.min(Math.max(1, Math.ceil(source.fetch_interval_minutes / 60)) * 60 * Math.pow(2, Math.max(failureCount - 1, 0)), 24 * 60);
+      const backoffMinutes = computeScrapeFailureBackoffMinutes(source.fetch_interval_minutes, failureCount);
 
       await query(
         `UPDATE sources SET

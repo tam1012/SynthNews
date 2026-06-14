@@ -21,6 +21,11 @@ import {
   buildResetStuckProcessingSummariesSql,
 } from '../lib/summaryRetryPolicy.js';
 import { runWithJobLock } from '../lib/jobLock.js';
+import {
+  computeScrapeNextDelayMinutes,
+  computeScrapeFailureBackoffMinutes,
+  getSourceScrapeTimeoutMs,
+} from '../lib/scrapeTiming.js';
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
   let timeoutId: NodeJS.Timeout;
@@ -29,33 +34,6 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): 
   });
 
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timeoutId));
-}
-
-function getSourceScrapeTimeoutMs(source: any): number {
-  const configured = Number(process.env.SOURCE_SCRAPE_TIMEOUT_MS || 0);
-  if (Number.isFinite(configured) && configured >= 10_000) return configured;
-
-  const name = String(source.name || '').toLowerCase();
-  const url = String(source.url || '').toLowerCase();
-  // Reddit listing now uses old.reddit HTML first (burst-safe through residential
-  // proxy), with RSS lane-based fallback. Comment enrichment uses the same proxy
-  // path (~3s/post). A sub enriches up to ~15 posts, so ~45-75s for comments +
-  // ~15s for listing. 180s gives headroom for proxy retries, listing fallback,
-  // and DB writes without false-positive timeouts.
-  if (name.includes('reddit') || url.includes('reddit.com')) return 180_000;
-  // VOZ now passes through Cloudflare Turnstile (~15s solve per page);
-  // a full 15-thread sweep with multi-page reads needs serious headroom.
-  if (name.includes('voz') || url.includes('voz.vn')) return 600_000;
-  // RSS feeds may need full fallback chain (native -> worker proxy -> scrapling stealth).
-  // Each layer can take 15-30s; default 45s is too tight for sources that hit all three.
-  return 90_000;
-}
-
-function addScrapeJitter(minutes: number): number {
-  if (minutes <= 10) return minutes;
-  const jitterWindow = Math.min(10, Math.max(2, Math.floor(minutes * 0.1)));
-  const jitter = Math.floor(Math.random() * (jitterWindow * 2 + 1)) - jitterWindow;
-  return Math.max(5, minutes + jitter);
 }
 
 async function updateRescuedArticle(articleId: string, articleInput: ArticleInsertInput): Promise<void> {
@@ -110,8 +88,6 @@ async function runScrapeJob() {
     const logId = generateId('log');
     const startedAt = new Date().toISOString();
 
-    const scrapeIntervalHours = Math.max(1, Math.ceil(source.fetch_interval_minutes / 60));
-
     try {
       console.log(`  Scraping [${source.type}] ${source.name}...`);
       const result = await withTimeout((async () => {
@@ -124,9 +100,10 @@ async function runScrapeJob() {
         return scrapeSource(source);
       })(), getSourceScrapeTimeoutMs(source), `Scrape source ${source.name}`);
 
-      const nextRunDelayMinutes = addScrapeJitter(result.errors.length > 0
-        ? Math.min(scrapeIntervalHours * 60 * 2, 24 * 60)
-        : scrapeIntervalHours * 60);
+      const nextRunDelayMinutes = computeScrapeNextDelayMinutes(
+        source.fetch_interval_minutes,
+        result.errors.length > 0
+      );
 
       await query(
         `UPDATE sources SET
@@ -155,7 +132,7 @@ async function runScrapeJob() {
         'SELECT consecutive_failures + 1 as consecutive_failures FROM sources WHERE id = $1',
         [source.id]
       );
-      const backoffMinutes = addScrapeJitter(Math.min(scrapeIntervalHours * 60 * Math.pow(2, Math.max((failureCount?.consecutive_failures || 1) - 1, 0)), 24 * 60));
+      const backoffMinutes = computeScrapeFailureBackoffMinutes(source.fetch_interval_minutes, failureCount?.consecutive_failures || 1);
 
       await query(
         `UPDATE sources SET
