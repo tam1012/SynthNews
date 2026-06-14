@@ -1,11 +1,12 @@
 import { getOne, getMany, query } from '../db/index.js';
 import { truncate, normalizePublicHttpUrl, sleep } from '../lib/utils.js';
 import {
-  curlFetch, parseVozPosts, extractVozPagination,
+  parseVozPosts, extractVozPagination,
   buildVozRawContent, buildRedditRawContent,
   scoreForumComment, selectForumComments, ForumComment, VozPost,
   fetchRedditCommentsForPost
 } from './scraper.js';
+import { fetchVozThreadHtml } from './fetchers/voz-fetch-utils.js';
 
 const VOZ_MAX_THREAD_PAGES = parseInt(process.env.VOZ_MAX_THREAD_PAGES || '15');
 const FORUM_MAX_COMMENTS = parseInt(process.env.FORUM_MAX_COMMENTS || '70');
@@ -49,10 +50,7 @@ export async function rescrapeArticle(articleId: string, force: boolean = false)
         visited.add(pageUrl);
 
         await sleep(500);
-        const threadRes = await curlFetch(pageUrl, 'text/html,application/xhtml+xml', 15);
-        if (!threadRes.ok) throw new Error(`VOZ thread status ${threadRes.status}`);
-
-        const threadHtml = await threadRes.text();
+        const threadHtml = await fetchVozThreadHtml(pageUrl);
         allPosts.push(...parseVozPosts(threadHtml, pageIndex + 1));
 
         if (pageIndex === 0) {
