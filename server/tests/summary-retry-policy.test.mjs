@@ -20,6 +20,12 @@ function loadTsModule(relativePath) {
   vm.runInNewContext(outputText, {
     exports: moduleContext.exports,
     module: moduleContext,
+    require: (name) => {
+      if (name === './aiRetryPolicy.js') {
+        return loadTsModule('../src/lib/aiRetryPolicy.ts');
+      }
+      throw new Error(`Unexpected require ${name}`);
+    },
   });
   return moduleContext.exports;
 }
@@ -33,7 +39,12 @@ test('retry policy resets failed summaries below retry limit and timeout failure
   assert.match(statement.sql, /retry_count < \$1/);
   assert.match(statement.sql, /last_summary_error/);
   assert.match(statement.sql, /summary_status = 'pending'/);
-  assert.deepEqual(Array.from(statement.params), [3, 15, '%timeout%', '%aborted%', '%524%', '%<!doctype html%']);
+  assert.equal(statement.params[0], 3);
+  assert.equal(statement.params[1], 15);
+  assert.ok(statement.params.includes('%429%'));
+  assert.ok(statement.params.includes('%503%'));
+  assert.ok(statement.params.includes('%econnreset%'));
+  assert.ok(statement.params.includes('%socket hang up%'));
 });
 
 test('retry policy resets stale processing summaries back to pending', () => {

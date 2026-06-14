@@ -1,4 +1,5 @@
 import { query, getOne } from '../db/index.js';
+import { isRetryableAiError } from '../lib/aiRetryPolicy.js';
 
 interface AiProvider {
   id: string;
@@ -167,18 +168,6 @@ async function getAiRoutingSettings(): Promise<AiRoutingSettings> {
   } catch {
     return {};
   }
-}
-
-function isRetryableAiError(err: any): boolean {
-  const message = String(err?.message || err || '').toLowerCase();
-  if (/\b(429|408|500|502|503|504)\b/.test(message)) return true;
-  return message.includes('rate limit') ||
-    message.includes('too many requests') ||
-    message.includes('timeout') ||
-    message.includes('timed out') ||
-    message.includes('econnreset') ||
-    message.includes('etimedout') ||
-    message.includes('socket hang up');
 }
 
 // ==========================================
