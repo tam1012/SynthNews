@@ -39,6 +39,19 @@ export function isSohuSource(source: Pick<SourceRow, 'type' | 'url'>): boolean {
   return source.type === 'web' && isSohuUrl(source.url);
 }
 
+export function isQqNewsUrl(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.replace(/^www\./, '').toLowerCase();
+    return host === 'news.qq.com' || host === 'i.news.qq.com' || host.endsWith('.news.qq.com');
+  } catch {
+    return false;
+  }
+}
+
+export function isQqNewsSource(source: Pick<SourceRow, 'type' | 'url'>): boolean {
+  return source.type === 'web' && isQqNewsUrl(source.url);
+}
+
 export function isRedditSource(source: Pick<SourceRow, 'url'>): boolean {
   return isHost(source.url, ['reddit.com', 'www.reddit.com']);
 }
@@ -62,6 +75,7 @@ export function getFetcherKeyForSource(source: Pick<SourceRow, 'type' | 'url'>):
   if (isVozSource(source)) return 'voz';
   if (isMsnSource(source)) return 'msn';
   if (isSohuSource(source)) return 'sohu';
+  if (isQqNewsSource(source)) return 'qq-news';
   if (isGitHubTrendingSource(source)) return 'github-trending';
   if (source.type === 'rss') return 'rss';
   if (source.type === 'web') return 'html';
