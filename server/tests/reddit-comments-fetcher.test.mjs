@@ -69,6 +69,12 @@ function loadForumFetchers({ env = {}, rssItems = [], curlFetch, browserFetch, g
           scraplingFetchWithFallback: async () => '',
         };
       }
+      if (name === './voz-fetch-utils.js') {
+        return {
+          fetchVozThreadHtml: async () => '',
+          fetchVozFeedXml: async () => '',
+        };
+      }
       if (name === '../../lib/dateUtils.js') {
         return {
           getDefaultTimezoneForLanguage: () => 'Z',

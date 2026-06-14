@@ -11,6 +11,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // Load hosted-fetch.ts in an isolated VM with a stub fetch so we can assert which
 // provider endpoints get called, in what order, for normal vs DataDome hosts.
 function loadHostedFetch(env, fetchImpl) {
+  const usageCounters = {};
   const source = readFileSync(resolve(__dirname, '../src/services/fetchers/hosted-fetch.ts'), 'utf8');
   const { outputText } = ts.transpileModule(source, {
     compilerOptions: {
@@ -27,7 +28,15 @@ function loadHostedFetch(env, fetchImpl) {
     process: { env },
     exports: moduleContext.exports,
     module: moduleContext,
-    require: (name) => { throw new Error(`Unexpected require ${name}`); },
+    require: (name) => {
+      if (name === './hosted-fetch-usage.js') return {
+        reserveHostedFetchAttempt: async (provider, cap) => {
+          usageCounters[provider] = (usageCounters[provider] || 0) + 1;
+          return { allowed: usageCounters[provider] <= cap, usedCount: usageCounters[provider] };
+        },
+      };
+      throw new Error(`Unexpected require ${name}`);
+    },
   });
   return moduleContext.exports;
 }
