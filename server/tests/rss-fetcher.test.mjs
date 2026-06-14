@@ -358,7 +358,34 @@ test('RSS fetchArticle rejects queued blocked Google News publisher domains', as
     parser_config: null,
   });
 
-  assert.equal(result, null);
+  assert.equal(items.length, 0);
+});
+
+test('RSS discover reports sanitized feed diagnostics when parser rejects non-feed HTML', async () => {
+  const { rssFetcher } = loadTsModule('../src/services/fetchers/rss-fetcher.ts', {
+    ...baseStubs,
+    'rss-parser': {
+      default: class StrictParser {
+        async parseString() {
+          throw new Error('Feed not recognized as RSS 1 or 2.');
+        }
+      },
+    },
+  }, {
+    fetch: async () => ({ ok: true, status: 200, headers: new Map([['content-type', 'text/html']]), text: async () => '<!doctype html><title>upstream 503</title><body>temporarily unavailable</body>' }),
+    console: { warn: () => {}, log: () => {} },
+  });
+
+  await assert.rejects(() => rssFetcher.discover({
+    id: 'src_ap',
+    type: 'rss',
+    name: 'AP TopNews',
+    url: 'https://rsshub.synthnews.site/apnews/topics/apf-topnews',
+    language: 'en',
+    category: null,
+    fetch_interval_minutes: 60,
+    parser_config: null,
+  }), /Feed parse failed.*contentType=text\/html.*upstream 503/);
 });
 
 test('RSS fetchArticle uses RSS snippet fallback when full article fetch fails', async () => {

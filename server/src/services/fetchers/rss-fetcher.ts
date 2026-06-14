@@ -871,15 +871,30 @@ export function parseRssItems(xml: string): RssParser.Item[] {
   });
 }
 
-async function parseFeedItems(xml: string): Promise<RssParser.Item[]> {
+async function parseFeedItems(xml: string, contentType?: string | null): Promise<RssParser.Item[]> {
   try {
     const feed = await rssParser.parseString(xml);
     return feed.items;
-  } catch {
+  } catch (err) {
     const items = parseRssItems(xml);
-    if (items.length === 0) throw new Error('Feed not recognized as RSS 1 or 2.');
+    if (items.length === 0) throw buildFeedParseError(err, xml, contentType);
     return items;
   }
+}
+
+function sanitizeFeedDiagnostic(text: string): string {
+  return text
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 240);
+}
+
+function buildFeedParseError(err: unknown, xml: string, contentType?: string | null): Error {
+  const base = err instanceof Error ? err.message : String(err || 'Feed parse failed');
+  const sample = sanitizeFeedDiagnostic(xml);
+  return new Error(`Feed parse failed: ${base}; contentType=${contentType || 'unknown'}; sample=${sample}`);
 }
 
 function normalizeFeedUrl(url: string): string {
@@ -899,6 +914,7 @@ export const rssFetcher: SourceFetcher = {
 
     let xml = '';
     let xmlOk = false;
+    let feedContentType: string | null = null;
     try {
       const response = await fetch(sourceUrl, {
         headers: {
@@ -909,6 +925,7 @@ export const rssFetcher: SourceFetcher = {
       });
 
       if (!response.ok) throw new Error(`Status code ${response.status}`);
+      feedContentType = response.headers?.get?.('content-type') ?? null;
       xml = await response.text();
 
       // Some anti-bot pages return 200 OK but with HTML challenge instead of XML
@@ -958,7 +975,7 @@ export const rssFetcher: SourceFetcher = {
       }
     }
 
-    const items = (await parseFeedItems(xml)).slice(0, parsePositiveInt(process.env.MAX_ARTICLES_PER_SOURCE, 20));
+    const items = (await parseFeedItems(xml, feedContentType)).slice(0, parsePositiveInt(process.env.MAX_ARTICLES_PER_SOURCE, 20));
 
     const results = [];
     for (const item of items) {
