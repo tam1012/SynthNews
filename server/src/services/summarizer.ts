@@ -4,6 +4,7 @@ import { normalizeTldr } from '../lib/tldr.js';
 import { PromptConfig } from '../lib/promptConfig.js';
 import { truncateSummaryError } from '../lib/summaryRetryPolicy.js';
 import { ParsedSummaryOutput, parseAiSummaryOutput } from '../lib/summaryOutput.js';
+import { assertUsableSummaryOutput } from '../lib/summaryValidation.js';
 import { isPromoTitle, buildPromoClassifyPrompt, isPromoClassification, shouldRunPromoClassification } from '../lib/promoFilter.js';
 import { callAi } from './ai-client.js';
 import { getPromptConfig } from './prompt-settings.js';
@@ -196,14 +197,18 @@ export async function summarizeArticle(article: ArticleForSummary, promptConfig?
     const parsed = parseAiSummaryOutput(result.trim(), config.allowed_tags);
     if (!parsed.isUsable) {
       const repaired = await callAi(buildSummaryRepairPrompt(result, config), aiOptions);
-      return parseAiSummaryOutput(repaired.trim(), config.allowed_tags);
+      const repairedParsed = parseAiSummaryOutput(repaired.trim(), config.allowed_tags);
+      return assertUsableSummaryOutput(repairedParsed, 'repair');
     }
-    return parsed;
+    return assertUsableSummaryOutput(parsed, 'initial');
   } catch (err: any) {
     if (isAiSafetyRejection(err)) {
       try {
         const fallbackResult = await callAi(buildSafeFallbackPrompt(article, content, config), { timeoutMs: getSummaryAiTimeoutMs() });
-        return parseAiSummaryOutput(fallbackResult.trim(), config.allowed_tags);
+        return assertUsableSummaryOutput(
+          parseAiSummaryOutput(fallbackResult.trim(), config.allowed_tags),
+          'safe fallback'
+        );
       } catch (fallbackErr: any) {
         console.error(`Safe fallback failed for article ${article.id}:`, fallbackErr.message);
         throw new SummarySkippedError(`Skipped after safe fallback: ${fallbackErr.message || err.message}`);
@@ -536,7 +541,7 @@ export async function summarizePendingArticles(): Promise<{ processed: number; s
 
   for (const article of pendingArticles) {
     try {
-      const parsed = await summarizeArticle(article, promptConfig);
+      const parsed = assertUsableSummaryOutput(await summarizeArticle(article, promptConfig), 'pre-save');
       const tldr = normalizeTldr(parsed.tldr || extractTldr(parsed.editorialMarkdown));
       const cleanedSummary = cleanSummaryText(parsed.editorialMarkdown);
 
