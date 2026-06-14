@@ -423,6 +423,15 @@ TRANSLATION QUALITY:
 - Quotes must be translated into Vietnamese with attribution preserved (e.g., "CEO cho biết...", "Theo báo cáo của...").
 - Keep the original article's flow and structure — do NOT reorganize or restructure.
 
+CONTENT FILTERING (CRITICAL — raw_data comes from web scraping and contains noise mixed with the real article):
+- Translate ONLY the main article body. IDENTIFY and REMOVE the following types of web scraping noise:
+  - "Related articles", "Có thể bạn quan tâm", "Read more", "Tin liên quan", "Các tin liên quan khác", sidebar article recommendations — these are links/teasers to OTHER articles on the source website, NOT part of this article. Remove them entirely.
+  - Standalone image captions and photo credits (e.g. "Ảnh: AFP", "Photo: Reuters", "Image source: Getty Images") — UNLESS the caption adds essential factual context not found elsewhere in the article text.
+  - Author bylines at the very end of the article (e.g. "TRẦN PHƯƠNG", "By John Smith", "Reporter: ...") — do NOT include these.
+  - Advertisement blocks, newsletter signup prompts, social media sharing prompts, "Subscribe" calls-to-action.
+  - Navigation breadcrumbs, footer content, cookie consent notices.
+- For PHOTO GALLERY articles (where the source content is predominantly image descriptions/captions with minimal narrative text): do NOT translate each photo caption individually. Instead, write a cohesive editorial summary of the event or topic depicted, weaving key details from the captions into flowing paragraphs. The result should read like a news article, not a list of image descriptions.
+
 MARKDOWN FORMATTING (make it readable and visually clear):
 - Use ## headings to separate logical sections of the article. If the original has sections, translate those headings. If the original is a continuous text, create natural headings based on topic shifts (e.g. "## Bối cảnh vụ việc", "## Phản ứng từ các bên", "## Diễn biến mới nhất").
 - **Bold** proper nouns, organization names, key figures, and important terms INSIDE sentences.
