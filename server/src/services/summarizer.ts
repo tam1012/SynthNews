@@ -288,7 +288,7 @@ Place names — provinces/regions:
   Hainan → Hải Nam | Ningxia → Ninh Hạ | Qinghai → Thanh Hải
 
 Organizations:
-  中国共产党 / CPC → Đảng Cộng sản Trung Quốc | 国务院 → Quốc vụ院 | 全国人大 → Đại hội Đại biểu Nhân dân Toàn quốc
+  中国共产党 / CPC → Đảng Cộng sản Trung Quốc | 国务院 → Quốc vụ viện | 全国人大 → Đại hội Đại biểu Nhân dân Toàn quốc
   新华社 → Tân Hoa xã | 人民日报 → Nhân Dân nhật báo | 中央电视台 / CCTV → Đài Truyền hình Trung ương
   外交部 → Bộ Ngoại giao | 国防部 → Bộ Quốc phòng | 财政部 → Bộ Tài chính | 央行 / 人民银行 → Ngân hàng Nhân dân Trung Quốc
 
