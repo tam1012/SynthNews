@@ -51,7 +51,7 @@ Designed for self-hosting with minimal maintenance, SynthNews features automatic
 
 ### 2. AI Summarization, Translation & Digest Processing
 
-*   **Multi-Provider AI Client**: Native support for Google Gemini, Vertex AI, OpenAI, Anthropic, DeepSeek, Groq, and Xiaomi MIMO APIs. Features an automatic fallback policy if the active provider fails.
+*   **Multi-Provider AI Client**: Native support for Google Gemini, Vertex AI, OpenAI, Anthropic, xAI (Grok), DeepSeek, Groq, and Xiaomi MIMO APIs. Features an automatic fallback policy if the active provider fails.
 *   **Hybrid Promotion & Spam Filtering**: Implements a zero-cost keyword filter at the discovery stage, followed by an LLM-based classifier at the summarization stage to keep advertisement and sponsored content out of the user's feed.
 *   **Title Translation**: Translates foreign language titles into Vietnamese, rendering them side-by-side with original titles for bilingual context.
 *   **Dynamic Digests**: Aggregates high-scoring articles and summaries processed in the last 24 hours to synthesize a readable markdown newsletter.
@@ -107,7 +107,7 @@ Designed for self-hosting with minimal maintenance, SynthNews features automatic
 *   **Framework**: React 19
 *   **Routing**: React Router 7
 *   **Bundler**: Vite 6
-*   **Styling**: Pure CSS (custom variables, responsive grids, and typography in `client/src/styles/global.css`)
+*   **Styling**: Pure CSS with 10 dedicated stylesheets (design tokens, base, home feed, sidebar, header, components, settings, sources, admin) imported via `client/src/styles/global.css`
 *   **Components**: Markdown renderer (`react-markdown`), responsive navigation layouts, customizable setting sheets.
 
 ### Backend
@@ -115,7 +115,7 @@ Designed for self-hosting with minimal maintenance, SynthNews features automatic
 *   **API Framework**: Hono
 *   **Database Client**: `pg` (PostgreSQL)
 *   **Job Scheduler**: `node-cron`
-*   **AI Integration**: Multi-client router supporting Gemini SDK, OpenAI-compatible APIs, Vertex AI credentials, and Custom REST endpoints.
+*   **AI Integration**: Multi-client router supporting Gemini SDK, OpenAI-compatible APIs (OpenAI, xAI, DeepSeek, Groq, MIMO), Anthropic Claude, Vertex AI credentials, and Custom REST endpoints.
 *   **Scraping Helpers**: Cheerio, RSS-Parser, Mozilla Readability, jsdom.
 
 ### Sidecars & Proxies
@@ -151,7 +151,7 @@ Designed for self-hosting with minimal maintenance, SynthNews features automatic
 │   │   ├── services/            # Crawlers, queue, summarizer, post-summarize
 │   │   │   └── fetchers/        #   cluster; fetchers incl. structured-data extractor
 │   │   └── index.ts             # Node entry; also serves /sitemap.xml
-│   └── tests/                   # Backend tests (34 test files)
+│   └── tests/                   # Backend tests (44 test files)
 ├── scripts/                     # Ops helpers: db-backup.sh, daily-restart.sh,
 │                                #   Reuters cookie refresh / warm-profile, check-hosts
 ├── scrapling-sidecar/           # Python Scrapling anti-bot fetch service
@@ -224,6 +224,7 @@ SynthNews manages its relational schema using a custom TypeScript migration engi
 *   `016_article_clustering.sql`: Near-duplicate clustering via self-referencing `parent_article_id` (leader/follower) plus `cluster_signature`, with indexes for follower lookup and "feed leaders only".
 *   `017_clamp_future_published_at.sql`: Clamps articles whose `published_at` is beyond the feed tolerance window, preserving the original timestamp in `metadata`.
 *   `018_unblock_soft_paywalls.sql`: Removes soft-paywall publishers (wired, theatlantic, newyorker, medium, towardsdatascience, technologyreview) from the blocklist now that the structured-data extractor recovers their full text with no paid credit.
+*   `019_add_is_saved.sql`: Adds `is_saved` boolean column to `articles` for user-bookmarked articles.
 
 ---
 

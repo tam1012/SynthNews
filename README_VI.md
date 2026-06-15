@@ -183,7 +183,7 @@ DevOps:
 │   │   │   ├── apiCache.ts         # In-memory cache policy
 │   │   │   ├── persistentCache.ts  # localStorage fallback cache
 │   │   │   └── serviceWorker.ts    # PWA service worker registration
-│   │   ├── styles/global.css       # Toàn bộ CSS
+│   │   ├── styles/              # 10 CSS files (tokens, base, home, sidebar, header, components, settings-sheet, sources, admin, global)
 │   │   ├── main.tsx
 │   │   └── router.tsx
 │   └── tests/
@@ -192,7 +192,7 @@ DevOps:
 │   │   ├── db/
 │   │   │   ├── index.ts            # PostgreSQL connection
 │   │   │   ├── migrate.ts          # Migration runner
-│   │   │   └── migrations/         # 15 SQL migration files
+│   │   │   └── migrations/         # 21 SQL migration files
 │   │   ├── jobs/scheduler.ts       # Cron scheduler + job lock
 │   │   ├── lib/
 │   │   │   ├── auth.ts             # Auth middleware + rate limit
@@ -211,6 +211,11 @@ DevOps:
 │   │   │   ├── similarity.ts       # Near-duplicate clustering (bigram Jaccard)
 │   │   │   ├── accessLog.ts        # Parse nginx access log cho visit analytics
 │   │   │   ├── aiProviderValidation.ts # Validate payload AI provider
+│   │   │   ├── aiRetryPolicy.ts    # Determine retryable AI errors
+│   │   │   ├── scrapeTiming.ts     # Dynamic scrape interval + backoff
+│   │   │   ├── dateUtils.ts        # Date helpers
+│   │   │   ├── runtime-status.ts   # Runtime stats tracking
+│   │   │   ├── summaryValidation.ts # Validate summary quality
 │   │   │   └── utils.ts
 │   │   ├── routes/
 │   │   │   ├── health.ts           # Health + manual trigger
@@ -242,14 +247,19 @@ DevOps:
 │   │   │       ├── github-trending-fetcher.ts # GitHub Trending
 │   │   │       ├── selector-learning.ts  # AI selector learning
 │   │   │       ├── selector-profile.ts   # Selector cache/profile
+│   │   │       ├── sitemap-discovery.ts  # Auto-discover articles từ sitemap
+│   │   │       ├── msn-fetcher.ts        # MSN News JSON API
+│   │   │       ├── sohu-fetcher.ts       # Sohu.com mobile
+│   │   │       ├── qq-news-fetcher.ts    # QQ News (Tencent)
 │   │   │       ├── article-writer.ts     # DB insert + quality gate + fetch-time clustering
 │   │   │       ├── http-utils.ts         # HTTP fetch + Playwright fallback
 │   │   │       ├── scrapling-fetch.ts    # Scrapling sidecar client + fallback (+ residential proxy passthrough)
 │   │   │       ├── hosted-fetch.ts        # Hosted fetch chain 6 provider; DataDome dùng Geekflare → Scrape.do → ScrapeOps → Firecrawl → ScrapingAnt residential
+│   │   │       ├── hosted-fetch-usage.ts  # Daily usage tracking cho hosted fetch
 │   │   │       ├── registry.ts           # Fetcher routing
 │   │   │       └── types.ts
 │   │   └── index.ts                # Server entry point (+ /sitemap.xml động)
-│   └── tests/                      # 34 test files (node:test)
+│   └── tests/                      # 44 test files (node:test)
 ├── scripts/                        # Helper vận hành + dev
 │   ├── db-backup.sh                # Backup PostgreSQL định kỳ (cron VPS, 03:30)
 │   ├── daily-restart.sh            # Restart app định kỳ + healthcheck
@@ -449,7 +459,7 @@ curl "https://synthnews.site/sitemap.xml"
 
 ## Database
 
-Migrations hiện có (18 file):
+Migrations hiện có (21 file):
 
 - `001_initial.sql` — sources, articles, scrape_logs, digests, digest_items
 - `002_ai_providers.sql` — ai_providers, app_settings
@@ -469,6 +479,7 @@ Migrations hiện có (18 file):
 - `016_article_clustering.sql` — gộp bài trùng: `parent_article_id` (leader/follower self-reference) + `cluster_signature`, kèm index cho follower lookup và "feed leaders only"
 - `017_clamp_future_published_at.sql` — kẹp lại các bài có `published_at` tương lai vượt cửa sổ cho phép, lưu mốc gốc vào metadata để feed sort theo thời gian hợp lý
 - `018_unblock_soft_paywalls.sql` — gỡ một số publisher (wired, theatlantic, newyorker, medium, towardsdatascience, technologyreview) khỏi blocklist vì structured-data extractor đã đọc được full text không tốn credit
+- `019_add_is_saved.sql` — thêm cột `is_saved` boolean cho articles, dùng để đánh dấu bài đã lưu
 
 Bảng chính:
 
@@ -481,6 +492,7 @@ Bảng chính:
 - `ai_providers`
 - `source_profiles`
 - `blocklist`
+- `hosted_fetch_usage`
 - `app_settings`
 - `_migrations`
 
@@ -735,6 +747,8 @@ Compose services:
 - `db`: PostgreSQL 16 Alpine, volume `pgdata`, bind local `127.0.0.1:5433`.
 - `scrapling`: Python Scrapling sidecar, anti-bot fetch service, internal network only.
 - `app`: SynthNews app, bind local `127.0.0.1:3001`, depends on DB + Scrapling healthcheck.
+- `reuters-cookie-refresh`: Worker tự refresh/verify cookie Reuters định kỳ (mỗi 6 giờ), dùng Chromium + residential proxy.
+- `reuters-profile-browser`: Profile `manual`, noVNC (port 6080), chỉ bật khi cần solve DataDome thủ công.
 
 Healthcheck app:
 
