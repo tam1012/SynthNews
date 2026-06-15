@@ -16,6 +16,10 @@ cd ~/newstamhv && docker compose exec -T db psql -U newstamhv -d newstamhv -c ".
 
 **Memory files (chi tiết project):** `C:\Users\Ha Tam\.claude\projects\d--Antigravity\memory\`
 
+**Quy tắc ghi nhớ:** Trong quá trình hỗ trợ dự án này, nếu phát hiện thông tin quan trọng
+(pattern lỗi mới, ngưỡng/tham số mới, quyết định kiến trúc, bài học từ sự cố...),
+**tự động lưu vào memory** (thư mục trên) hoặc tạo file ghi nhớ mới. Không cần hỏi Anh trước.
+
 ## Deployment
 
 **QUAN TRỌNG: Dự án này dùng GitHub Actions tự động deploy.**
