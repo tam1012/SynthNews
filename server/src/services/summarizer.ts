@@ -134,6 +134,19 @@ function isAiSafetyRejection(err: unknown): boolean {
   return /safety|high-risk|rejected/i.test(message);
 }
 
+function looksLikeAiRefusalOutput(output: string): boolean {
+  const text = output.trim().replace(/\s+/g, ' ');
+  if (!text || text.length > 1200) return false;
+
+  return /^(?:i(?:'|’)?m sorry|sorry|i can(?:'|’)?t|i cannot|i am unable|i(?:'|’)?m unable|tôi xin lỗi|xin lỗi|tôi không thể|mình không thể)/iu.test(text)
+    && /(?:assist|help|summari[sz]e|request|policy|sensitive|minor|child|sexual|hỗ trợ|tóm tắt|yêu cầu|chính sách|nhạy cảm|trẻ vị thành niên|trẻ em|tình dục)/iu.test(text);
+}
+
+function isRepairableSummaryValidationError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err || '');
+  return /suspicious repetitive (?:Vietnam timezone|VND) conversions/i.test(message);
+}
+
 function isAiTimeout(err: unknown): boolean {
   const message = err instanceof Error ? err.message : String(err || '');
   const name = err instanceof Error ? err.name : '';
@@ -150,6 +163,19 @@ function getDigestAiTimeoutMs(): number {
   const parsed = parseInt(process.env.DIGEST_AI_TIMEOUT_MS || '', 10);
   if (Number.isFinite(parsed) && parsed > 0) return parsed;
   return DEFAULT_DIGEST_AI_TIMEOUT_MS;
+}
+
+async function repairSummaryOutput(
+  rawOutput: string,
+  config: PromptConfig,
+  aiOptions: { timeoutMs: number }
+): Promise<ParsedSummaryOutput> {
+  const repaired = await callAi(buildSummaryRepairPrompt(rawOutput, config), aiOptions);
+  if (looksLikeAiRefusalOutput(repaired)) {
+    throw new Error('AI Provider rejected the request due to safety/refusal filters.');
+  }
+  const repairedParsed = parseAiSummaryOutput(repaired.trim(), config.allowed_tags);
+  return assertUsableSummaryOutput(repairedParsed, 'repair');
 }
 
 export async function summarizeArticle(article: ArticleForSummary, promptConfig?: PromptConfig): Promise<ParsedSummaryOutput> {
@@ -194,17 +220,26 @@ export async function summarizeArticle(article: ArticleForSummary, promptConfig?
   try {
     const aiOptions = { timeoutMs: getSummaryAiTimeoutMs() };
     const result = await callAi(prompt, aiOptions);
+    if (looksLikeAiRefusalOutput(result)) {
+      throw new Error('AI Provider rejected the request due to safety/refusal filters.');
+    }
     const parsed = parseAiSummaryOutput(result.trim(), config.allowed_tags);
     if (!parsed.isUsable) {
-      const repaired = await callAi(buildSummaryRepairPrompt(result, config), aiOptions);
-      const repairedParsed = parseAiSummaryOutput(repaired.trim(), config.allowed_tags);
-      return assertUsableSummaryOutput(repairedParsed, 'repair');
+      return repairSummaryOutput(result, config, aiOptions);
     }
-    return assertUsableSummaryOutput(parsed, 'initial');
+    try {
+      return assertUsableSummaryOutput(parsed, 'initial');
+    } catch (validationErr) {
+      if (!isRepairableSummaryValidationError(validationErr)) throw validationErr;
+      return repairSummaryOutput(result, config, aiOptions);
+    }
   } catch (err: any) {
     if (isAiSafetyRejection(err)) {
       try {
         const fallbackResult = await callAi(buildSafeFallbackPrompt(article, content, config), { timeoutMs: getSummaryAiTimeoutMs() });
+        if (looksLikeAiRefusalOutput(fallbackResult)) {
+          throw new Error('AI Provider rejected the safe fallback due to safety/refusal filters.');
+        }
         return assertUsableSummaryOutput(
           parseAiSummaryOutput(fallbackResult.trim(), config.allowed_tags),
           'safe fallback'
