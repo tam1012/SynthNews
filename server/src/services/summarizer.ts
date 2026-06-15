@@ -179,10 +179,18 @@ async function repairSummaryOutput(
 ): Promise<ParsedSummaryOutput> {
   const repaired = await callAi(buildSummaryRepairPrompt(rawOutput, config), aiOptions);
   if (looksLikeAiRefusalOutput(repaired)) {
-    throw new Error('AI Provider rejected the request due to safety/refusal filters.');
+    throw new SummarySkippedError('Skipped: AI refused to repair summary (safety/refusal filters)');
   }
   const repairedParsed = parseAiSummaryOutput(repaired.trim(), config.allowed_tags);
-  return assertUsableSummaryOutput(repairedParsed, 'repair');
+  try {
+    return assertUsableSummaryOutput(repairedParsed, 'repair');
+  } catch (err) {
+    // If AI repair still can't produce usable output, the source content is
+    // likely too thin (paywall, newsletter stub) or was safety-filtered.
+    // Treat as skip rather than a retryable failure.
+    const message = err instanceof Error ? err.message : String(err);
+    throw new SummarySkippedError(`Skipped: ${message}`);
+  }
 }
 
 export async function summarizeArticle(article: ArticleForSummary, promptConfig?: PromptConfig): Promise<ParsedSummaryOutput> {
@@ -232,7 +240,7 @@ export async function summarizeArticle(article: ArticleForSummary, promptConfig?
     const aiOptions = { timeoutMs: getSummaryAiTimeoutMs() };
     const result = await callAi(prompt, aiOptions);
     if (looksLikeAiRefusalOutput(result)) {
-      throw new Error('AI Provider rejected the request due to safety/refusal filters.');
+      throw new SummarySkippedError('Skipped: AI refused to summarize (safety/refusal filters)');
     }
     const parsed = parseAiSummaryOutput(result.trim(), config.allowed_tags);
     if (!parsed.isUsable) {
