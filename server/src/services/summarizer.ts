@@ -147,6 +147,13 @@ function isRepairableSummaryValidationError(err: unknown): boolean {
   return /suspicious repetitive (?:Vietnam timezone|VND) conversions/i.test(message);
 }
 
+function isHighRiskMinorSexualForumTopic(article: ArticleForSummary): boolean {
+  const text = `${article.title || ''} ${article.raw_excerpt || ''}`.toLowerCase();
+  const hasMinorSignal = /\b(?:child|minor|underage|teen(?:ager)?|preteen|aged\s+(?:[0-9]|1[0-7]))\b|trẻ\s+em|vị\s+thành\s+niên|chưa\s+thành\s+niên/iu.test(text);
+  const hasSexualRelationshipSignal = /\b(?:dated?|dating|relationship|sex(?:ual)?|slept\s+with|groom(?:ing)?|molest(?:ed|ation)?|rape|abuse|assault)\b|hẹn\s+hò|quan\s+hệ|tình\s+dục|xâm\s+hại|ấu\s+dâm/iu.test(text);
+  return hasMinorSignal && hasSexualRelationshipSignal;
+}
+
 function isAiTimeout(err: unknown): boolean {
   const message = err instanceof Error ? err.message : String(err || '');
   const name = err instanceof Error ? err.name : '';
@@ -185,6 +192,10 @@ export async function summarizeArticle(article: ArticleForSummary, promptConfig?
   const isForum = article.source_name?.toLowerCase().includes('reddit') ||
                   article.source_name?.toLowerCase().includes('voz') ||
                   article.title?.startsWith('[r/');
+
+  if (isForum && isHighRiskMinorSexualForumTopic(article)) {
+    throw new SummarySkippedError('Skipped: sensitive minor sexual forum topic');
+  }
 
   if (!isForum && content.length < 500) {
     throw new SummarySkippedError(`Skipped: source content too short (${content.length} characters)`);

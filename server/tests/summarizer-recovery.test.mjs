@@ -135,14 +135,33 @@ test('summarizeArticle sends refusal-shaped AI output to safe fallback instead o
 
   const result = await summarizeArticle({
     id: 'art_refusal',
-    title: '[r/todayilearned] TIL that Iggy Pop dated a child!',
-    raw_excerpt: 'TIL that Iggy Pop dated a child!',
-    raw_content: 'Forum thread with sensitive celebrity discussion. '.repeat(80),
+    title: '[r/AskProgramming] How do researchers discuss malware safely?',
+    raw_excerpt: 'A forum thread about safely discussing malware research.',
+    raw_content: 'Forum thread with sensitive cybersecurity discussion. '.repeat(80),
     language: 'en',
-    source_name: 'Reddit r/todayilearned',
+    source_name: 'Reddit r/AskProgramming',
   }, promptConfig);
 
   assert.equal(result.tldr, 'Bai Reddit co noi dung nhay cam nen duoc tom tat o muc khai quat.');
   assert.equal(prompts.length, 2);
   assert.match(prompts[1], /cautious news editor/);
+});
+
+test('summarizeArticle skips high-risk minor sexual forum topics before calling AI', async () => {
+  const { summarizeArticle, SummarySkippedError, prompts, promptConfig } = loadSummarizerWithAiResponses([
+    validSummary(),
+  ]);
+
+  await assert.rejects(
+    () => summarizeArticle({
+      id: 'art_sensitive_forum',
+      title: '[r/todayilearned] TIL that a celebrity dated a child',
+      raw_excerpt: 'TIL that a celebrity dated a child',
+      raw_content: 'Forum thread with sensitive celebrity discussion. '.repeat(80),
+      language: 'en',
+      source_name: 'Reddit r/todayilearned',
+    }, promptConfig),
+    (err) => err instanceof SummarySkippedError && /sensitive minor sexual forum topic/i.test(err.message)
+  );
+  assert.equal(prompts.length, 0);
 });
