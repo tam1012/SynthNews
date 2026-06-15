@@ -19,6 +19,8 @@ cd ~/newstamhv && docker compose exec -T db psql -U newstamhv -d newstamhv -c ".
 **Quy tắc ghi nhớ:** Trong quá trình hỗ trợ dự án này, nếu phát hiện thông tin quan trọng
 (pattern lỗi mới, ngưỡng/tham số mới, quyết định kiến trúc, bài học từ sự cố...),
 **tự động lưu vào memory** (thư mục trên) hoặc tạo file ghi nhớ mới. Không cần hỏi Anh trước.
+Nếu phát hiện thông tin trong file này đã lỗi thời hoặc không chính xác với thực tế,
+**tự động sửa lại cho đúng.**
 
 ## Deployment
 
