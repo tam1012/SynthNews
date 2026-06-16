@@ -106,7 +106,10 @@ export function buildArticleListFilters(input: ArticleListFilterInput): ArticleL
   const clauses = ['1=1'];
   let paramIndex = 1;
 
-  if (!input.includeFuture) {
+  // Saved tab: no time limits — show all saved articles regardless of date/age
+  const isSaved = input.feedTab === 'saved';
+
+  if (!input.includeFuture && !isSaved) {
     clauses.push(PUBLIC_ARTICLE_FRESHNESS_SQL);
   }
 
@@ -118,7 +121,7 @@ export function buildArticleListFilters(input: ArticleListFilterInput): ArticleL
     clauses.push(`a.summary_status = $${paramIndex++}`);
     params.push(input.status);
   }
-  if (input.date) {
+  if (input.date && !isSaved) {
     clauses.push(`${LOCAL_DATE_SQL} = $${paramIndex++}`);
     params.push(input.date);
   }
@@ -168,6 +171,9 @@ export function buildArticleSearchFilters(input: ArticleSearchFilterInput): Arti
   validateLocalDate(input.date);
   validateFeedTab(input.feedTab);
 
+  // Saved tab: no time limits
+  const isSaved = input.feedTab === 'saved';
+
   const params: any[] = [`%${input.query.trim()}%`];
   const clauses = [
     `a.summary_status = 'done'`,
@@ -175,11 +181,11 @@ export function buildArticleSearchFilters(input: ArticleSearchFilterInput): Arti
   ];
   let paramIndex = 2;
 
-  if (!input.includeFuture) {
+  if (!input.includeFuture && !isSaved) {
     clauses.push(PUBLIC_ARTICLE_FRESHNESS_SQL);
   }
 
-  if (input.date) {
+  if (input.date && !isSaved) {
     clauses.push(`${LOCAL_DATE_SQL} = $${paramIndex++}`);
     params.push(input.date);
   }

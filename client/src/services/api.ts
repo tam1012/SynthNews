@@ -168,7 +168,9 @@ export const api = {
     if (params?.limit) qs.set('limit', String(params.limit));
     if (params?.sourceId) qs.set('sourceId', params.sourceId);
     if (params?.status) qs.set('status', params.status);
-    if (params?.date) qs.set('date', params.date);
+    // Saved tab: no date filter — show all saved articles regardless of date
+    const isSaved = params?.feedTab === 'saved';
+    if (params?.date && !isSaved) qs.set('date', params.date);
     if (params?.tag) qs.set('tag', params.tag);
     if (params?.minScore) qs.set('minScore', String(params.minScore));
     if (params?.feedTab) qs.set('feedTab', params.feedTab);
@@ -184,7 +186,9 @@ export const api = {
   getArticleTags: (params?: { feedTab?: string; date?: string }) => {
     const qs = new URLSearchParams();
     if (params?.feedTab) qs.set('feedTab', params.feedTab);
-    if (params?.date) qs.set('date', params.date);
+    // Saved tab: no date filter — show tags from all saved articles
+    const isSaved = params?.feedTab === 'saved';
+    if (params?.date && !isSaved) qs.set('date', params.date);
     return request<any>(`/articles/tags?${qs}`);
   },
   searchArticles: (q: string, options?: number | ArticleSearchOptions) => {

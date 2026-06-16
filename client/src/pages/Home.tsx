@@ -189,7 +189,9 @@ export function Home() {
     () => {
       // Wait for dates to load before fetching articles (prevents empty flash)
       if (datesLoading && !datesRaw) return Promise.resolve({ data: [], meta: { total: 0, page: 1, totalPages: 0 } });
-      return api.getArticles({ page: 1, limit: FEED_PAGE_SIZE, status: 'done', date: selectedDate || undefined, sourceId: filterSource === 'all' ? undefined : filterSource, feedTab: tab === 'digest' ? 'all' : tab, tag: filterTag || undefined });
+      // Saved tab: no date filter — show all saved articles
+      const effectiveDate = tab === 'saved' ? undefined : (selectedDate || undefined);
+      return api.getArticles({ page: 1, limit: FEED_PAGE_SIZE, status: 'done', date: effectiveDate, sourceId: filterSource === 'all' ? undefined : filterSource, feedTab: tab === 'digest' ? 'all' : tab, tag: filterTag || undefined });
     },
     [selectedDate, filterSource, datesLoading, tab, filterTag]
   );
@@ -200,7 +202,11 @@ export function Home() {
     setLoadMoreError(null);
   }, [raw]);
 
-  const allArticles: any[] = useMemo(() => filterArticlesBySelectedDate(articlePages, selectedDate), [articlePages, selectedDate]);
+  // Saved tab: no date filter — show all saved articles
+  const allArticles: any[] = useMemo(() => {
+    if (tab === 'saved') return articlePages;
+    return filterArticlesBySelectedDate(articlePages, selectedDate);
+  }, [articlePages, selectedDate, tab]);
   const isShowingOfflineCache = Boolean(raw?.offline || raw?.stale || datesRaw?.offline || datesRaw?.stale);
 
   const articles: any[] = useMemo(() => filterPersonalizedArticles(allArticles, {
@@ -348,7 +354,9 @@ export function Home() {
     setIsLoadingMore(true);
     setLoadMoreError(null);
     try {
-      const response = await api.getArticles({ page: nextPage, limit: FEED_PAGE_SIZE, status: 'done', date: selectedDate || undefined, sourceId: filterSource === 'all' ? undefined : filterSource, feedTab: tab === 'digest' ? 'all' : tab, tag: filterTag || undefined });
+      // Saved tab: no date filter — show all saved articles
+      const effectiveDate = tab === 'saved' ? undefined : (selectedDate || undefined);
+      const response = await api.getArticles({ page: nextPage, limit: FEED_PAGE_SIZE, status: 'done', date: effectiveDate, sourceId: filterSource === 'all' ? undefined : filterSource, feedTab: tab === 'digest' ? 'all' : tab, tag: filterTag || undefined });
       setArticlePages(prev => [...prev, ...(response?.data || [])]);
       setArticlePage(nextPage);
     } catch (err: any) {
@@ -599,7 +607,7 @@ export function Home() {
             <div className="toolbar-compact-row">
               {tab !== 'digest' ? (
                 <div className="toolbar-filter-wrap">
-                  {sortedDates.length > 0 && selectedDate && (
+                  {sortedDates.length > 0 && selectedDate && tab !== 'saved' && (
                     <div className="compact-date-nav">
                       <button
                         className="compact-date-btn"
@@ -808,7 +816,7 @@ export function Home() {
                         {isLoadingMore ? 'Đang tải thêm...' : `Tải thêm bài cũ (${loadedArticleCount}/${totalArticleCount})`}
                       </button>
                     ) : (
-                      <p>Đã hiển thị hết bài trong ngày này.</p>
+                      <p>{tab === 'saved' ? 'Đã hiển thị hết bài đã lưu.' : 'Đã hiển thị hết bài trong ngày này.'}</p>
                     )}
                   </div>
                 </>

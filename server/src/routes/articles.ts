@@ -81,15 +81,17 @@ articles.get('/tags', async (c) => {
   const date = c.req.query('date');
 
   const includeFuture = c.req.query('includeFuture') === '1' && hasValidAdminToken(c.req.header('Authorization'));
+  // Saved tab: no time limits — show tags from all saved articles
+  const isSaved = feedTab === 'saved';
   let where = `WHERE a.summary_status = 'done'`;
   const params: any[] = [];
   let paramIndex = 1;
 
-  if (!includeFuture) {
+  if (!includeFuture && !isSaved) {
     where += ` AND ${PUBLIC_ARTICLE_FRESHNESS_SQL}`;
   }
 
-  if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+  if (date && /^\d{4}-\d{2}-\d{2}$/.test(date) && !isSaved) {
     where += ` AND ${LOCAL_DATE_SQL} = $${paramIndex++}`;
     params.push(date);
   }
