@@ -57,11 +57,12 @@
   text-decoration: none;
 }
 .sidebar-subtitle {
-  font-size: 0.78rem;
+  font-size: 0.7rem;
   font-weight: 500;
   color: var(--color-text-muted);
-  letter-spacing: 0.03em;
+  letter-spacing: 0.02em;
   margin-top: 2px;
+  white-space: nowrap;
 }
 
 /* Nav items */
