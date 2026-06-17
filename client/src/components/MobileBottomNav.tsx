@@ -1,26 +1,52 @@
 import { NavLink, useLocation } from 'react-router-dom';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useMemo } from 'react';
+
+/** Trích xuất date slug (ddmmyyyy) từ pathname nếu có, ví dụ /15062026/news → "15062026" */
+function extractDateSlug(pathname: string): string | null {
+  const m = pathname.match(/^\/(\d{8})(?:\/|$)/);
+  return m ? m[1] : null;
+}
+
+/** Các tab feed được phép ghép ngày vào URL */
+const FEED_TABS = ['/news', '/tech', '/voz', '/reddit', '/saved', '/digest'];
 
 export function MobileBottomNav() {
   const location = useLocation();
   const path = location.pathname;
   const navRef = useRef<HTMLElement>(null);
+  const dateSlug = useMemo(() => extractDateSlug(path), [path]);
+
+  // Ghép date slug vào href nếu đang xem một ngày cụ thể
+  const navHref = (baseHref: string) => {
+    if (!dateSlug) return baseHref;
+    if (baseHref === '/') return `/${dateSlug}`;
+    if (FEED_TABS.includes(baseHref)) return `/${dateSlug}${baseHref}`;
+    return baseHref;
+  };
 
   const tabs = [
-    { label: 'Tất cả', href: '/' },
-    { label: 'News', href: '/news' },
-    { label: 'Tech', href: '/tech' },
-    { label: 'VOZ', href: '/voz' },
-    { label: 'Reddit', href: '/reddit' },
-    { label: 'Đã lưu', href: '/saved' },
-    { label: 'Bản tin', href: '/digest' },
-    { label: 'Nguồn tin', href: '/sources' },
-    { label: 'Admin', href: '/admin' },
+    { label: 'Tất cả', href: navHref('/') },
+    { label: 'News', href: navHref('/news') },
+    { label: 'Tech', href: navHref('/tech') },
+    { label: 'VOZ', href: navHref('/voz') },
+    { label: 'Reddit', href: navHref('/reddit') },
+    { label: 'Đã lưu', href: navHref('/saved') },
+    { label: 'Bản tin', href: navHref('/digest') },
+    { label: 'Nguồn tin', href: navHref('/sources') },
+    { label: 'Admin', href: navHref('/admin') },
   ];
 
   const isActive = (href: string) => {
-    if (href === '/') return path === '/' || path.startsWith('/article');
+    // "Tất cả" — matches /, /<date>, /article/*
+    if (href === '/' || (dateSlug && href === `/${dateSlug}`)) {
+      if (path.startsWith('/article')) return true;
+      return path === href;
+    }
+    // Admin dùng prefix match để phủ sub-tab
     if (href === '/admin') return path === '/admin' || path.startsWith('/admin/');
+    // Sources dùng prefix match
+    if (href === '/sources') return path.startsWith(href);
+    // Feed tabs — so khớp chính xác (đã bao gồm date prefix nếu có)
     return path === href;
   };
 

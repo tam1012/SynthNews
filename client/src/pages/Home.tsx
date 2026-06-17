@@ -59,7 +59,7 @@ export function Home() {
 
     // /:dateSlug/:tabSlug (e.g. /13062026/news)
     if (!pathDate) {
-      const dateTabMatch = path.match(/^\/(\d{2})(\d{2})(\d{4})\/(news|tech|voz|reddit|saved)$/);
+      const dateTabMatch = path.match(/^\/(\d{2})(\d{2})(\d{4})\/(news|tech|voz|reddit|saved|digest)$/);
       if (dateTabMatch) {
         const [, dd, mm, yyyy, tabName] = dateTabMatch;
         pathDate = `${yyyy}-${mm}-${dd}`;
