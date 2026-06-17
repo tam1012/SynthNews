@@ -77,7 +77,7 @@ export function Sidebar({
         >
           SynthNews
         </NavLink>
-        <span className="sidebar-subtitle">Curated for you</span>
+        <span className="sidebar-subtitle">The world's news, in your language</span>
       </div>
 
       <nav className="sidebar-nav">
