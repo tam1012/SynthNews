@@ -68,8 +68,8 @@ export function shouldShowRightPane({
   return tab === 'digest' || shouldShowDetailPane({ tab, hasSelectedArticle, hasArticleDeepLink });
 }
 
-export function shouldShowScrollTopButton(scrollY: number, hasDetailPane: boolean): boolean {
-  return !hasDetailPane && scrollY > 420;
+export function shouldShowScrollTopButton(scrollY: number, _hasDetailPane: boolean): boolean {
+  return scrollY > 420;
 }
 
 export function getEmptyFeedMessage({

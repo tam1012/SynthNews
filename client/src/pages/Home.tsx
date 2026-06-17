@@ -278,6 +278,12 @@ export function Home() {
   const readArticleSet = useMemo(() => new Set(readArticleIds), [readArticleIds]);
   const bookmarkedArticleSet = useMemo(() => new Set(bookmarkedArticleIds), [bookmarkedArticleIds]);
 
+  // Today's date in YYYY-MM-DD for today indicator
+  const todayStr = useMemo(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  }, []);
+
   const readerLoadingState = getReaderLoadingState({ isFeedLoading: loading, hasArticleDeepLink });
   const detailPaneVisible = shouldShowDetailPane({
     tab,
@@ -296,10 +302,15 @@ export function Home() {
   });
 
   const scrollFeedToTop = useCallback(() => {
-    splitLeftRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
-    document.querySelector('.app-content')?.scrollTo({ top: 0, behavior: 'smooth' });
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  }, []);
+    if (detailPaneVisible) {
+      const detailPanel = document.querySelector('.detail-panel') as HTMLElement | null;
+      detailPanel?.scrollTo({ top: 0, behavior: 'smooth' });
+    } else {
+      splitLeftRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+      document.querySelector('.app-content')?.scrollTo({ top: 0, behavior: 'smooth' });
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }, [detailPaneVisible]);
 
   const handleManualRefresh = useCallback(async () => {
     setIsRefreshing(true);
@@ -422,7 +433,9 @@ export function Home() {
     const updateScrollTopState = () => {
       const paneScrollY = splitLeftRef.current?.scrollTop || 0;
       const appContentScrollY = appContent?.scrollTop || 0;
-      const currentY = Math.max(window.scrollY, paneScrollY, appContentScrollY);
+      const detailPanel = document.querySelector('.detail-panel') as HTMLElement | null;
+      const detailScrollY = detailPanel?.scrollTop || 0;
+      const currentY = Math.max(window.scrollY, paneScrollY, appContentScrollY, detailScrollY);
       setShowScrollTop(shouldShowScrollTopButton(currentY, detailPaneVisible));
 
       // Auto-hide toolbar compact row on mobile (skip digest — no compact row)
@@ -444,10 +457,14 @@ export function Home() {
     const splitLeft = splitLeftRef.current;
     splitLeft?.addEventListener('scroll', updateScrollTopState, { passive: true });
     appContent?.addEventListener('scroll', updateScrollTopState, { passive: true });
+    // Also track detail panel scroll when visible
+    const detailPanel = document.querySelector('.detail-panel') as HTMLElement | null;
+    detailPanel?.addEventListener('scroll', updateScrollTopState, { passive: true });
     return () => {
       window.removeEventListener('scroll', updateScrollTopState);
       splitLeft?.removeEventListener('scroll', updateScrollTopState);
       appContent?.removeEventListener('scroll', updateScrollTopState);
+      detailPanel?.removeEventListener('scroll', updateScrollTopState);
     };
   }, [detailPaneVisible, tab]);
 
@@ -618,7 +635,8 @@ export function Home() {
                       >
                         ‹
                       </button>
-                      <span className="compact-date-label">
+                      <span className={`compact-date-label ${selectedDate === todayStr ? 'is-today' : ''}`}>
+                        {selectedDate === todayStr && <span className="today-dot" title="Hôm nay">●</span>}
                         {(() => { const d = new Date(selectedDate); return `${d.getDate()}/${d.getMonth() + 1}`; })()}
                       </span>
                       <button
@@ -630,6 +648,11 @@ export function Home() {
                       >
                         ›
                       </button>
+                      {selectedDate !== todayStr && (
+                        <button className="compact-today-btn" onClick={() => setSelectedDate(todayStr)} type="button" title="Về tin mới nhất">
+                          Hôm nay
+                        </button>
+                      )}
                     </div>
                   )}
                   <div className="feed-filter-control" ref={filterControlRef}>
@@ -770,6 +793,19 @@ export function Home() {
                 {mutedTags.length > 0 && ` · ẩn ${mutedTags.length} chủ đề`}
               </span>
               <button className="btn btn-sm" onClick={clearPersonalizationFilters}>Bỏ cá nhân hóa</button>
+            </div>
+          )}
+
+          {/* Context heading: Tab · Ngày */}
+          {tab !== 'digest' && selectedDate && (
+            <div className="feed-context-heading">
+              <span className="feed-context-tab">
+                {tab === 'all' ? 'Tất cả tin' : tab === 'news' ? 'News' : tab === 'tech' ? 'Tech News' : tab === 'voz' ? 'VOZ' : tab === 'reddit' ? 'Reddit' : 'Đã lưu'}
+              </span>
+              <span className="feed-context-separator">·</span>
+              <span className="feed-context-date">
+                {new Date(selectedDate).toLocaleDateString('vi-VN', { day: 'numeric', month: 'numeric', year: 'numeric', timeZone: 'Asia/Ho_Chi_Minh' })}
+              </span>
             </div>
           )}
 
