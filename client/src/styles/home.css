@@ -580,14 +580,6 @@
   font-size: 0.7rem; color: var(--color-text-muted);
   font-weight: 500;
 }
-.feed-item-reading-time {
-  font-size: 0.68rem;
-  color: var(--color-text-muted);
-  font-weight: 500;
-  opacity: 0.6;
-  margin-left: auto;
-}
-
 .feed-item-state-badge {
   font-size: 0.66rem;
   font-weight: 700;
@@ -761,9 +753,6 @@
   .feed-item-meta {
     gap: 8px;
     margin-bottom: 8px;
-  }
-  .feed-item-reading-time {
-    margin-left: 0;
   }
   .feed-item-title {
     font-size: 1.02rem;

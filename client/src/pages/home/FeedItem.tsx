@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { buildFeedPreview, cleanTitle, estimateReadingTime, extractSourceLabel, formatTime, getVisibleArticleTags, isArticleFresh } from './homeHelpers';
+import { buildFeedPreview, cleanTitle, extractSourceLabel, formatTime, getVisibleArticleTags, isArticleFresh } from './homeHelpers';
 
 /* Preload react-markdown on first user interaction to avoid flash on article open */
 let markdownPreloaded = false;
@@ -69,7 +69,6 @@ export function FeedItem({
   const sourceLabel = extractSourceLabel(article);
   const title = cleanTitle(article.translated_title || article.title);
   const time = article.published_at ? formatTime(article.published_at) : '';
-  const readingTime = useMemo(() => estimateReadingTime(article), [article]);
   const visibleTags = useMemo(() => getVisibleArticleTags(article), [article]);
   const isFresh = useMemo(() => isArticleFresh(article), [article]);
 
@@ -94,7 +93,6 @@ export function FeedItem({
         {isFresh && !isRead && <span className="feed-item-state-badge is-new">Mới</span>}
         {isRead && <span className="feed-item-state-badge is-read">Đã đọc</span>}
         {time && <span className="feed-item-time">{time}</span>}
-        <span className="feed-item-reading-time">{readingTime}</span>
         {article.cluster_count > 0 && (
           <span className="feed-item-cluster-badge" title={`${article.cluster_count + 1} nguồn cùng đưa tin về sự kiện này`}>
             +{article.cluster_count} nguồn
