@@ -10,8 +10,30 @@ Designed for self-hosting with minimal maintenance, SynthNews features automatic
 
 ---
 
+## Screenshots
+
+<p align="center">
+  <img src="docs/screenshots/desktop-light.png" alt="SynthNews desktop split-view" width="70%">
+  <br><em>Desktop split-view — feed on the left, article detail on the right</em>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/desktop-article.png" alt="SynthNews article detail" width="70%">
+  <br><em>Article detail — AI summary, translation, cluster view, reading progress</em>
+</p>
+
+<table align="center">
+  <tr>
+    <td align="center"><img src="docs/screenshots/desktop-dark.png" alt="Dark mode" width="95%"><br><em>Dark mode</em></td>
+    <td align="center"><img src="docs/screenshots/mobile-light.png" alt="Mobile view" width="95%"><br><em>Mobile — bottom tab bar, overlay detail</em></td>
+  </tr>
+</table>
+
+---
+
 ## Table of Contents
 
+- [Screenshots](#screenshots)
 - [Core Features](#core-features)
   - [1. Intelligent Crawling & Anti-Bot Pipeline](#1-intelligent-crawling--anti-bot-pipeline)
   - [2. AI Summarization, Translation & Digest Processing](#2-ai-summarization-translation--digest-processing)

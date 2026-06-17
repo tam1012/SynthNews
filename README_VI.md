@@ -8,8 +8,32 @@ SynthNews là hệ thống đọc tin cá nhân dạng full-stack monorepo. Ứn
 
 Project này được thiết kế cho nhu cầu tự host cá nhân: ít thao tác, đọc nhanh, có khu quản trị gọn, có cron nền, có deploy Docker Compose trên VPS.
 
+---
+
+## Ảnh Chụp Màn Hình
+
+<p align="center">
+  <img src="docs/screenshots/desktop-light.png" alt="SynthNews giao diện desktop split-view" width="70%">
+  <br><em>Desktop split-view — danh sách tin bên trái, nội dung bài bên phải</em>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/desktop-article.png" alt="SynthNews xem bài chi tiết" width="70%">
+  <br><em>Bài chi tiết — tóm tắt AI, dịch thuật, bài liên quan, thanh tiến độ đọc</em>
+</p>
+
+<table align="center">
+  <tr>
+    <td align="center"><img src="docs/screenshots/desktop-dark.png" alt="Dark mode" width="95%"><br><em>Dark mode</em></td>
+    <td align="center"><img src="docs/screenshots/mobile-light.png" alt="Giao diện mobile" width="95%"><br><em>Mobile — bottom tab bar, overlay detail</em></td>
+  </tr>
+</table>
+
+---
+
 ## Mục Lục
 
+- [Ảnh chụp màn hình](#ảnh-chụp-màn-hình)
 - [Tính năng chính](#tính-năng-chính)
 - [Kiến trúc](#kiến-trúc)
 - [Tech stack](#tech-stack)
