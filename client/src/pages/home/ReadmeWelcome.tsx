@@ -89,12 +89,18 @@ export function ReadmeWelcome() {
             <>
               <div className="welcome-utility-weather-header">Hà Nội</div>
               <div className="welcome-utility-weather-main">
+                <span className="welcome-utility-weather-emoji">{weather.emoji}</span>
                 <span className="welcome-utility-weather-temp">{weather.temp}°C</span>
                 <span className="welcome-utility-weather-label">{weather.label}</span>
               </div>
               <div className="welcome-utility-weather-detail">
                 Cảm giác {weather.apparent}°C · Độ ẩm {weather.humidity}% · Gió {weather.wind} km/h
               </div>
+              {weather.observedAt && (
+                <div className="welcome-utility-weather-updated">
+                  Cập nhật {weather.observedAt.slice(11, 16)}
+                </div>
+              )}
             </>
           )}
         </div>

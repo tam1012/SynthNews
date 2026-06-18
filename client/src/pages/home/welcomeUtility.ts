@@ -41,15 +41,15 @@ export function formatVietnamDateTime(now: Date): VietnamDateTime {
  * Map WMO weather interpretation codes to concise Vietnamese labels.
  * Reference: https://www.nodc.noaa.gov/archive/arc0021/0002199/1.1/data/0-data/HTML/WMO-CODE/WMO4677.HTM
  */
-export function describeWeatherCode(code: number): string {
-  if (code === 0) return 'Trời quang';
-  if (code >= 1 && code <= 3) return 'Ít mây';
-  if (code === 45 || code === 48) return 'Sương mù';
-  if (code >= 51 && code <= 57) return 'Mưa phùn';
-  if ((code >= 61 && code <= 67) || (code >= 80 && code <= 82)) return 'Mưa';
-  if ((code >= 71 && code <= 77) || (code >= 85 && code <= 86)) return 'Tuyết / Mưa đá';
-  if (code >= 95 && code <= 99) return 'Dông';
-  return 'Không rõ';
+export function describeWeatherCode(code: number): { label: string; emoji: string } {
+  if (code === 0) return { label: 'Trời quang', emoji: '☀️' };
+  if (code >= 1 && code <= 3) return { label: 'Ít mây', emoji: '⛅' };
+  if (code === 45 || code === 48) return { label: 'Sương mù', emoji: '🌫️' };
+  if (code >= 51 && code <= 57) return { label: 'Mưa phùn', emoji: '🌦️' };
+  if ((code >= 61 && code <= 67) || (code >= 80 && code <= 82)) return { label: 'Mưa', emoji: '🌧️' };
+  if ((code >= 71 && code <= 77) || (code >= 85 && code <= 86)) return { label: 'Tuyết / Mưa đá', emoji: '🌨️' };
+  if (code >= 95 && code <= 99) return { label: 'Dông', emoji: '⛈️' };
+  return { label: 'Không rõ', emoji: '🌡️' };
 }
 
 // ── Weather API response normalization ──
@@ -69,16 +69,19 @@ export interface NormalizedWeather {
   humidity: number;
   wind: number;
   label: string;
+  emoji: string;
   observedAt: string;
 }
 
 export function normalizeWeather(current: WeatherApiCurrent): NormalizedWeather {
+  const { label, emoji } = describeWeatherCode(current.weather_code);
   return {
     temp: Math.round(current.temperature_2m),
     apparent: Math.round(current.apparent_temperature),
     humidity: Math.round(current.relative_humidity_2m),
     wind: Math.round(current.wind_speed_10m * 10) / 10,
-    label: describeWeatherCode(current.weather_code),
+    label,
+    emoji,
     observedAt: current.time ?? '',
   };
 }

@@ -260,6 +260,16 @@ body,
   color: var(--color-text-muted);
   line-height: 1.45;
 }
+.welcome-utility-weather-updated {
+  font-size: 0.66rem;
+  color: var(--color-text-muted);
+  opacity: 0.6;
+  margin-top: 3px;
+}
+.welcome-utility-weather-emoji {
+  font-size: 1.3rem;
+  line-height: 1;
+}
 .welcome-utility-weather-placeholder {
   font-size: 0.8rem;
   color: var(--color-text-muted);

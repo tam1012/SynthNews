@@ -80,54 +80,43 @@ test('formatVietnamDateTime handles midnight UTC as 7am VN', () => {
 
 // ── describeWeatherCode ──
 
-test('describeWeatherCode maps WMO codes to Vietnamese labels', () => {
+test('describeWeatherCode maps WMO codes to Vietnamese labels with emoji', () => {
   const { describeWeatherCode } = loadTsModule('../src/pages/home/welcomeUtility.ts');
 
+  function check(code) {
+    const result = describeWeatherCode(code);
+    assert.equal(typeof result.label, 'string');
+    assert.ok(result.label.length > 0);
+    assert.equal(typeof result.emoji, 'string');
+    assert.ok(result.emoji.length > 0);
+  }
+
   // Clear (0)
-  assert.ok(describeWeatherCode(0).length > 0);
+  check(0);
   // Partly cloudy (1-3)
-  assert.ok(describeWeatherCode(1).length > 0);
-  assert.ok(describeWeatherCode(2).length > 0);
-  assert.ok(describeWeatherCode(3).length > 0);
+  check(1); check(2); check(3);
   // Fog (45, 48)
-  assert.ok(describeWeatherCode(45).length > 0);
-  assert.ok(describeWeatherCode(48).length > 0);
+  check(45); check(48);
   // Drizzle (51-57)
-  assert.ok(describeWeatherCode(51).length > 0);
-  assert.ok(describeWeatherCode(53).length > 0);
-  assert.ok(describeWeatherCode(55).length > 0);
-  assert.ok(describeWeatherCode(56).length > 0);
-  assert.ok(describeWeatherCode(57).length > 0);
+  check(51); check(53); check(55); check(56); check(57);
   // Rain (61-67)
-  assert.ok(describeWeatherCode(61).length > 0);
-  assert.ok(describeWeatherCode(63).length > 0);
-  assert.ok(describeWeatherCode(65).length > 0);
-  assert.ok(describeWeatherCode(66).length > 0);
-  assert.ok(describeWeatherCode(67).length > 0);
+  check(61); check(63); check(65); check(66); check(67);
   // Rain showers (80-82)
-  assert.ok(describeWeatherCode(80).length > 0);
-  assert.ok(describeWeatherCode(81).length > 0);
-  assert.ok(describeWeatherCode(82).length > 0);
+  check(80); check(81); check(82);
   // Snow (71, 73, 75, 77, 85, 86)
-  assert.ok(describeWeatherCode(71).length > 0);
-  assert.ok(describeWeatherCode(73).length > 0);
-  assert.ok(describeWeatherCode(75).length > 0);
-  assert.ok(describeWeatherCode(77).length > 0);
-  assert.ok(describeWeatherCode(85).length > 0);
-  assert.ok(describeWeatherCode(86).length > 0);
+  check(71); check(73); check(75); check(77); check(85); check(86);
   // Thunderstorm (95-99)
-  assert.ok(describeWeatherCode(95).length > 0);
-  assert.ok(describeWeatherCode(96).length > 0);
-  assert.ok(describeWeatherCode(99).length > 0);
+  check(95); check(96); check(99);
 });
 
 test('describeWeatherCode returns non-empty fallback for unknown codes', () => {
   const { describeWeatherCode } = loadTsModule('../src/pages/home/welcomeUtility.ts');
 
-  // Unknown codes still return a label
-  assert.ok(describeWeatherCode(999).length > 0);
-  assert.ok(describeWeatherCode(-1).length > 0);
-  assert.ok(describeWeatherCode(100).length > 0);
+  for (const code of [999, -1, 100]) {
+    const result = describeWeatherCode(code);
+    assert.ok(result.label.length > 0);
+    assert.ok(result.emoji.length > 0);
+  }
 });
 
 // ── normalizeWeather ──
@@ -152,6 +141,8 @@ test('normalizeWeather rounds values and maps fields correctly', () => {
   assert.equal(result.wind, 12.4);
   assert.equal(typeof result.label, 'string');
   assert.ok(result.label.length > 0);
+  assert.equal(typeof result.emoji, 'string');
+  assert.ok(result.emoji.length > 0);
   assert.equal(result.observedAt, '2026-06-18T12:00');
 });
 
