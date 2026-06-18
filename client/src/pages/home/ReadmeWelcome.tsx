@@ -1,6 +1,106 @@
+import { useEffect, useState } from 'react';
+import {
+  type NormalizedWeather,
+  formatVietnamDateTime,
+  HANOI_WEATHER_URL,
+  normalizeWeather,
+} from './welcomeUtility';
+
+const CLOCK_INTERVAL_MS = 60_000;
+const WEATHER_REFRESH_MS = 15 * 60_000; // 15 minutes
+
+function useVietnamClock() {
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), CLOCK_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, []);
+
+  return formatVietnamDateTime(now);
+}
+
+function useHanoiWeather() {
+  const [weather, setWeather] = useState<NormalizedWeather | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    let aborted = false;
+    const controller = new AbortController();
+
+    async function fetchWeather() {
+      try {
+        const res = await fetch(HANOI_WEATHER_URL, { signal: controller.signal });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (!aborted) {
+          setWeather(normalizeWeather(data.current));
+          setError(false);
+        }
+      } catch (err: unknown) {
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        if (!aborted) setError(true);
+      } finally {
+        if (!aborted) setLoading(false);
+      }
+    }
+
+    fetchWeather();
+
+    const intervalId = setInterval(fetchWeather, WEATHER_REFRESH_MS);
+
+    return () => {
+      aborted = true;
+      controller.abort();
+      clearInterval(intervalId);
+    };
+  }, []);
+
+  return { weather, loading, error } as const;
+}
+
 export function ReadmeWelcome() {
+  const { dateText, timeText, zoneText } = useVietnamClock();
+  const { weather, loading, error } = useHanoiWeather();
+
   return (
     <div className="welcome-empty-state">
+      {/* Live utility card: Vietnam clock + Hanoi weather */}
+      <div className="welcome-utility-card">
+        <div className="welcome-utility-clock">
+          <div className="welcome-utility-zone">Việt Nam · {zoneText}</div>
+          <div className="welcome-utility-time">{timeText}</div>
+          <div className="welcome-utility-date">{dateText}</div>
+        </div>
+
+        <div className="welcome-utility-divider" aria-hidden="true" />
+
+        <div className="welcome-utility-weather">
+          {loading ? (
+            <div className="welcome-utility-weather-placeholder">
+              Đang tải thời tiết Hà Nội…
+            </div>
+          ) : error || !weather ? (
+            <div className="welcome-utility-weather-placeholder welcome-utility-weather-muted">
+              Chưa tải được thời tiết Hà Nội
+            </div>
+          ) : (
+            <>
+              <div className="welcome-utility-weather-header">Hà Nội</div>
+              <div className="welcome-utility-weather-main">
+                <span className="welcome-utility-weather-temp">{weather.temp}°C</span>
+                <span className="welcome-utility-weather-label">{weather.label}</span>
+              </div>
+              <div className="welcome-utility-weather-detail">
+                Cảm giác {weather.apparent}°C · Độ ẩm {weather.humidity}% · Gió {weather.wind} km/h
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Existing content */}
       <div className="welcome-illustration">
         <svg width="120" height="120" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
           {/* Newspaper / reading icon */}

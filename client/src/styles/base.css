@@ -178,6 +178,120 @@ body,
   vertical-align: middle;
 }
 
+/* ===== Welcome Utility Card (clock + weather) ===== */
+.welcome-utility-card {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  max-width: 420px;
+  width: 100%;
+  margin-bottom: 32px;
+  padding: 16px 20px;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius);
+  background: var(--color-surface-container-low);
+}
+.welcome-utility-clock {
+  flex-shrink: 0;
+  text-align: right;
+  min-width: 108px;
+}
+.welcome-utility-zone {
+  font-size: 0.68rem;
+  font-weight: 600;
+  font-family: var(--font-heading);
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 4px;
+}
+.welcome-utility-time {
+  font-size: 1.6rem;
+  font-weight: 700;
+  font-family: var(--font-heading);
+  color: var(--color-text);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+.welcome-utility-date {
+  font-size: 0.74rem;
+  color: var(--color-text-muted);
+  margin-top: 3px;
+}
+.welcome-utility-divider {
+  width: 1px;
+  align-self: stretch;
+  background: var(--color-border-light);
+  flex-shrink: 0;
+}
+.welcome-utility-weather {
+  flex: 1;
+  min-width: 0;
+}
+.welcome-utility-weather-header {
+  font-size: 0.72rem;
+  font-weight: 700;
+  font-family: var(--font-heading);
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 4px;
+}
+.welcome-utility-weather-main {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.welcome-utility-weather-temp {
+  font-size: 1.4rem;
+  font-weight: 700;
+  font-family: var(--font-heading);
+  color: var(--color-text);
+  line-height: 1.15;
+}
+.welcome-utility-weather-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-accent);
+}
+.welcome-utility-weather-detail {
+  font-size: 0.72rem;
+  color: var(--color-text-muted);
+  line-height: 1.45;
+}
+.welcome-utility-weather-placeholder {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  line-height: 1.4;
+}
+.welcome-utility-weather-muted {
+  opacity: 0.65;
+}
+
+@media (max-width: 480px) {
+  .welcome-utility-card {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 14px;
+  }
+  .welcome-utility-clock {
+    text-align: center;
+    min-width: unset;
+  }
+  .welcome-utility-divider {
+    width: 100%;
+    height: 1px;
+    align-self: auto;
+  }
+  .welcome-utility-weather {
+    text-align: center;
+  }
+  .welcome-utility-weather-main {
+    justify-content: center;
+  }
+}
+
 /* ===== Search Modal ===== */
 .search-overlay {
   position: fixed;
