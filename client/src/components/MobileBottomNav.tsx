@@ -68,6 +68,7 @@ export function MobileBottomNav() {
         <NavLink
           key={item.href}
           to={item.href}
+          end={item.label === 'Tất cả'}
           className={`mobile-bottom-item ${isActive(item.href) ? 'active' : ''}`}
         >
           <span className="mobile-bottom-label">{item.label}</span>

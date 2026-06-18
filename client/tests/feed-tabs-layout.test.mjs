@@ -153,3 +153,36 @@ test('article detail supports keyboard arrow navigation', () => {
   assert.match(homeSource, /handleNextArticle\(\)/);
   assert.match(homeSource, /input, textarea, select, \[contenteditable="true"\]/);
 });
+
+test('MobileBottomNav uses end prop on "Tất cả" to prevent date-prefix double-active', () => {
+  const source = readFileSync(resolve(__dirname, '../src/components/MobileBottomNav.tsx'), 'utf8');
+
+  // NavLink for "Tất cả" must carry end={item.label === 'Tất cả'}
+  assert.match(source, /end=\{item\.label === 'Tất cả'\}/);
+  // The custom isActive still handles the exact-match logic
+  assert.match(source, /isActive\(item\.href\)/);
+});
+
+test('Sidebar uses end prop on "All News" to prevent date-prefix double-active', () => {
+  const source = readFileSync(resolve(__dirname, '../src/components/Sidebar.tsx'), 'utf8');
+
+  // NavLink for "All News" must carry end={item.name === 'All News'}
+  assert.match(source, /end=\{item\.name === 'All News'\}/);
+  // The custom isNavActive still handles the exact-match logic
+  assert.match(source, /isNavActive\(item\.href\)/);
+});
+
+test('mobile digest hides left history panel; desktop split keeps it', () => {
+  const css = readCssBundle();
+
+  // On mobile (max-width: 1099px), .split-left.digest-mode must be hidden
+  const mobileBlock = css.match(/@media\s*\(max-width:\s*1099px\)\s*\{[\s\S]*?\.split-left\.digest-mode\s*\{([^}]+)\}/);
+  assert.ok(mobileBlock, 'mobile digest-mode rule must exist inside max-width:1099px');
+  assert.match(mobileBlock[1], /display:\s*none/);
+  assert.doesNotMatch(mobileBlock[1], /display:\s*block/);
+
+  // On desktop (min-width: 1100px), .split-left exists as a flex child for the split layout
+  const desktopSplit = css.match(/@media\s*\(min-width:\s*1100px\)\s*\{[\s\S]*?\.split-left\s*\{([^}]+)\}/);
+  assert.ok(desktopSplit, 'desktop split-left rule must exist inside min-width:1100px');
+  assert.match(desktopSplit[1], /flex:\s*0 1 360px/);
+});

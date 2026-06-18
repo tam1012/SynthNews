@@ -45,12 +45,13 @@ test('digest route keeps the right pane visible without opening article detail s
   assert.equal(shouldShowRightPane({ tab: 'digest', hasSelectedArticle: false, hasArticleDeepLink: false }), true);
 });
 
-test('scroll-to-top affordance appears only for long feed scroll without detail pane', () => {
+test('scroll-to-top button appears when scrolled past 420px regardless of detail pane', () => {
   const { shouldShowScrollTopButton } = loadTsModule('../src/pages/homeUx.ts');
 
   assert.equal(shouldShowScrollTopButton(421, false), true);
   assert.equal(shouldShowScrollTopButton(420, false), false);
-  assert.equal(shouldShowScrollTopButton(900, true), false);
+  assert.equal(shouldShowScrollTopButton(421, true), true);
+  assert.equal(shouldShowScrollTopButton(420, true), false);
 });
 
 test('empty feed message distinguishes offline cache and filtered views', () => {

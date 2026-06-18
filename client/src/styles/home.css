@@ -1550,12 +1550,9 @@
   .hidden-on-mobile {
     display: none !important;
   }
-  /* Mobile digest: keep list visible above content */
+  /* Mobile digest: hide left history panel; DigestTab has its own mobile selector */
   .split-left.digest-mode {
-    display: block;
-    padding-bottom: 4px;
-    border-bottom: 1px solid var(--color-border-light);
-    margin-bottom: 4px;
+    display: none;
   }
 }
 

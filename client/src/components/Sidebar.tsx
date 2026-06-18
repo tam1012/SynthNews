@@ -85,6 +85,7 @@ export function Sidebar({
           <NavLink
             key={item.href}
             to={item.href}
+            end={item.name === 'All News'}
             className={`sidebar-nav-item ${isNavActive(item.href) ? 'active' : ''}`}
           >
             <span className="sidebar-nav-icon">{item.icon}</span>
