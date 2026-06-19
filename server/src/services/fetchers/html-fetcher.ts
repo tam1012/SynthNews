@@ -500,15 +500,39 @@ export const htmlFetcher: SourceFetcher = {
     const aiExtraction = await extractWithAiSelector(articleHtml, jobUrl, getDefaultTimezoneForLanguage(source.language));
     if (aiExtraction) {
       const { extraction, matchedSelector, sourceProfileId } = aiExtraction;
+      let rawContent = extraction.content;
+
+      if (rawContent.length < 3000 && shouldUseArchiveFallback(jobUrl)) {
+        try {
+          const archivedHtml = await archiveTodayFetch(jobUrl, 60000);
+          if (archivedHtml) {
+            const archivedStructured = extractStructuredArticle(archivedHtml);
+            if (archivedStructured && archivedStructured.articleBody.length > rawContent.length) {
+              rawContent = archivedStructured.articleBody;
+              console.warn(`html-fetcher: archive.today recovered ${jobUrl} (${rawContent.length} chars)`);
+            } else {
+              const $archived = cheerio.load(archivedHtml);
+              const archivedText = $archived(config.contentSelector || 'article').text().replace(/\s+/g, ' ').trim();
+              if (archivedText.length > rawContent.length) {
+                rawContent = archivedText;
+                console.warn(`html-fetcher: archive.today selector recovered ${jobUrl} (${rawContent.length} chars)`);
+              }
+            }
+          }
+        } catch (archErr: any) {
+          console.warn(`html-fetcher: archive.today recovery failed for ${jobUrl}: ${archErr.message}`);
+        }
+      }
+
       const title = extraction.title || job.title;
-      const excerpt = truncate(extraction.content, 500);
+      const excerpt = truncate(rawContent, 500);
       return {
         source,
         url: jobUrl,
         title,
         publishedAt: extraction.publishedAt || job.published_at,
         rawExcerpt: excerpt,
-        rawContent: extraction.content,
+        rawContent,
         contentHashSeed: title + excerpt,
         imageUrl: extraction.imageUrl,
         metadata: { extractor: 'ai-selector', matchedSelector, sourceProfileId },
@@ -579,6 +603,28 @@ export const htmlFetcher: SourceFetcher = {
     if (!imageUrl && structuredImageUrl) imageUrl = structuredImageUrl;
     if (!publishedAt && structuredPublishedAt) {
       publishedAt = normalizeDate(structuredPublishedAt, { defaultTimezone: getDefaultTimezoneForLanguage(source.language) });
+    }
+
+    if (content.length < 3000 && shouldUseArchiveFallback(jobUrl)) {
+      try {
+        const archivedHtml = await archiveTodayFetch(jobUrl, 60000);
+        if (archivedHtml) {
+          const archivedStructured = extractStructuredArticle(archivedHtml);
+          if (archivedStructured && archivedStructured.articleBody.length > content.length) {
+            content = archivedStructured.articleBody;
+            console.warn(`html-fetcher: archive.today recovered ${jobUrl} (${content.length} chars)`);
+          } else {
+            const $archived = cheerio.load(archivedHtml);
+            const archivedText = $archived(config.contentSelector || 'article').text().replace(/\s+/g, ' ').trim();
+            if (archivedText.length > content.length) {
+              content = archivedText;
+              console.warn(`html-fetcher: archive.today selector recovered ${jobUrl} (${content.length} chars)`);
+            }
+          }
+        }
+      } catch (archErr: any) {
+        console.warn(`html-fetcher: archive.today recovery failed for ${jobUrl}: ${archErr.message}`);
+      }
     }
 
     const excerpt = truncate(content, 500);

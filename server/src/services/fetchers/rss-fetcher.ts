@@ -591,6 +591,8 @@ async function fetchFullArticle(jobUrl: string, policy = getRssDomainPolicy(jobU
   // genuinely short/empty page). Only blocked pages escalate to Firecrawl, so
   // credits aren't spent on real 404s or thin content.
   let sawBlock = false;
+  const isPaywallArchiveDomain = shouldUseArchiveFallback(safeJobUrl);
+  let paywallFallbackArticle: any = null;
   const noteBlock = (status?: number, html?: string) => {
     if (status === 401 || status === 403 || status === 429) sawBlock = true;
     if (html && isBlockedHtml(html)) sawBlock = true;
@@ -688,8 +690,19 @@ async function fetchFullArticle(jobUrl: string, policy = getRssDomainPolicy(jobU
       });
       if (isBlockedHtml(html)) { sawBlock = true; throw new Error('blocked HTML'); }
       const article = await extractArticleFromHtml(html, safeJobUrl, 'scrapling-stealth', defaultTimezone);
-      if (article.content.length >= MIN_ARTICLE_TEXT_LENGTH) return article;
-      browserError = new Error(`scrapling extraction too short (${article.content.length} characters)`);
+      if (article.content.length >= MIN_ARTICLE_TEXT_LENGTH) {
+        if (isPaywallArchiveDomain && article.content.length < 3000) {
+          const savedLen = paywallFallbackArticle?.content?.length ?? 0;
+          if (savedLen === 0 || article.content.length > savedLen) {
+            paywallFallbackArticle = article;
+          }
+          browserError = new Error(`scrapling extraction likely paywalled (${article.content.length} chars)`);
+        } else {
+          return article;
+        }
+      } else {
+        browserError = new Error(`scrapling extraction too short (${article.content.length} characters)`);
+      }
     } catch (err: any) {
       browserError = err instanceof Error ? err : new Error(String(err));
     }
@@ -721,8 +734,17 @@ async function fetchFullArticle(jobUrl: string, policy = getRssDomainPolicy(jobU
       });
       if (!isBlockedHtml(html)) {
         const article = await extractArticleFromHtml(html, safeJobUrl, 'scrapling-proxy', defaultTimezone);
-        if (article.content.length >= MIN_ARTICLE_TEXT_LENGTH) return article;
-        browserError = new Error(`scrapling+proxy extraction too short (${article.content.length} characters)`);
+        if (article.content.length >= MIN_ARTICLE_TEXT_LENGTH) {
+          if (isPaywallArchiveDomain && article.content.length < 3000) {
+            const savedLen = paywallFallbackArticle?.content?.length ?? 0;
+            if (savedLen === 0 || article.content.length > savedLen) paywallFallbackArticle = article;
+            browserError = new Error(`scrapling+proxy extraction likely paywalled (${article.content.length} chars)`);
+          } else {
+            return article;
+          }
+        } else {
+          browserError = new Error(`scrapling+proxy extraction too short (${article.content.length} characters)`);
+        }
       } else {
         browserError = new Error('scrapling+proxy still blocked');
       }
@@ -758,8 +780,17 @@ async function fetchFullArticle(jobUrl: string, policy = getRssDomainPolicy(jobU
       });
       if (!isBlockedHtml(html)) {
         const article = await extractArticleFromHtml(html, safeJobUrl, 'scrapling-proxy-cloudflare', defaultTimezone);
-        if (article.content.length >= MIN_ARTICLE_TEXT_LENGTH) return article;
-        browserError = new Error(`scrapling+proxy+cloudflare extraction too short (${article.content.length} characters)`);
+        if (article.content.length >= MIN_ARTICLE_TEXT_LENGTH) {
+          if (isPaywallArchiveDomain && article.content.length < 3000) {
+            const savedLen = paywallFallbackArticle?.content?.length ?? 0;
+            if (savedLen === 0 || article.content.length > savedLen) paywallFallbackArticle = article;
+            browserError = new Error(`scrapling+proxy+cloudflare extraction likely paywalled (${article.content.length} chars)`);
+          } else {
+            return article;
+          }
+        } else {
+          browserError = new Error(`scrapling+proxy+cloudflare extraction too short (${article.content.length} characters)`);
+        }
       } else {
         browserError = new Error('scrapling+proxy+cloudflare still blocked');
       }
@@ -795,8 +826,17 @@ async function fetchFullArticle(jobUrl: string, policy = getRssDomainPolicy(jobU
       });
       if (!isBlockedHtml(html)) {
         const article = await extractArticleFromHtml(html, safeJobUrl, 'scrapling-proxy-cookie', defaultTimezone);
-        if (article.content.length >= MIN_ARTICLE_TEXT_LENGTH) return article;
-        browserError = new Error(`scrapling+proxy+cookie extraction too short (${article.content.length} characters)`);
+        if (article.content.length >= MIN_ARTICLE_TEXT_LENGTH) {
+          if (isPaywallArchiveDomain && article.content.length < 3000) {
+            const savedLen = paywallFallbackArticle?.content?.length ?? 0;
+            if (savedLen === 0 || article.content.length > savedLen) paywallFallbackArticle = article;
+            browserError = new Error(`scrapling+proxy+cookie extraction likely paywalled (${article.content.length} chars)`);
+          } else {
+            return article;
+          }
+        } else {
+          browserError = new Error(`scrapling+proxy+cookie extraction too short (${article.content.length} characters)`);
+        }
       } else {
         browserError = new Error('scrapling+proxy+cookie still blocked');
       }
@@ -846,6 +886,8 @@ async function fetchFullArticle(jobUrl: string, policy = getRssDomainPolicy(jobU
       browserError = err instanceof Error ? err : new Error(String(err));
     }
   }
+
+  if (paywallFallbackArticle) return paywallFallbackArticle;
 
   throw new Error(`Full article fetch failed: ${fetchError?.message || 'unknown fetch error'}; browser fallback failed: ${browserError?.message || 'unknown browser error'}`);
 }
