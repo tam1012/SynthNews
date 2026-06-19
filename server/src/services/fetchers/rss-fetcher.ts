@@ -11,6 +11,7 @@ import { scraplingFetchWithFallback, getScraplingProxyForUrl, isResidentialProxy
 import { hostedFetch, shouldUseHostedFetch, hasHostedFetchKey, isDataDomeHost } from './hosted-fetch.js';
 import { extractStructuredArticle, extractStructuredVideo } from './structured-data.js';
 import { archiveTodayFetch, shouldUseArchiveFallback } from './archive-fetch.js';
+import { accessArticleFetch, shouldUseAccessArticle } from './accessarticle-fetch.js';
 import { insertArticleIfNew, MIN_ARTICLE_TEXT_LENGTH } from './article-writer.js';
 import { isMsnUrl } from './registry.js';
 import { fetchMsnArticleByUrl, extractMsnArticleId, extractMsnGemId } from './msn-fetcher.js';
@@ -862,6 +863,27 @@ async function fetchFullArticle(jobUrl: string, policy = getRssDomainPolicy(jobU
         browserError = new Error(`archive.today extraction too short (${article.content.length} characters)`);
       } else {
         browserError = new Error('archive.today returned no usable snapshot');
+      }
+    } catch (err: any) {
+      browserError = err instanceof Error ? err : new Error(String(err));
+    }
+  }
+
+  // ── Attempt 5b: accessarticlenow.com (free third-party paywall bypass) ──
+  // Runs after archive.today for domains in ACCESSARTICLE_DOMAINS. The service
+  // returns clean full-article HTML via its own residential IP routing — no
+  // CAPTCHA, no proxy burden, no metered credit. Falls through silently when
+  // the domain isn't configured or the service returns empty.
+  if (shouldUseAccessArticle(safeJobUrl)) {
+    try {
+      console.warn(`Retrying RSS article via accessarticlenow ${safeJobUrl}`);
+      const html = await accessArticleFetch(safeJobUrl, 60000);
+      if (html) {
+        const article = await extractArticleFromHtml(html, safeJobUrl, 'accessarticle', defaultTimezone);
+        if (article.content.length >= MIN_ARTICLE_TEXT_LENGTH) return article;
+        browserError = new Error(`accessarticlenow extraction too short (${article.content.length} characters)`);
+      } else {
+        browserError = new Error('accessarticlenow returned no usable article');
       }
     } catch (err: any) {
       browserError = err instanceof Error ? err : new Error(String(err));

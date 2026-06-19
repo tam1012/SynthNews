@@ -5,6 +5,7 @@ import { browserHeaders, isBlockedHtml, randomUA, playwrightFetch, workerProxyFe
 import { scraplingFetchWithFallback, getScraplingProxyForUrl, isResidentialProxyConfigured } from './scrapling-fetch.js';
 import { hostedFetch, shouldUseHostedFetch, hasHostedFetchKey, isDataDomeHost } from './hosted-fetch.js';
 import { archiveTodayFetch, shouldUseArchiveFallback } from './archive-fetch.js';
+import { accessArticleFetch, shouldUseAccessArticle } from './accessarticle-fetch.js';
 import { extractStructuredArticle, extractStructuredVideo } from './structured-data.js';
 import { insertArticleIfNew } from './article-writer.js';
 import type { DiscoveredArticle } from '../article-fetch-queue.js';
@@ -458,6 +459,22 @@ export const htmlFetcher: SourceFetcher = {
               console.warn(`html-fetcher: archive.today failed for ${jobUrl}: ${archiveErr.message}`);
             }
           }
+          // Escalation 2.5: accessarticlenow.com, after archive.today because
+          // archive is free. For domains in ACCESSARTICLE_DOMAINS the service
+          // returns full-article HTML via its own residential IP routing — no
+          // CAPTCHA, no proxy burden on us. Runs before paid hosted-fetch.
+          if (!fetchOk && shouldUseAccessArticle(jobUrl)) {
+            try {
+              const accessHtml = await accessArticleFetch(jobUrl, 60000);
+              if (accessHtml) {
+                console.warn(`html-fetcher: accessarticlenow recovered ${jobUrl}`);
+                articleHtml = accessHtml;
+                fetchOk = true;
+              }
+            } catch (accessErr: any) {
+              console.warn(`html-fetcher: accessarticlenow failed for ${jobUrl}: ${accessErr.message}`);
+            }
+          }
           // Escalation 3: hosted fetch (ScrapingAnt -> Scrape.do -> Firecrawl).
           // Fires for allowlist hosts OR any host blocked by anti-bot along the way.
           if (!fetchOk) {
@@ -525,6 +542,23 @@ export const htmlFetcher: SourceFetcher = {
           }
         } catch (archErr: any) {
           console.warn(`html-fetcher: archive.today recovery failed for ${jobUrl}: ${archErr.message}`);
+        }
+      }
+
+      if (rawContent.length < 3000 && shouldUseAccessArticle(jobUrl)) {
+        try {
+          const accessHtml = await accessArticleFetch(jobUrl, 60000);
+          if (accessHtml) {
+            const accessArticle = cheerio.load(accessHtml)('article').text().replace(/\s+/g, ' ').trim();
+            if (accessArticle.length > rawContent.length) {
+              rawContent = accessArticle;
+              console.warn(`html-fetcher: accessarticlenow recovered ${jobUrl} (${rawContent.length} chars)`);
+            } else {
+              console.warn(`html-fetcher: accessarticlenow not longer than current ${rawContent.length} chars for ${jobUrl}`);
+            }
+          }
+        } catch (accessErr: any) {
+          console.warn(`html-fetcher: accessarticlenow failed for ${jobUrl}: ${accessErr.message}`);
         }
       }
 
@@ -632,6 +666,23 @@ export const htmlFetcher: SourceFetcher = {
         }
       } catch (archErr: any) {
         console.warn(`html-fetcher: archive.today recovery failed for ${jobUrl}: ${archErr.message}`);
+      }
+    }
+
+    if (content.length < 3000 && shouldUseAccessArticle(jobUrl)) {
+      try {
+        const accessHtml = await accessArticleFetch(jobUrl, 60000);
+        if (accessHtml) {
+          const accessArticle = cheerio.load(accessHtml)('article').text().replace(/\s+/g, ' ').trim();
+          if (accessArticle.length > content.length) {
+            content = accessArticle;
+            console.warn(`html-fetcher: accessarticlenow recovered ${jobUrl} (${content.length} chars)`);
+          } else {
+            console.warn(`html-fetcher: accessarticlenow not longer than current ${content.length} chars for ${jobUrl}`);
+          }
+        }
+      } catch (accessErr: any) {
+        console.warn(`html-fetcher: accessarticlenow failed for ${jobUrl}: ${accessErr.message}`);
       }
     }
 
