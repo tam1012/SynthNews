@@ -66,8 +66,13 @@ export function extractMsnLocale(url: string): string {
   }
 }
 
-// Topic comes from the channel path `/<locale>/channel/topic/<Topic>/tp-...`
-// (URL-decoded), overridable via parser_config.msnTopic.
+// The channelfeed `query` param doubles as a topic OR a publisher filter:
+//   - topic channel:  `/<locale>/channel/topic/<Topic>/tp-...`  → query=<Topic>
+//   - source channel: `/<locale>/channel/source/<Publisher>/sr-...` → query=<Publisher>
+// A source channel filtered by query=<Publisher> returns only that publisher's
+// articles (verified: Reuters/CNN/WSJ/Bloomberg each come back single-provider).
+// Without this, a /source/ URL had no `topic` segment and silently fell back to
+// the "Top Stories" mix. Both are URL-decoded; overridable via parser_config.msnTopic.
 function parseChannelConfig(source: SourceRow): { topic: string; locale: string; count: number } {
   const config = source.parser_config || {};
   let topic = typeof config.msnTopic === 'string' && config.msnTopic.trim() ? config.msnTopic.trim() : '';
@@ -78,9 +83,9 @@ function parseChannelConfig(source: SourceRow): { topic: string; locale: string;
     if (!locale) locale = extractMsnLocale(source.url);
     if (!topic) {
       const segs = u.pathname.split('/').filter(Boolean);
-      const topicIdx = segs.findIndex((s) => s.toLowerCase() === 'topic');
-      if (topicIdx >= 0 && segs[topicIdx + 1]) {
-        topic = decodeURIComponent(segs[topicIdx + 1]);
+      const keyIdx = segs.findIndex((s) => s.toLowerCase() === 'topic' || s.toLowerCase() === 'source');
+      if (keyIdx >= 0 && segs[keyIdx + 1]) {
+        topic = decodeURIComponent(segs[keyIdx + 1]);
       }
       const queryTopic = u.searchParams.get('query');
       if (!topic && queryTopic) topic = queryTopic;
