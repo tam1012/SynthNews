@@ -29,6 +29,12 @@ const ARCHIVE_DOMAINS = (process.env.PAYWALL_ARCHIVE_DOMAINS || '')
 
 const ARCHIVE_HOST = (process.env.ARCHIVE_TODAY_HOST || 'archive.ph').replace(/^https?:\/\//, '').replace(/\/+$/, '');
 
+// archive.ph aggressively CAPTCHAs bare datacenter IPs. When the operator has a
+// residential proxy configured (SCRAPLING_PROXY_URL), force the archive fetch
+// through it so the CAPTCHA wall is bypassed — same trick the html-fetcher uses
+// for Bloomberg. No-op when no proxy is configured.
+const ARCHIVE_PROXY_URL = process.env.SCRAPLING_PROXY_URL || '';
+
 function hostnameOf(targetUrl: string): string {
   try {
     return new URL(targetUrl).hostname.replace(/^www\./, '').toLowerCase();
@@ -65,14 +71,26 @@ export async function archiveTodayFetch(targetUrl: string, timeoutMs = 60000): P
       blockResources: false,
       waitMs: 1500,
       timeoutMs,
+      forceProxy: !!ARCHIVE_PROXY_URL,
     });
-    if (!html || html.length < 500) return '';
-    if (looksLikeArchiveCaptcha(html) || isBlockedHtml(html)) return '';
+    if (!html || html.length < 500) {
+      console.warn(`archive-fetch: ${ARCHIVE_HOST} returned ${html ? `short (${html.length} chars)` : 'empty'} for ${targetUrl}`);
+      return '';
+    }
+    if (looksLikeArchiveCaptcha(html)) {
+      console.warn(`archive-fetch: ${ARCHIVE_HOST} returned CAPTCHA wall for ${targetUrl}`);
+      return '';
+    }
+    if (isBlockedHtml(html)) {
+      console.warn(`archive-fetch: ${ARCHIVE_HOST} returned blocked HTML for ${targetUrl}`);
+      return '';
+    }
     return html;
   } catch (err) {
     // Sidecar down / unreachable — nothing more to try here; let the caller's
     // existing error stand rather than masking it with an archive-specific one.
     if (err instanceof ScraplingUnavailableError) return '';
+    console.warn(`archive-fetch: ${ARCHIVE_HOST} fetch threw for ${targetUrl}: ${(err as Error)?.message || String(err)}`);
     return '';
   }
 }

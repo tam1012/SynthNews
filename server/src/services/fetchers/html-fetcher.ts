@@ -516,8 +516,12 @@ export const htmlFetcher: SourceFetcher = {
               if (archivedText.length > rawContent.length) {
                 rawContent = archivedText;
                 console.warn(`html-fetcher: archive.today selector recovered ${jobUrl} (${rawContent.length} chars)`);
+              } else {
+                console.warn(`html-fetcher: archive.today snapshot not longer than current ${rawContent.length} chars for ${jobUrl}`);
               }
             }
+          } else {
+            console.warn(`html-fetcher: archive.today returned empty for ${jobUrl} (keeping ${rawContent.length} chars)`);
           }
         } catch (archErr: any) {
           console.warn(`html-fetcher: archive.today recovery failed for ${jobUrl}: ${archErr.message}`);
@@ -619,8 +623,12 @@ export const htmlFetcher: SourceFetcher = {
             if (archivedText.length > content.length) {
               content = archivedText;
               console.warn(`html-fetcher: archive.today selector recovered ${jobUrl} (${content.length} chars)`);
+            } else {
+              console.warn(`html-fetcher: archive.today snapshot not longer than current ${content.length} chars for ${jobUrl}`);
             }
           }
+        } else {
+          console.warn(`html-fetcher: archive.today returned empty for ${jobUrl} (keeping ${content.length} chars)`);
         }
       } catch (archErr: any) {
         console.warn(`html-fetcher: archive.today recovery failed for ${jobUrl}: ${archErr.message}`);
