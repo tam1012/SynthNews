@@ -20,6 +20,8 @@ export function AiProvidersTab() {
   const [routingMessage, setRoutingMessage] = useState('');
   const [primaryProviderId, setPrimaryProviderId] = useState('');
   const [fallbackProviderId, setFallbackProviderId] = useState('');
+  const [availableModels, setAvailableModels] = useState<string[]>([]);
+  const [fetchingModels, setFetchingModels] = useState(false);
 
   useEffect(() => {
     setPrimaryProviderId(routing?.primary_provider_id || providers?.find((p: any) => p.is_active)?.id || '');
@@ -34,6 +36,7 @@ export function AiProvidersTab() {
     setLoadingDetails(false);
     setHasExistingApiKey(false);
     setClearApiKey(false);
+    setAvailableModels([]);
   };
 
   const openCreateForm = () => {
@@ -42,12 +45,55 @@ export function AiProvidersTab() {
     setFormError('');
     setHasExistingApiKey(false);
     setClearApiKey(false);
+    setAvailableModels([]);
     setShowForm(true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const applyPreset = (preset: typeof AI_PROVIDER_PRESETS[number]) => {
     setFormData(prev => ({ ...prev, ...preset.data }));
+    setAvailableModels([]);
+  };
+
+  const handleProviderTypeChange = (type: string) => {
+    const update: Partial<AiProviderFormData> = { provider_type: type };
+    if (type === 'cliproxyapi') {
+      if (!formData.api_endpoint || formData.api_endpoint === 'http://host.docker.internal:20128/v1') {
+        update.api_endpoint = 'https://cli.tam1012.site/v1';
+      }
+      update.extra_config = '{\n  "format": "openai",\n  "thinking_budget": 0\n}';
+      update.max_tokens = 65536;
+    }
+    setFormData(prev => ({ ...prev, ...update }));
+    setAvailableModels([]);
+  };
+
+  const handleFetchModels = async () => {
+    setFetchingModels(true);
+    setFormError('');
+    try {
+      let result;
+      if (editingId) {
+        result = await api.getAiProviderModels(editingId);
+      } else {
+        if (!formData.api_endpoint) {
+          throw new Error('Chưa có endpoint');
+        }
+        result = await api.fetchAiProviderModels({
+          api_endpoint: formData.api_endpoint,
+          api_key: formData.api_key,
+        });
+      }
+      const models = (result.data || []).map((m: any) => m.id).filter(Boolean).sort();
+      if (models.length === 0) {
+        setFormError('Không tìm thấy model nào từ endpoint này.');
+      }
+      setAvailableModels(models);
+    } catch (err: any) {
+      setFormError('Không lấy được danh sách model: ' + err.message);
+    } finally {
+      setFetchingModels(false);
+    }
   };
 
   const handleSaveRouting = async () => {
@@ -105,6 +151,7 @@ export function AiProvidersTab() {
     setFormError('');
     setShowForm(true);
     setEditingId(id);
+    setAvailableModels([]);
     window.scrollTo({ top: 0, behavior: 'smooth' });
 
     try {
@@ -264,7 +311,7 @@ export function AiProvidersTab() {
                 </div>
                 <div className="form-group">
                   <label>Loại nhà cung cấp *</label>
-                  <select value={formData.provider_type} onChange={(e) => setFormData({ ...formData, provider_type: e.target.value })}>
+                  <select value={formData.provider_type} onChange={(e) => handleProviderTypeChange(e.target.value)}>
                     {AI_PROVIDER_TYPES.map(type => (
                       <option key={type.value} value={type.value}>{type.label}</option>
                     ))}
@@ -278,13 +325,47 @@ export function AiProvidersTab() {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div className="form-group">
                   <label>Model *</label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.model}
-                    placeholder="VD: gemini-3-flash-preview, vx/gemini-3-flash-preview..."
-                    onChange={(e) => setFormData({ ...formData, model: e.target.value })}
-                  />
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    {availableModels.length > 0 ? (
+                      <select
+                        required
+                        value={formData.model}
+                        onChange={(e) => {
+                          const model = e.target.value;
+                          setFormData(prev => ({
+                            ...prev,
+                            model,
+                            name: prev.name || model,
+                          }));
+                        }}
+                        style={{ flex: 1 }}
+                      >
+                        <option value="">Chọn model...</option>
+                        {availableModels.map(m => (
+                          <option key={m} value={m}>{m}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        type="text"
+                        required
+                        value={formData.model}
+                        placeholder="VD: gemini-3-flash-preview, vx/gemini-3-flash-preview..."
+                        onChange={(e) => setFormData({ ...formData, model: e.target.value })}
+                        style={{ flex: 1 }}
+                      />
+                    )}
+                    {formData.api_endpoint && (
+                      <button type="button" className="btn btn-sm" onClick={handleFetchModels} disabled={fetchingModels} style={{ whiteSpace: 'nowrap' }}>
+                        {fetchingModels ? '...' : availableModels.length > 0 ? 'Tải lại' : 'Lấy model'}
+                      </button>
+                    )}
+                  </div>
+                  {availableModels.length > 0 && (
+                    <div style={{ marginTop: 4, fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                      {availableModels.length} model khả dụng
+                    </div>
+                  )}
                 </div>
                 <div className="form-group">
                   <label>API endpoint</label>
@@ -333,6 +414,7 @@ export function AiProvidersTab() {
                 <div className="form-group">
                   <label>Cần điền</label>
                   <div style={{ padding: '10px 12px', border: '1px solid var(--color-border-light)', borderRadius: 6, fontSize: '0.82rem', color: 'var(--color-text-muted)' }}>
+                    {formData.provider_type === 'cliproxyapi' && 'CLIProxyAPI: nhập API key (cpa-xxx), bấm "Lấy model" rồi chọn model.'}
                     {formData.provider_type === 'custom' && '9router VPS: model. Custom ngoài: API key, model, API endpoint.'}
                     {formData.provider_type === 'anthropic' && 'API key, model, API endpoint nếu không dùng endpoint mặc định.'}
                     {formData.provider_type === 'vertex_ai_key' && 'Vertex AI API key và model Gemini.'}

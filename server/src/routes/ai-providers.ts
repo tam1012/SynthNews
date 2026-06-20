@@ -102,6 +102,46 @@ aiProviders.patch('/routing', async (c) => {
   return c.json({ success: true, data: JSON.parse(value) });
 });
 
+async function fetchModelsFromEndpoint(apiEndpoint: string, apiKey: string): Promise<{ id: string }[]> {
+  const base = apiEndpoint.replace(/\/+$/, '');
+  const modelsUrl = base.endsWith('/v1') ? `${base}/models` : `${base}/v1/models`;
+
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
+
+  const response = await fetch(modelsUrl, {
+    headers,
+    signal: AbortSignal.timeout(15000),
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`${response.status}: ${errText.substring(0, 200)}`);
+  }
+
+  const data = await response.json();
+  const models = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
+  return models.map((m: any) => ({ id: typeof m === 'string' ? m : m.id || m.name || '' })).filter((m: any) => m.id);
+}
+
+// Lay danh sach model tu endpoint bat ky (dung khi tao provider moi)
+aiProviders.post('/fetch-models', async (c) => {
+  const body = await readJsonBody(c) as any;
+  const endpoint = (body?.api_endpoint || '').trim();
+  const apiKey = (body?.api_key || '').trim();
+
+  if (!endpoint) {
+    return c.json({ success: false, error: { code: 'VALIDATION', message: 'api_endpoint is required' } }, 400);
+  }
+
+  try {
+    const models = await fetchModelsFromEndpoint(endpoint, apiKey);
+    return c.json({ success: true, data: models });
+  } catch (err: any) {
+    return c.json({ success: false, error: { code: 'FETCH_MODELS_FAILED', message: err.message } }, 500);
+  }
+});
+
 // Chi tiet 1 provider (van mask sensitive fields)
 aiProviders.get('/:id', async (c) => {
   const { id } = c.req.param();
@@ -259,6 +299,25 @@ aiProviders.post('/:id/test', async (c) => {
       success: false,
       error: { code: 'AI_TEST_FAILED', message: err.message },
     }, 500);
+  }
+});
+
+// Lay danh sach model tu provider da luu
+aiProviders.get('/:id/models', async (c) => {
+  const { id } = c.req.param();
+  const provider = await getOne<{ api_endpoint: string; api_key: string }>('SELECT api_endpoint, api_key FROM ai_providers WHERE id = $1', [id]);
+  if (!provider) {
+    return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Provider not found' } }, 404);
+  }
+  if (!provider.api_endpoint) {
+    return c.json({ success: false, error: { code: 'VALIDATION', message: 'Provider has no endpoint configured' } }, 400);
+  }
+
+  try {
+    const models = await fetchModelsFromEndpoint(provider.api_endpoint, provider.api_key || '');
+    return c.json({ success: true, data: models });
+  } catch (err: any) {
+    return c.json({ success: false, error: { code: 'FETCH_MODELS_FAILED', message: err.message } }, 500);
   }
 });
 

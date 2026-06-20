@@ -9,6 +9,7 @@ export const AI_PROVIDER_TYPES = [
   'deepseek',
   'groq',
   'custom',
+  'cliproxyapi',
 ] as const;
 
 export type AiProviderType = typeof AI_PROVIDER_TYPES[number];

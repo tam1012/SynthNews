@@ -262,6 +262,8 @@ export const api = {
   deleteAiProvider: (id: string) => request<any>(`/ai-providers/${id}`, { method: 'DELETE' }),
   activateAiProvider: (id: string) => request<any>(`/ai-providers/${id}/activate`, { method: 'POST' }),
   testAiProvider: (id: string) => request<any>(`/ai-providers/${id}/test`, { method: 'POST' }),
+  fetchAiProviderModels: (data: { api_endpoint: string; api_key: string }) => request<any>('/ai-providers/fetch-models', { method: 'POST', body: JSON.stringify(data) }),
+  getAiProviderModels: (id: string) => request<any>(`/ai-providers/${id}/models`),
 
   // Settings
   getPromptConfig: () => request<any>('/settings/prompt'),

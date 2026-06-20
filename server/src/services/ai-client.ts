@@ -220,6 +220,7 @@ export async function callAiProvider(provider: AiProvider, prompt: string, overr
       case 'deepseek':
       case 'groq':
       case 'mimo':
+      case 'cliproxyapi':
         result = await callOpenAiCompatible(finalProvider, prompt, timeoutMs);
         break;
       case 'anthropic':
@@ -339,6 +340,7 @@ async function callOpenAiCompatible(provider: AiProvider, prompt: string, timeou
     deepseek: 'https://api.deepseek.com/v1/chat/completions',
     groq: 'https://api.groq.com/openai/v1/chat/completions',
     mimo: 'https://token-plan-sgp.xiaomimimo.com/v1/chat/completions',
+    cliproxyapi: 'https://cli.tam1012.site/v1/chat/completions',
   };
 
   const url = resolveOpenAiCompatibleEndpoint(provider.api_endpoint, defaultEndpoints[provider.provider_type] || '');

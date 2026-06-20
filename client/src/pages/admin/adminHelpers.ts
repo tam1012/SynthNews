@@ -211,12 +211,17 @@ export type AdminWorkItem = {
 };
 
 export const AI_PROVIDER_TYPES = [
+  { value: 'cliproxyapi', label: 'CLIProxyAPI' },
   { value: 'custom', label: 'OpenAI-compatible / 9router' },
   { value: 'anthropic', label: 'Anthropic-compatible' },
   { value: 'vertex_ai_key', label: 'Vertex AI API key' },
   { value: 'openai_responses', label: 'OpenAI Responses' },
 ];
 export const AI_PROVIDER_PRESETS = [
+  {
+    label: 'CLIProxyAPI',
+    data: { provider_type: 'cliproxyapi', name: '', model: '', api_endpoint: 'https://cli.tam1012.site/v1', max_tokens: 65536, temperature: '0.3', extra_config: '{\n  "format": "openai",\n  "thinking_budget": 0\n}' },
+  },
   {
     label: '9router VPS',
     data: { provider_type: 'custom', model: '', api_endpoint: 'http://host.docker.internal:20128/v1', max_tokens: 4096, temperature: '0.3', extra_config: '{\n  "format": "openai"\n}' },
@@ -259,17 +264,18 @@ export const QUALITY_ISSUES: { key: QualityIssue; label: string }[] = [
 export function createEmptyAiProviderForm(): AiProviderFormData {
   return {
     name: '',
-    provider_type: 'custom',
+    provider_type: 'cliproxyapi',
     model: '',
-    api_endpoint: '',
+    api_endpoint: 'https://cli.tam1012.site/v1',
     api_key: '',
-    max_tokens: 4096,
+    max_tokens: 65536,
     temperature: '0.3',
-    extra_config: '{\n  "format": "openai"\n}',
+    extra_config: '{\n  "format": "openai",\n  "thinking_budget": 0\n}',
   };
 }
 
 export function aiProviderHelp(type: string): string {
+  if (type === 'cliproxyapi') return 'CLIProxyAPI trên VPS. Nhập API key (cpa-xxx) và chọn model từ danh sách. Endpoint tự điền sẵn.';
   if (type === 'custom') return 'Dùng cho 9router/OpenAI-compatible. 9router VPS chỉ cần model; custom ngoài cần API key + endpoint.';
   if (type === 'anthropic') return 'Dùng API Anthropic Messages-compatible: nhập API key, model, endpoint nếu không dùng endpoint mặc định Anthropic.';
   if (type === 'vertex_ai_key') return 'Dùng Vertex AI API key: nhập API key và model Gemini, để trống endpoint để dùng mặc định.';
