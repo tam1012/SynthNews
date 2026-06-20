@@ -61,7 +61,7 @@ export function AiProvidersTab() {
       if (!formData.api_endpoint || formData.api_endpoint === 'http://host.docker.internal:20128/v1') {
         update.api_endpoint = 'https://cli.tam1012.site/v1';
       }
-      update.extra_config = '{\n  "format": "openai",\n  "thinking_budget": 0\n}';
+      update.extra_config = '';
       update.max_tokens = 65536;
     }
     setFormData(prev => ({ ...prev, ...update }));

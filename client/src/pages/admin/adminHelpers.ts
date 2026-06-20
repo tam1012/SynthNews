@@ -220,7 +220,7 @@ export const AI_PROVIDER_TYPES = [
 export const AI_PROVIDER_PRESETS = [
   {
     label: 'CLIProxyAPI',
-    data: { provider_type: 'cliproxyapi', name: '', model: '', api_endpoint: 'https://cli.tam1012.site/v1', max_tokens: 65536, temperature: '0.3', extra_config: '{\n  "format": "openai",\n  "thinking_budget": 0\n}' },
+    data: { provider_type: 'cliproxyapi', name: '', model: '', api_endpoint: 'https://cli.tam1012.site/v1', max_tokens: 65536, temperature: '0.3', extra_config: '' },
   },
   {
     label: '9router VPS',
@@ -270,7 +270,7 @@ export function createEmptyAiProviderForm(): AiProviderFormData {
     api_key: '',
     max_tokens: 65536,
     temperature: '0.3',
-    extra_config: '{\n  "format": "openai",\n  "thinking_budget": 0\n}',
+    extra_config: '',
   };
 }
 
