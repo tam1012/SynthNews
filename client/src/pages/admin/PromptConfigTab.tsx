@@ -97,7 +97,7 @@ export function PromptConfigTab() {
         <div>
           <div style={{ fontWeight: 600, marginBottom: 6 }}>Cấu hình prompt</div>
           <div style={{ fontSize: '0.82rem', color: 'var(--color-text-muted)' }}>
-            Cấu hình này áp dụng cho bài tóm tắt mới và digest mới. Mỗi dòng là một giá trị.
+            Cấu hình này áp dụng cho bài dịch mới và digest mới. Mỗi dòng là một giá trị.
           </div>
         </div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>

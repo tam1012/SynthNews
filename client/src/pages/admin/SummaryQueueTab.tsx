@@ -80,14 +80,14 @@ export function SummaryQueueTab({ initialStatus }: { initialStatus?: SummaryQueu
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
       <div className="card" style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
         <div>
-          <div style={{ fontWeight: 700 }}>Hàng đợi tóm tắt</div>
+          <div style={{ fontWeight: 700 }}>Hàng đợi dịch</div>
           <div style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)', marginTop: 2 }}>
-            Theo dõi bài đang chờ, đang xử lý hoặc lỗi tóm tắt.
+            Theo dõi bài đang chờ, đang xử lý hoặc lỗi dịch.
           </div>
         </div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           <button className="btn btn-sm" onClick={handleTriggerSummarize} disabled={!!actionLoading}>
-            {actionLoading === 'trigger-summarize' ? 'Đang chạy...' : 'Chạy tóm tắt'}
+            {actionLoading === 'trigger-summarize' ? 'Đang chạy...' : 'Chạy dịch'}
           </button>
           <button className="btn btn-sm" onClick={reload} disabled={loading}>Tải lại</button>
         </div>
@@ -131,7 +131,7 @@ export function SummaryQueueTab({ initialStatus }: { initialStatus?: SummaryQueu
               </label>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 <button className="btn btn-sm" onClick={handleBatchReset} disabled={selectedIds.length === 0 || !!actionLoading}>
-                  {actionLoading === 'batch-reset' ? 'Đang chạy...' : 'Tóm tắt lại đã chọn'}
+                  {actionLoading === 'batch-reset' ? 'Đang chạy...' : 'Dịch lại đã chọn'}
                 </button>
                 <button className="btn btn-sm btn-danger" onClick={handleBatchDelete} disabled={selectedIds.length === 0 || !!actionLoading}>
                   {actionLoading === 'batch-delete' ? 'Đang xóa...' : 'Xóa đã chọn'}
@@ -172,7 +172,7 @@ export function SummaryQueueTab({ initialStatus }: { initialStatus?: SummaryQueu
                   {/voz|reddit/i.test(a.source_name || '') && (
                     <button className="btn btn-sm" onClick={() => handleRescrape(a)} disabled={!!actionLoading}>Cào lại</button>
                   )}
-                  <button className="btn btn-sm" onClick={() => handleReset(a.id)} disabled={!!actionLoading}>Tóm tắt lại</button>
+                  <button className="btn btn-sm" onClick={() => handleReset(a.id)} disabled={!!actionLoading}>Dịch lại</button>
                   <button className="btn btn-sm btn-danger" onClick={() => handleDelete(a.id)} disabled={!!actionLoading}>Xóa</button>
                 </div>
               </div>

@@ -67,7 +67,7 @@ test('empty feed message distinguishes offline cache and filtered views', () => 
   );
   assert.equal(
     getEmptyFeedMessage({ isOfflineCache: false, hasFilter: false, tab: 'news' }),
-    'Hệ thống đang cào và tóm tắt tin. Hãy quay lại sau.'
+    'Hệ thống đang cào và dịch tin. Hãy quay lại sau.'
   );
 });
 

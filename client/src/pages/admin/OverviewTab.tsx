@@ -321,10 +321,10 @@ export function OverviewTab({
                   <div style={{ display: 'grid', gap: 8 }}>
                     {[
                       { label: 'Tổng bài', value: health.articles?.total, tip: 'Tổng số bài viết trong hệ thống' },
-                      { label: 'Đã tóm tắt', value: health.articles?.done, onClick: () => goToQueue('done'), tip: 'Bài đã được AI tóm tắt thành công' },
-                      { label: 'Đang tóm tắt', value: health.articles?.processing, onClick: () => goToQueue('processing'), tip: 'Bài đang được AI xử lý' },
-                      { label: 'Tóm tắt lỗi', value: health.articles?.failed, onClick: () => goToQueue('failed'), tip: 'Bài tóm tắt bị lỗi — bấm để xem và xử lý' },
-                      { label: 'Kiểm tra metadata', value: 'Mở', onClick: goToQuality, tip: 'Xem bài đã tóm tắt nhưng thiếu TL;DR, nhãn hoặc điểm nóng' },
+                      { label: 'Đã dịch', value: health.articles?.done, onClick: () => goToQueue('done'), tip: 'Bài đã được AI dịch thành công' },
+                      { label: 'Đang dịch', value: health.articles?.processing, onClick: () => goToQueue('processing'), tip: 'Bài đang được AI xử lý' },
+                      { label: 'Dịch lỗi', value: health.articles?.failed, onClick: () => goToQueue('failed'), tip: 'Bài dịch bị lỗi — bấm để xem và xử lý' },
+                      { label: 'Kiểm tra metadata', value: 'Mở', onClick: goToQuality, tip: 'Xem bài đã dịch nhưng thiếu TL;DR, nhãn hoặc điểm nóng' },
                     ].map((item) => (
                       <div key={item.label} onClick={item.onClick} title={item.tip} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: '0.86rem', cursor: item.onClick ? 'pointer' : 'default', padding: '2px 4px', borderRadius: 4, transition: 'background 0.15s' }} className={item.onClick ? 'admin-clickable-row' : undefined}>
                         <span style={{ color: 'var(--color-text-muted)' }}>{item.label}{item.onClick ? ' ›' : ''}</span>
@@ -478,7 +478,7 @@ export function OverviewTab({
                     {actionLoading === 'fetch-articles' ? 'Đang chạy...' : 'Lấy nội dung bài'}
                   </button>
                   <button className="btn btn-sm" onClick={() => trigger('summarize', api.triggerSummarize)} disabled={!!actionLoading}>
-                    {actionLoading === 'summarize' ? 'Đang chạy...' : 'Tóm tắt bài'}
+                    {actionLoading === 'summarize' ? 'Đang chạy...' : 'Dịch bài'}
                   </button>
                   <button className="btn btn-sm" onClick={() => trigger('digest', api.triggerDigest)} disabled={!!actionLoading}>
                     {actionLoading === 'digest' ? 'Đang chạy...' : 'Tạo bản tin'}

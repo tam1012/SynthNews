@@ -859,7 +859,7 @@ export function Home() {
               )}
 
               <div className="reader-footer">
-                <p>Nguồn mặc định cào mỗi 60 phút và tự backoff khi lỗi · Fetch bài mỗi 5 phút · Tóm tắt AI mỗi 10 phút</p>
+                <p>Nguồn mặc định cào mỗi 60 phút và tự backoff khi lỗi · Fetch bài mỗi 5 phút · Dịch AI mỗi 10 phút</p>
               </div>
             </div>
           )}

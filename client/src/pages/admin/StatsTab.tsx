@@ -292,9 +292,9 @@ export function StatsTab() {
           </div>
 
           <div className="card">
-            <div style={{ fontWeight: 700, marginBottom: 4 }}>Tóm tắt AI theo ngày</div>
+            <div style={{ fontWeight: 700, marginBottom: 4 }}>Dịch AI theo ngày</div>
             <div style={{ fontSize: '0.74rem', color: 'var(--color-text-muted)', marginBottom: 12 }}>
-              Số bài tóm tắt xong / lỗi / bỏ qua mỗi ngày. Ngày nào lỗi tăng vọt là AI provider có thể đang trục trặc.
+              Số bài dịch xong / lỗi / bỏ qua mỗi ngày. Ngày nào lỗi tăng vọt là AI provider có thể đang trục trặc.
             </div>
             {stats.aiByDay.length === 0 ? (
               <div style={{ fontSize: '0.82rem', color: 'var(--color-text-muted)' }}>Không có dữ liệu trong khoảng này.</div>

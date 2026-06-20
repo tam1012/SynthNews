@@ -29,7 +29,7 @@ test('admin exposes a dedicated summary queue tab', () => {
   const helpers = readFileSync(resolve(__dirname, '../src/pages/admin/adminHelpers.ts'), 'utf8');
 
   assert.match(helpers, /export type AdminTab =[^;]*'queue'/);
-  assert.match(source, /\{ tab: 'queue', slug: 'queue', label: 'Hàng đợi tóm tắt' \}/);
+  assert.match(source, /\{ tab: 'queue', slug: 'queue', label: 'Hàng đợi dịch' \}/);
   assert.match(source, /navigateToTab\('queue'\)/);
   assert.match(source, /tab === 'queue' && <SummaryQueueTab/);
 });
@@ -42,8 +42,8 @@ test('summary queue filters articles by summary status and shows operational fie
   assert.match(source, /api\.getArticles\(\{ page, limit: 50, status \}\)/);
   assert.match(source, /last_summary_error/);
   assert.match(source, /retry_count/);
-  assert.match(source, /Tóm tắt lại/);
-  assert.match(source, /Chạy tóm tắt/);
+  assert.match(source, /Dịch lại/);
+  assert.match(source, /Chạy dịch/);
 });
 
 test('summary queue exposes multi-select batch reset and delete actions', () => {
@@ -54,7 +54,7 @@ test('summary queue exposes multi-select batch reset and delete actions', () => 
   assert.match(source, /batchResetArticleSummaries/);
   assert.match(source, /batchDeleteArticles/);
   assert.match(source, /Đã chọn/);
-  assert.match(source, /Tóm tắt lại đã chọn/);
+  assert.match(source, /Dịch lại đã chọn/);
   assert.match(source, /Xóa đã chọn/);
   assert.match(source, /aria-label=\{`Chọn bài/);
 });
@@ -124,7 +124,7 @@ test('admin trigger actions expose immediate status feedback', () => {
 
   assert.match(adminSource, /const \[actionMessage, setActionMessage\] = useState/);
   assert.match(adminSource, /ADMIN_ACTION_SUCCESS_MESSAGES/);
-  assert.match(adminSource, /summarize: 'Đã gửi lệnh tóm tắt bài/);
+  assert.match(adminSource, /summarize: 'Đã gửi lệnh dịch bài/);
   assert.match(adminSource, /setActionMessage\(\{ type: 'success'/);
   assert.match(adminSource, /setActionMessage\(\{ type: 'error'/);
   assert.match(adminSource, /actionMessage=\{actionMessage\}/);
@@ -167,9 +167,9 @@ test('admin work items are sorted by operational severity', () => {
     ['critical', 'critical', 'critical', 'critical']
   );
   assert.equal(items[0].label, 'Database đang lỗi');
-  assert.ok(items.find((item) => item.label === 'Bài tóm tắt lỗi')?.runAction === 'summarize');
+  assert.ok(items.find((item) => item.label === 'Bài dịch lỗi')?.runAction === 'summarize');
   assert.ok(items.find((item) => item.label === 'URL lấy bài lỗi')?.runAction === 'fetch-articles');
-  assert.ok(items.find((item) => item.label === 'Bài chờ tóm tắt')?.target === 'queue:pending');
+  assert.ok(items.find((item) => item.label === 'Bài chờ dịch')?.target === 'queue:pending');
 });
 
 test('admin overview renders prioritized work item helper and action buttons', () => {

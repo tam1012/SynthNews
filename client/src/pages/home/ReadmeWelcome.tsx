@@ -139,7 +139,7 @@ export function ReadmeWelcome() {
           <span className="welcome-feature-icon">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2 L13.5 8 L20 9.5 L13.5 11 L12 17 L10.5 11 L4 9.5 L10.5 8 Z"/><path d="M19 15 L19.7 17 L22 17.5 L19.7 18 L19 20 L18.3 18 L16 17.5 L18.3 17 Z"/></svg>
           </span>
-          <span>AI tóm tắt</span>
+          <span>AI dịch</span>
         </div>
         <div className="welcome-feature">
           <span className="welcome-feature-icon">

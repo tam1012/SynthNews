@@ -258,7 +258,7 @@ export const QUALITY_ISSUES: { key: QualityIssue; label: string }[] = [
   { key: 'missing_summary_short', label: 'Thiếu tóm tắt ngắn' },
   { key: 'missing_tags', label: 'Thiếu nhãn' },
   { key: 'missing_hot_score', label: 'Thiếu điểm nóng' },
-  { key: 'short_summary', label: 'Tóm tắt quá ngắn' },
+  { key: 'short_summary', label: 'Bản dịch quá ngắn' },
 ];
 
 export function createEmptyAiProviderForm(): AiProviderFormData {
@@ -397,13 +397,13 @@ export function buildAdminWorkItems(health: AdminHealth | null | undefined): Adm
 
   items.push(
     {
-      label: 'Bài tóm tắt lỗi',
+      label: 'Bài dịch lỗi',
       value: health?.articles?.failed,
       note: `${numberText(health?.articles?.retryable_failed)} bài có thể thử lại.`,
       severity: 'critical',
       target: 'queue:failed',
       runAction: 'summarize',
-      actionLabel: 'Chạy tóm tắt',
+      actionLabel: 'Chạy dịch',
     },
     {
       label: 'URL lấy bài lỗi',
@@ -424,13 +424,13 @@ export function buildAdminWorkItems(health: AdminHealth | null | undefined): Adm
       actionLabel: 'Cào nguồn',
     },
     {
-      label: 'Bài chờ tóm tắt',
+      label: 'Bài chờ dịch',
       value: health?.articles?.pending,
       note: 'Queue AI còn bài chưa xử lý.',
       severity: 'warning',
       target: 'queue:pending',
       runAction: 'summarize',
-      actionLabel: 'Chạy tóm tắt',
+      actionLabel: 'Chạy dịch',
     },
     {
       label: 'URL chưa lấy bài',
@@ -566,7 +566,7 @@ export function getArticleQualityIssues(article: AdminArticle): string[] {
   if (!String(article.summary_short || '').trim()) issues.push('Thiếu tóm tắt ngắn');
   if (!Array.isArray(article.tags) || article.tags.length === 0) issues.push('Thiếu nhãn');
   if (article.hot_score === null || article.hot_score === undefined) issues.push('Thiếu điểm nóng');
-  if (String(article.summary_text || '').trim().length < 200) issues.push('Tóm tắt quá ngắn');
+  if (String(article.summary_text || '').trim().length < 200) issues.push('Bản dịch quá ngắn');
   return issues;
 }
 

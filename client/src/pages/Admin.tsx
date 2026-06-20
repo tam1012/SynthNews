@@ -15,7 +15,7 @@ import { AdminHealth, AdminTab, FetchJobStatus, SummaryQueueStatus } from './adm
 const TAB_SLUGS: { tab: AdminTab; slug: string; label: string }[] = [
   { tab: 'overview', slug: 'overview', label: 'Tổng quan' },
   { tab: 'stats', slug: 'stats', label: 'Thống kê' },
-  { tab: 'queue', slug: 'queue', label: 'Hàng đợi tóm tắt' },
+  { tab: 'queue', slug: 'queue', label: 'Hàng đợi dịch' },
   { tab: 'quality', slug: 'quality', label: 'Kiểm tra chất lượng' },
   { tab: 'fetchJobs', slug: 'fetch-jobs', label: 'Hàng đợi lấy bài' },
   { tab: 'ai', slug: 'ai', label: 'Nhà cung cấp AI' },
@@ -26,7 +26,7 @@ const TAB_SLUGS: { tab: AdminTab; slug: string; label: string }[] = [
 const ADMIN_ACTION_SUCCESS_MESSAGES: Record<string, string> = {
   scrape: 'Đã gửi lệnh cào nguồn đến hạn. Số liệu sẽ cập nhật sau ít giây.',
   'fetch-articles': 'Đã gửi lệnh lấy nội dung bài. Số liệu sẽ cập nhật sau ít giây.',
-  summarize: 'Đã gửi lệnh tóm tắt bài. Số liệu sẽ cập nhật sau ít giây.',
+  summarize: 'Đã gửi lệnh dịch bài. Số liệu sẽ cập nhật sau ít giây.',
   digest: 'Đã gửi lệnh tạo bản tin. Số liệu sẽ cập nhật sau ít giây.',
 };
 

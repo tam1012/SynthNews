@@ -39,9 +39,9 @@ export function QualityControlTab() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
       <div className="card" style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
         <div>
-          <div style={{ fontWeight: 700 }}>Kiểm tra chất lượng tóm tắt</div>
+          <div style={{ fontWeight: 700 }}>Kiểm tra chất lượng dịch</div>
           <div style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)', marginTop: 2 }}>
-            Tìm bài đã tóm tắt nhưng thiếu metadata dùng cho preview, Tin nóng và lọc chủ đề.
+            Tìm bài đã dịch nhưng thiếu metadata dùng cho preview, Tin nóng và lọc chủ đề.
           </div>
         </div>
         <button className="btn btn-sm" onClick={reload} disabled={loading}>Tải lại</button>
@@ -95,7 +95,7 @@ export function QualityControlTab() {
                   {/voz|reddit/i.test(a.source_name || '') && (
                     <button className="btn btn-sm" onClick={() => runAction(`rescrape-${a.id}`, () => api.rescrapeArticle(a.id))} disabled={!!actionLoading}>Cào lại</button>
                   )}
-                  <button className="btn btn-sm" onClick={() => runAction(`reset-${a.id}`, () => api.resetArticleSummary(a.id))} disabled={!!actionLoading}>Tóm tắt lại</button>
+                  <button className="btn btn-sm" onClick={() => runAction(`reset-${a.id}`, () => api.resetArticleSummary(a.id))} disabled={!!actionLoading}>Dịch lại</button>
                   <button className="btn btn-sm btn-danger" onClick={() => { if (confirm('Xóa bài viết này?')) void runAction(`delete-${a.id}`, () => api.deleteArticle(a.id)); }} disabled={!!actionLoading}>Xóa</button>
                 </div>
               </div>

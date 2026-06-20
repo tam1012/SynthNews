@@ -166,12 +166,12 @@ export function ArticleDetail({
   const handleRescrape = useCallback(async () => {
     if (rescrapeState === 'loading') return;
     setRescrapeState('loading');
-    setRescrapeMessage('Đang lấy lại bài và xếp lịch tóm tắt...');
+    setRescrapeMessage('Đang lấy lại bài và xếp lịch dịch...');
     try {
       const res: any = await api.rescrapeArticle(article.id);
       if (res?.success) {
         setRescrapeState('done');
-        setRescrapeMessage(res.message || 'Đã yêu cầu fetch + tóm tắt lại. Tải lại bài sau khoảng 30-60s để xem kết quả.');
+        setRescrapeMessage(res.message || 'Đã yêu cầu fetch + dịch lại. Tải lại bài sau khoảng 30-60s để xem kết quả.');
       } else {
         setRescrapeState('error');
         setRescrapeMessage(res?.message || 'Không cập nhật được nội dung bài.');
@@ -195,7 +195,7 @@ export function ArticleDetail({
 
   const handleUncluster = useCallback(async () => {
     if (unclusterState === 'loading') return;
-    if (!confirm('Tách bài này khỏi cụm và xếp lịch tóm tắt lại?')) return;
+    if (!confirm('Tách bài này khỏi cụm và xếp lịch dịch lại?')) return;
     setUnclusterState('loading');
     setUnclusterMessage('Đang tách khỏi cụm...');
     try {
@@ -309,14 +309,14 @@ export function ArticleDetail({
                 className={`detail-rescrape-btn ${rescrapeState === 'loading' ? 'is-loading' : ''} ${rescrapeState === 'done' ? 'is-done' : ''} ${rescrapeState === 'error' ? 'is-error' : ''}`}
                 onClick={handleRescrape}
                 disabled={rescrapeState === 'loading'}
-                title={rescrapeMessage || 'Fetch lại nội dung gốc và tóm tắt lại bằng AI'}
-                aria-label="Fetch và tóm tắt lại bài"
+                title={rescrapeMessage || 'Fetch lại nội dung gốc và dịch lại bằng AI'}
+                aria-label="Fetch và dịch lại bài"
               >
                 <span className="detail-rescrape-icon" aria-hidden="true">
                   {rescrapeState === 'loading' ? '⟳' : rescrapeState === 'done' ? '✓' : rescrapeState === 'error' ? '!' : '↻'}
                 </span>
                 <span className="detail-rescrape-label">
-                  {rescrapeState === 'loading' ? 'Đang xử lý' : rescrapeState === 'done' ? 'Đã yêu cầu' : 'Fetch + tóm tắt lại'}
+                  {rescrapeState === 'loading' ? 'Đang xử lý' : rescrapeState === 'done' ? 'Đã yêu cầu' : 'Fetch + dịch lại'}
                 </span>
               </button>
             </div>
@@ -395,7 +395,7 @@ export function ArticleDetail({
                 </Suspense>
               </div>
             ) : (
-              <p>{article.raw_excerpt || 'Chưa có tóm tắt.'}</p>
+              <p>{article.raw_excerpt || 'Chưa có bản dịch.'}</p>
             )}
           </div>
 
@@ -444,7 +444,7 @@ export function ArticleDetail({
                     className={`detail-cluster-uncluster-btn ${unclusterState === 'loading' ? 'is-loading' : ''}`}
                     onClick={handleUncluster}
                     disabled={unclusterState === 'loading'}
-                    title="Admin: tách bài này khỏi cụm và yêu cầu AI tóm tắt lại"
+                    title="Admin: tách bài này khỏi cụm và yêu cầu AI dịch lại"
                   >
                     {unclusterState === 'loading' ? 'Đang tách...' : 'Tách khỏi cụm'}
                   </button>

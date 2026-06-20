@@ -82,7 +82,7 @@ export function getEmptyFeedMessage({
 }): string {
   if (isOfflineCache) return 'Không có dữ liệu đã lưu cho bộ lọc này.';
   if (hasFilter) return 'Không có tin trong nguồn/tab này.';
-  return 'Hệ thống đang cào và tóm tắt tin. Hãy quay lại sau.';
+  return 'Hệ thống đang cào và dịch tin. Hãy quay lại sau.';
 }
 
 export function filterArticlesBySelectedDate<T extends { local_date?: string | null; published_at?: string | null }>(articles: T[], selectedDate: string | null): T[] {
