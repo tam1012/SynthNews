@@ -606,9 +606,10 @@ ${buildTranslationStyleExamples(config, article.language)}
 ${buildStructuredOutputContract(config)}`;
 }
 
-// Tóm tắt hàng loạt articles chưa có summary
+// Dịch hàng loạt articles chưa có summary
 export async function summarizePendingArticles(): Promise<{ processed: number; succeeded: number; failed: number }> {
   const maxCalls = parseInt(process.env.MAX_AI_CALLS_PER_RUN || '30');
+  const concurrency = Math.max(1, parseInt(process.env.SUMMARY_CONCURRENCY || '3'));
   const promptConfig = await getPromptConfig();
 
   const pendingArticles = await claimPendingArticles(maxCalls);
@@ -616,7 +617,7 @@ export async function summarizePendingArticles(): Promise<{ processed: number; s
   let succeeded = 0;
   let failed = 0;
 
-  for (const article of pendingArticles) {
+  const processOne = async (article: typeof pendingArticles[number]) => {
     try {
       const parsed = assertUsableSummaryOutput(await summarizeArticle(article, promptConfig), 'pre-save');
       const tldr = normalizeTldr(parsed.tldr || extractTldr(parsed.editorialMarkdown));
@@ -637,10 +638,6 @@ export async function summarizePendingArticles(): Promise<{ processed: number; s
       );
       succeeded++;
 
-      // Cross-language clustering: now that translated_title and summary_short exist in
-      // a single normalized language (Vietnamese), retry clustering against other recent
-      // leaders. Catches duplicates the fetch-time pass missed because of script
-      // mismatch (e.g. zh-script source vs en-script source covering the same event).
       try {
         await maybeClusterAfterSummarize(article.id);
       } catch (clusterErr) {
@@ -656,7 +653,7 @@ export async function summarizePendingArticles(): Promise<{ processed: number; s
           [article.id, truncateSummaryError(err)]
         );
         succeeded++;
-        continue;
+        return;
       }
 
       await query(
@@ -669,7 +666,16 @@ export async function summarizePendingArticles(): Promise<{ processed: number; s
       );
       failed++;
     }
-  }
+  };
+
+  const queue = [...pendingArticles];
+  const workers = Array.from({ length: Math.min(concurrency, queue.length) }, async () => {
+    while (queue.length > 0) {
+      const article = queue.shift()!;
+      await processOne(article);
+    }
+  });
+  await Promise.all(workers);
 
   return { processed: pendingArticles.length, succeeded, failed };
 }
