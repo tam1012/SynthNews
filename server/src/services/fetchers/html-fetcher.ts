@@ -46,7 +46,11 @@ function scoreArticleLink(url: string, title: string, sourceUrl: string): number
   try {
     const parsed = new URL(url);
     const source = new URL(sourceUrl);
-    if (parsed.hostname.replace(/^www\./, '') !== source.hostname.replace(/^www\./, '')) return 0;
+
+    // For profiles.yahoo.com sources, article links go to www.yahoo.com or finance.yahoo.com
+    const isYahooProfileSource = source.hostname.toLowerCase() === 'profiles.yahoo.com';
+    if (!isYahooProfileSource && parsed.hostname.replace(/^www\./, '') !== source.hostname.replace(/^www\./, '')) return 0;
+    if (isYahooProfileSource && !parsed.hostname.toLowerCase().endsWith('yahoo.com')) return 0;
 
     const path = parsed.pathname.toLowerCase();
     if (/\/(tag|tags|author|login|subscribe|search|category|privacy|about|contact)\b/.test(path)) return 0;
