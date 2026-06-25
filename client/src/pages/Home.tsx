@@ -732,7 +732,7 @@ export function Home() {
                       <input
                         type="url"
                         className="saved-url-input"
-                        placeholder="Dán URL bài viết..."
+                        placeholder="Dán URL bài viết hoặc YouTube..."
                         value={externalUrl}
                         onChange={(e) => { setExternalUrl(e.target.value); setExternalUrlState('idle'); setExternalUrlMessage(''); }}
                         onKeyDown={(e) => { if (e.key === 'Enter') handleSaveExternal(); }}

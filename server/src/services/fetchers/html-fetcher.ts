@@ -10,6 +10,7 @@ import { extractStructuredArticle, extractStructuredVideo } from './structured-d
 import { insertArticleIfNew } from './article-writer.js';
 import type { DiscoveredArticle } from '../article-fetch-queue.js';
 import { SourceFetcher } from './types.js';
+import { isYoutubeVideoUrl, extractVideoId, fetchYoutubeTranscript, fetchYoutubeMetadata } from './youtube-transcript.js';
 import { discoverSitemapArticles } from './sitemap-discovery.js';
 import { learnSelectorProfileFromHtml } from './selector-learning.js';
 import {
@@ -339,6 +340,34 @@ export const htmlFetcher: SourceFetcher = {
     const config = source.parser_config || {};
     const jobUrl = await normalizePublicHttpUrlWithDns(job.url, false);
     if (!jobUrl) throw new Error('Article URL must be a public http(s) URL');
+
+    // YouTube: fetch transcript via RapidAPI instead of scraping HTML
+    const ytVideoId = extractVideoId(jobUrl);
+    if (ytVideoId) {
+      const rapidApiKey = process.env.RAPIDAPI_KEY;
+      if (!rapidApiKey) throw new Error('RAPIDAPI_KEY not configured — cannot fetch YouTube transcript');
+      const [transcript, meta] = await Promise.all([
+        fetchYoutubeTranscript(ytVideoId, rapidApiKey),
+        fetchYoutubeMetadata(ytVideoId),
+      ]);
+      return {
+        source,
+        url: jobUrl,
+        title: meta.title,
+        author: meta.author,
+        publishedAt: job.published_at,
+        rawExcerpt: truncate(transcript, 500),
+        rawContent: transcript,
+        contentHashSeed: meta.title + transcript,
+        imageUrl: meta.thumbnailUrl,
+        contentType: 'video' as const,
+        metadata: {
+          extractor: 'youtube-rapidapi-transcript',
+          videoId: ytVideoId,
+        },
+      };
+    }
+
     if (shouldSkipWebArticleUrl(jobUrl)) {
       console.log(`[junk-url] Skipped queued non-article web job ${jobUrl}`);
       return null;
