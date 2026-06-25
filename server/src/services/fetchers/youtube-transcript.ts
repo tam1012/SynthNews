@@ -28,11 +28,24 @@ export function isYoutubeVideoUrl(url: string): boolean {
   return extractVideoId(url) !== null;
 }
 
-interface TranscriptSegment {
-  text: string;
-  duration: number;
-  offset: number;
-  lang: string;
+interface SubtitleTrack {
+  languageName: string;
+  languageCode: string;
+  url: string;
+  isTranslatable?: boolean;
+}
+
+// Decode XML/HTML entities (timedtext double-encodes some, e.g. &amp;#39;).
+function decodeEntities(input: string): string {
+  const once = (s: string): string => s
+    .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(parseInt(n, 10)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, n) => String.fromCodePoint(parseInt(n, 16)))
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&');
+  return once(once(input));
 }
 
 export async function fetchYoutubeTranscript(
@@ -40,28 +53,48 @@ export async function fetchYoutubeTranscript(
   rapidApiKey: string,
   signal?: AbortSignal,
 ): Promise<string> {
-  const url = `https://${RAPIDAPI_HOST}/video/transcript?videoId=${encodeURIComponent(videoId)}`;
+  const timeoutSignal = signal ?? AbortSignal.timeout(30000);
+  // yt-api exposes available subtitle tracks (each with a timedtext URL),
+  // not the transcript text directly. Fetch the track list, then the XML.
+  const url = `https://${RAPIDAPI_HOST}/subtitles?id=${encodeURIComponent(videoId)}`;
   const res = await fetch(url, {
     method: 'GET',
     headers: {
       'x-rapidapi-key': rapidApiKey,
       'x-rapidapi-host': RAPIDAPI_HOST,
     },
-    signal: signal ?? AbortSignal.timeout(30000),
+    signal: timeoutSignal,
   });
 
   if (!res.ok) {
     const body = await res.text().catch(() => '');
-    throw new Error(`RapidAPI transcript error ${res.status}: ${body.slice(0, 200)}`);
+    throw new Error(`RapidAPI subtitles error ${res.status}: ${body.slice(0, 200)}`);
   }
 
   const data = await res.json() as Record<string, unknown>;
-  const segments = data.content as TranscriptSegment[] | undefined;
-  if (!Array.isArray(segments) || segments.length === 0) {
+  const tracks = data.subtitles as SubtitleTrack[] | undefined;
+  if (!Array.isArray(tracks) || tracks.length === 0) {
     throw new Error('No transcript available for this video');
   }
 
-  return segments.map((s) => s.text).join(' ').replace(/\s+/g, ' ').trim();
+  // Prefer a manual/auto English track, else fall back to the first available.
+  const track = tracks.find((t) => t.languageCode === 'en')
+    ?? tracks.find((t) => t.languageCode?.startsWith('en'))
+    ?? tracks[0];
+
+  const ttRes = await fetch(track.url, { signal: timeoutSignal });
+  if (!ttRes.ok) {
+    throw new Error(`YouTube timedtext error ${ttRes.status}`);
+  }
+  const xml = await ttRes.text();
+  const segments = [...xml.matchAll(/<text[^>]*>([\s\S]*?)<\/text>/g)]
+    .map((m) => decodeEntities(m[1]));
+
+  const transcript = segments.join(' ').replace(/\s+/g, ' ').trim();
+  if (!transcript) {
+    throw new Error('No transcript available for this video');
+  }
+  return transcript;
 }
 
 interface YoutubeVideoMeta {
