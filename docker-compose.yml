@@ -24,7 +24,9 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "2.0"
+          # Ưu tiên CPU cho Flow (google-media-bridge, phục vụ khách) trên VPS
+          # dùng chung; SynthNews chỉ phục vụ đọc báo nên nhường xuống 1.5 core.
+          cpus: "1.5"
           memory: 2G
           # Hard ceiling on processes: one runaway fetch can fork hundreds of
           # browser children; cap it so a leak can never exhaust host PIDs again.
