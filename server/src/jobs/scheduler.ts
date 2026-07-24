@@ -32,20 +32,24 @@ import { buildNullArticleSkipReason } from '../services/fetchers/fetch-job-error
 
 
 
-async function withAbortTimeout<T>(
+// Hard timeout: caller luôn thoát sau timeoutMs kể cả khi fn treo và không
+// tôn trọng AbortSignal. Nếu không, job treo sẽ giữ advisory lock vĩnh viễn
+// và mọi lần cron sau đều bị skip (sự cố 2026-07-22).
+export async function withAbortTimeout<T>(
   timeoutMs: number,
   label: string,
   fn: (signal: AbortSignal) => Promise<T>
 ): Promise<T> {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(new Error(`${label} timed out after ${Math.round(timeoutMs / 1000)}s`)), timeoutMs);
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      controller.abort();
+      reject(new Error(`${label} timed out after ${Math.round(timeoutMs / 1000)}s`));
+    }, timeoutMs);
+  });
   try {
-    return await fn(controller.signal);
-  } catch (err: any) {
-    if (controller.signal.aborted) {
-      throw new Error(`${label} timed out after ${Math.round(timeoutMs / 1000)}s`);
-    }
-    throw err;
+    return await Promise.race([fn(controller.signal), timeoutPromise]);
   } finally {
     clearTimeout(timeoutId);
   }
