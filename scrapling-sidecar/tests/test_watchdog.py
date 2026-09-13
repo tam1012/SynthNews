@@ -51,32 +51,31 @@ class BrowserTimeoutWatchdogTests(unittest.IsolatedAsyncioTestCase):
         await main._decrement_in_flight(token)
 
 
-class RestartSchedulingTests(unittest.TestCase):
-    def tearDown(self):
+class RestartSchedulingTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncTearDown(self):
         main._restart_scheduled = False
 
-    def test_restart_is_scheduled_only_once(self):
-        timers = []
+    async def test_restart_does_not_require_starting_a_thread(self):
+        with (
+            patch("threading.Timer", side_effect=RuntimeError("can't start new thread")) as timer,
+            patch.object(main.os, "_exit") as process_exit,
+        ):
+            scheduled = main._schedule_restart_after_timeout()
+            await asyncio.sleep((main.RESTART_DELAY_MS / 1000) + 0.05)
 
-        class FakeTimer:
-            def __init__(self, delay, callback, args=()):
-                self.delay = delay
-                self.callback = callback
-                self.args = args
-                self.daemon = False
-                timers.append(self)
+        self.assertTrue(scheduled)
+        timer.assert_not_called()
+        process_exit.assert_called_once_with(1)
 
-            def start(self):
-                return None
-
-        with patch.object(main.threading, "Timer", FakeTimer):
+    async def test_restart_is_scheduled_only_once(self):
+        with patch.object(main.os, "_exit") as process_exit:
             first = main._schedule_restart_after_timeout()
             second = main._schedule_restart_after_timeout()
+            await asyncio.sleep((main.RESTART_DELAY_MS / 1000) + 0.05)
 
         self.assertTrue(first)
         self.assertFalse(second)
-        self.assertEqual(len(timers), 1)
-        self.assertTrue(timers[0].daemon)
+        process_exit.assert_called_once_with(1)
 
 
 if __name__ == "__main__":
