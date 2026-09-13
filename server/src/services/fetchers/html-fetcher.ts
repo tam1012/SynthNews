@@ -77,6 +77,13 @@ function shouldSkipWebArticleUrl(url: string): boolean {
     const host = parsed.hostname.replace(/^www\./, '').toLowerCase();
     const path = parsed.pathname.toLowerCase();
 
+    // Yahoo publication profiles are landing pages, not individual articles.
+    // They can leak into an AFP profile source through profiles.yahoo.com's
+    // global sitemap even though real AFP story links point to other Yahoo hosts.
+    if (host === 'profiles.yahoo.com' && /^\/brands(?:\/|$)/.test(path)) {
+      return true;
+    }
+
     // CNN vertical/short videos expose no JSON-LD VideoObject caption URL, unlike
     // standard CNN video pages. They consistently become 0-character fetch jobs.
     if ((host === 'cnn.com' || host === 'edition.cnn.com') &&
@@ -334,6 +341,7 @@ export const htmlFetcher: SourceFetcher = {
     }
 
     return dedupeDiscovered(discovered)
+      .filter((item) => !shouldSkipWebArticleUrl(item.url))
       .slice(0, parsePositiveInt(process.env.MAX_ARTICLES_PER_SOURCE, 20));
   },
   async fetchArticle(job, source) {

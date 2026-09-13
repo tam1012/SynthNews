@@ -169,6 +169,73 @@ test('HTML discover allows sitemap-only web sources', async () => {
   assert.equal(items[0].payload.discovery, 'sitemap');
 });
 
+test('HTML discover drops Yahoo brand profiles while keeping AFP story links', async () => {
+  const { htmlFetcher } = loadTsModule('../src/services/fetchers/html-fetcher.ts', {
+    ...baseStubs,
+    './sitemap-discovery.js': {
+      discoverSitemapArticles: async () => [{
+        sourceId: 'src_afp',
+        url: 'https://profiles.yahoo.com/brands/first-for-money',
+        title: 'first for money',
+        externalId: 'https://profiles.yahoo.com/brands/first-for-money',
+        publishedAt: null,
+        payload: { discovery: 'sitemap', sitemapUrl: 'https://profiles.yahoo.com/sitemap.xml' },
+      }],
+    },
+  }, {
+    fetch: async () => ({
+      ok: true,
+      text: async () => '<a href="https://www.yahoo.com/news/world/articles/real-afp-story-with-long-slug-123456789.html">Real AFP world news story with a sufficiently long title</a>',
+    }),
+  });
+
+  const items = await htmlFetcher.discover({
+    id: 'src_afp',
+    type: 'web',
+    name: 'AFP @ Yahoo',
+    url: 'https://profiles.yahoo.com/brands/afp/',
+    language: 'en',
+    category: null,
+    fetch_interval_minutes: 60,
+    parser_config: { discoverSitemap: true },
+  });
+
+  assert.equal(items.length, 1);
+  assert.equal(items[0].url, 'https://www.yahoo.com/news/world/articles/real-afp-story-with-long-slug-123456789.html');
+});
+
+test('HTML fetchArticle skips queued Yahoo brand profile pages before network fetch', async () => {
+  let networkCalled = false;
+  const { htmlFetcher } = loadTsModule('../src/services/fetchers/html-fetcher.ts', baseStubs, {
+    fetch: async () => {
+      networkCalled = true;
+      throw new Error('network fetch should not run');
+    },
+  });
+
+  const result = await htmlFetcher.fetchArticle({
+    id: 'job_brand',
+    source_id: 'src_afp',
+    url: 'https://profiles.yahoo.com/brands/first-for-sports',
+    title: 'First for Sports',
+    external_id: null,
+    published_at: null,
+    payload_json: null,
+  }, {
+    id: 'src_afp',
+    type: 'web',
+    name: 'AFP @ Yahoo',
+    url: 'https://profiles.yahoo.com/brands/afp/',
+    language: 'en',
+    category: null,
+    fetch_interval_minutes: 60,
+    parser_config: { discoverSitemap: true },
+  });
+
+  assert.equal(result, null);
+  assert.equal(networkCalled, false);
+});
+
 test('HTML discover skips CNN vertical short videos but keeps captionable video URLs', async () => {
   const { htmlFetcher } = loadTsModule('../src/services/fetchers/html-fetcher.ts', baseStubs, {
     fetch: async () => ({
