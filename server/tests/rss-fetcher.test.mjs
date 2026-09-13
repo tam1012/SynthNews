@@ -30,10 +30,10 @@ function loadTsModule(relativePath, stubs = {}, globals = {}) {
     process: { env: {} },
     URL,
     require: (name) => {
-      if (stubs[name]) return stubs[name];
       if (name === 'fs') {
         return {
           readFileSync: () => '',
+          ...(stubs[name] || {}),
         };
       }
       if (name === './scrapling-fetch.js') {
@@ -44,9 +44,12 @@ function loadTsModule(relativePath, stubs = {}, globals = {}) {
             return httpUtils.playwrightFetch(url, playwrightOpts);
           },
           getScraplingProxyForUrl: () => undefined,
+          isBlockTriggeredProxyEnabled: () => false,
           isResidentialProxyConfigured: () => false,
+          ...(stubs[name] || {}),
         };
       }
+      if (stubs[name]) return stubs[name];
       throw new Error(`Unexpected require ${name}`);
     },
     ...globals,
@@ -100,6 +103,10 @@ const baseStubs = {
   './archive-fetch.js': {
     archiveTodayFetch: async () => '',
     shouldUseArchiveFallback: () => false,
+  },
+  './accessarticle-fetch.js': {
+    accessArticleFetch: async () => '',
+    shouldUseAccessArticle: () => false,
   },
   './selector-learning.js': { learnSelectorProfileFromHtml: async () => null },
   './selector-profile.js': {
@@ -522,6 +529,7 @@ test('RSS fetchArticle tries residential proxy Cloudflare solve before hosted fe
     ...baseStubs,
     './scrapling-fetch.js': {
       getScraplingProxyForUrl: () => undefined,
+      isBlockTriggeredProxyEnabled: () => true,
       isResidentialProxyConfigured: () => true,
       scraplingFetchWithFallback: async (_url, options) => {
         scraplingAttempts.push(options);

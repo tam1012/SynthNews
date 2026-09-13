@@ -35,7 +35,9 @@ function loadTsModule(relativePath, stubs = {}, globals = {}) {
             return httpUtils.playwrightFetch(url, playwrightOpts);
           },
           getScraplingProxyForUrl: () => undefined,
+          isBlockTriggeredProxyEnabled: () => false,
           isResidentialProxyConfigured: () => false,
+          ...(stubs[name] || {}),
         };
       }
       if (stubs[name]) return stubs[name];
@@ -78,6 +80,16 @@ const baseStubs = {
   './archive-fetch.js': {
     archiveTodayFetch: async () => '',
     shouldUseArchiveFallback: () => false,
+  },
+  './accessarticle-fetch.js': {
+    accessArticleFetch: async () => '',
+    shouldUseAccessArticle: () => false,
+  },
+  './youtube-transcript.js': {
+    isYoutubeVideoUrl: () => false,
+    extractVideoId: () => null,
+    fetchYoutubeTranscript: async () => null,
+    fetchYoutubeMetadata: async () => null,
   },
   './selector-profile.js': {
     extractWithSelectorProfile: () => ({ title: '', content: '', imageUrl: null, publishedAt: null, matchedSelector: null }),
