@@ -3,15 +3,10 @@ import { playwrightFetch, type PlaywrightFetchOptions } from './http-utils.js';
 const SCRAPLING_SERVICE_URL = process.env.SCRAPLING_SERVICE_URL || '';
 const SCRAPLING_SERVICE_TOKEN = process.env.SCRAPLING_SERVICE_TOKEN || '';
 
-// Residential/rotating proxy applied to hard-blocked domains so we don't burn
-// paid proxy bandwidth on sites that work from the datacenter IP. Two ways a
-// fetch routes through it:
-//   1. Proactive allowlist (SCRAPLING_PROXY_DOMAINS): known-hard hosts like
-//      bloomberg.com always use the proxy.
-//   2. Block-triggered (forceProxy option): ANY host that the free layers found
-//      blocked (4xx / challenge page) gets the proxy on the Scrapling attempt —
-//      no allowlist edit needed. This lets one paid residential proxy cover every
-//      anti-bot site instead of maintaining a per-domain list.
+// Residential/rotating proxy applied to explicitly allowlisted hard domains.
+// Broad block-triggered escalation remains available as an operator opt-in, but
+// defaults off: arbitrary 403s otherwise consume proxy bandwidth and scarce
+// browser slots for several minutes without improving the personal news feed.
 // SCRAPLING_PROXY_URL is the proxy connection string (http://user:pass@host:port).
 const SCRAPLING_PROXY_URL = process.env.SCRAPLING_PROXY_URL || '';
 const SCRAPLING_PROXY_DOMAINS = (process.env.SCRAPLING_PROXY_DOMAINS || '')
@@ -32,6 +27,10 @@ export function getScraplingProxyForUrl(targetUrl: string): string | undefined {
 
 export function isResidentialProxyConfigured(): boolean {
   return Boolean(SCRAPLING_PROXY_URL);
+}
+
+export function isBlockTriggeredProxyEnabled(): boolean {
+  return /^(1|true|yes)$/i.test(process.env.SCRAPLING_BLOCK_TRIGGERED_PROXY_ENABLED || '');
 }
 
 export class ScraplingUnavailableError extends Error {

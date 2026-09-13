@@ -2,7 +2,7 @@ import * as cheerio from 'cheerio';
 import { normalizePublicHttpUrl, normalizePublicHttpUrlWithDns, truncate, sleep } from '../../lib/utils.js';
 import { matchPromoKeyword } from '../../lib/promoFilter.js';
 import { browserHeaders, isBlockedHtml, randomUA, playwrightFetch, workerProxyFetch, isWorkerProxyConfigured, shouldSkipWorkerProxy, WorkerProxyUnavailableError, cookieAwareFetch } from './http-utils.js';
-import { scraplingFetchWithFallback, getScraplingProxyForUrl, isResidentialProxyConfigured } from './scrapling-fetch.js';
+import { scraplingFetchWithFallback, getScraplingProxyForUrl, isBlockTriggeredProxyEnabled, isResidentialProxyConfigured } from './scrapling-fetch.js';
 import { hostedFetch, shouldUseHostedFetch, hasHostedFetchKey, isDataDomeHost } from './hosted-fetch.js';
 import { archiveTodayFetch, shouldUseArchiveFallback } from './archive-fetch.js';
 import { accessArticleFetch, shouldUseAccessArticle } from './accessarticle-fetch.js';
@@ -455,7 +455,7 @@ export const htmlFetcher: SourceFetcher = {
           // free pass was anti-bot blocked and the host isn't already proxied by
           // allowlist. One paid proxy covers any blocked site, and runs before the
           // metered hosted-fetch providers (free quota exhausted).
-          if (sawBlock && isResidentialProxyConfigured() && !getScraplingProxyForUrl(jobUrl) && !isDataDomeHost(jobUrl)) {
+          if (sawBlock && isBlockTriggeredProxyEnabled() && isResidentialProxyConfigured() && !getScraplingProxyForUrl(jobUrl) && !isDataDomeHost(jobUrl)) {
             try {
               const proxied = await scraplingFetchWithFallback(jobUrl, {
                 mode: 'stealth',

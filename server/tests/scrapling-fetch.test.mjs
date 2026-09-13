@@ -35,6 +35,39 @@ function loadScraplingFetch(env, fetchImpl) {
   return moduleContext.exports;
 }
 
+test('block-triggered residential proxy escalation is disabled by default', () => {
+  const { isBlockTriggeredProxyEnabled } = loadScraplingFetch({}, async () => {
+    throw new Error('fetch should not be called');
+  });
+
+  assert.equal(isBlockTriggeredProxyEnabled(), false);
+});
+
+test('block-triggered residential proxy escalation requires explicit opt-in', () => {
+  const { isBlockTriggeredProxyEnabled } = loadScraplingFetch(
+    { SCRAPLING_BLOCK_TRIGGERED_PROXY_ENABLED: 'true' },
+    async () => { throw new Error('fetch should not be called'); },
+  );
+
+  assert.equal(isBlockTriggeredProxyEnabled(), true);
+});
+
+test('configured proxy allowlist still routes matching domains', () => {
+  const { getScraplingProxyForUrl } = loadScraplingFetch(
+    {
+      SCRAPLING_PROXY_URL: 'http://proxy-user:proxy-password@proxy.example:8080',
+      SCRAPLING_PROXY_DOMAINS: 'bloomberg.com',
+    },
+    async () => { throw new Error('fetch should not be called'); },
+  );
+
+  assert.equal(
+    getScraplingProxyForUrl('https://www.bloomberg.com/news/articles/example'),
+    'http://proxy-user:proxy-password@proxy.example:8080',
+  );
+  assert.equal(getScraplingProxyForUrl('https://apnews.com/article/example'), undefined);
+});
+
 test('scraplingFetch fails clearly in production when sidecar token is missing', async () => {
   const { scraplingFetch } = loadScraplingFetch(
     { NODE_ENV: 'production', SCRAPLING_SERVICE_URL: 'http://scrapling:8000' },

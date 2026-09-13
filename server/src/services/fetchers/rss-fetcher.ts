@@ -7,7 +7,7 @@ import { JSDOM } from 'jsdom';
 import { normalizePublicHttpUrl, normalizePublicHttpUrlWithDns, truncate, sleep } from '../../lib/utils.js';
 import { matchPromoKeyword } from '../../lib/promoFilter.js';
 import { BROWSER_UA, GOOGLEBOT_UA, browserHeaders, randomUA, playwrightFetch, isBlockedHtml, workerProxyFetch, isWorkerProxyConfigured, shouldSkipWorkerProxy, WorkerProxyUnavailableError, cookieAwareFetch } from './http-utils.js';
-import { scraplingFetchWithFallback, getScraplingProxyForUrl, isResidentialProxyConfigured } from './scrapling-fetch.js';
+import { scraplingFetchWithFallback, getScraplingProxyForUrl, isBlockTriggeredProxyEnabled, isResidentialProxyConfigured } from './scrapling-fetch.js';
 import { hostedFetch, shouldUseHostedFetch, hasHostedFetchKey, isDataDomeHost } from './hosted-fetch.js';
 import { extractStructuredArticle, extractStructuredVideo } from './structured-data.js';
 import { archiveTodayFetch, shouldUseArchiveFallback } from './archive-fetch.js';
@@ -720,7 +720,7 @@ async function fetchFullArticle(jobUrl: string, policy = getRssDomainPolicy(jobU
   // only the ~1.5KB captcha-delivery shell, so the full 120s+ render is pure waste.
   // They skip straight to Attempt 5 hosted-fetch DATADOME_CHAIN — the only path
   // that actually clears DataDome.
-  if (sawBlock && isResidentialProxyConfigured() && !getScraplingProxyForUrl(safeJobUrl) && !isDataDomeHost(safeJobUrl)) {
+  if (sawBlock && isBlockTriggeredProxyEnabled() && isResidentialProxyConfigured() && !getScraplingProxyForUrl(safeJobUrl) && !isDataDomeHost(safeJobUrl)) {
     try {
       console.warn(`Retrying RSS article via Scrapling + residential proxy (block-triggered) ${safeJobUrl}`);
       const html = await scraplingFetchWithFallback(safeJobUrl, {
@@ -759,7 +759,7 @@ async function fetchFullArticle(jobUrl: string, policy = getRssDomainPolicy(jobU
   // residential render can still return the interstitial, but Scrapling's
   // Cloudflare solver clears it when run over the residential proxy. Keep this
   // before hosted-fetch so Scrape.do/ScrapingAnt/Firecrawl are true last resorts.
-  if (sawBlock && isResidentialProxyConfigured() && !getScraplingProxyForUrl(safeJobUrl) && !isDataDomeHost(safeJobUrl)) {
+  if (sawBlock && isBlockTriggeredProxyEnabled() && isResidentialProxyConfigured() && !getScraplingProxyForUrl(safeJobUrl) && !isDataDomeHost(safeJobUrl)) {
     try {
       console.warn(`Retrying RSS article via Scrapling + residential proxy + Cloudflare solve ${safeJobUrl}`);
       const html = await scraplingFetchWithFallback(safeJobUrl, {
