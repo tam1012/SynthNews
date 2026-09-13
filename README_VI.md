@@ -596,8 +596,10 @@ Biến quan trọng:
 | `WORKER_PROXY_SKIP_DOMAINS` | Domains không dùng Worker proxy (comma-separated), optional |
 | `SCRAPLING_SERVICE_URL` | Scrapling sidecar URL, mặc định `http://scrapling:8000` trong Docker |
 | `SCRAPLING_TIMEOUT_MS` | Timeout cho Scrapling requests, mặc định `60000` |
+| `SCRAPLING_RESTART_DELAY_MS` | Thời gian chờ trước khi sidecar tự thoát sau browser timeout để Docker dọn Chromium treo, mặc định `250` |
 | `SCRAPLING_PROXY_URL` | Residential/rotating proxy cho các domain bị chặn cứng, route qua Scrapling. Format `http://user:pass@host:port`, optional |
 | `SCRAPLING_PROXY_DOMAINS` | Allowlist host dùng residential proxy (comma-separated), để không tốn băng thông proxy cho site chạy tốt từ IP VPS |
+| `SCRAPLING_BLOCK_TRIGGERED_PROXY_ENABLED` | Cho phép tự dùng residential proxy với mọi site bị anti-bot chặn; mặc định `false` để giữ queue nhanh và tiết kiệm băng thông |
 | `REUTERS_COOKIE_HEADER_B64_FILE` | File base64 cookie/header runtime cho Reuters, mặc định `/app/runtime/reuters-cookie/reuters-cookie.b64` trong shared Docker volume |
 | `REUTERS_COOKIE_HEADER_B64` | Cookie/header Reuters base64 tĩnh để bootstrap lần đầu; runtime file sẽ được ưu tiên hơn khi có |
 | `REUTERS_COOKIE_REFRESH_INTERVAL_SECONDS` | Chu kỳ worker refresh/verify Reuters cookie, mặc định `21600` giây |
@@ -620,8 +622,10 @@ Biến quan trọng:
 | `FETCH_PER_DOMAIN_DELAY_MS` | Delay tối thiểu giữa requests cùng domain, mặc định `10000` |
 | `BLOCKED_DOMAINS` | Danh sách domain bị chặn (comma-separated), override default nếu set |
 | `MIN_ARTICLE_TEXT_LENGTH` | Ngưỡng tối thiểu content để insert article, mặc định `500` chars |
-| `ARTICLE_BROWSER_FETCH_TIMEOUT_MS` | Timeout cho browser fetch fallback, mặc định `30000` |
-| `MAX_ARTICLE_FETCH_JOBS_PER_RUN` | Số fetch jobs xử lý mỗi lượt, mặc định `30` |
+| `ARTICLE_FETCH_TIMEOUT_MS` | Timeout toàn chuỗi fetch của bài thường, mặc định `240000` |
+| `HARD_ARTICLE_FETCH_TIMEOUT_MS` | Timeout toàn chuỗi fetch của domain khó, mặc định `360000` |
+| `ARTICLE_FETCH_FRESHNESS_HOURS` | Tuổi tối đa của job thường trước khi tự skip; manual save/rescue được miễn, mặc định `12` giờ |
+| `MAX_ARTICLE_FETCH_JOBS_PER_RUN` | Số fetch jobs xử lý mỗi lượt, mặc định `8` |
 | `SOURCE_SCRAPE_TIMEOUT_MS` | Timeout tổng cho mỗi source scrape, mặc định auto theo loại source |
 | `FORUM_MIN_COMMENTS` | Số comment tối thiểu để giữ bài forum VOZ, mặc định `10` |
 | `REDDIT_MIN_COMMENTS` | Số comment tối thiểu để giữ bài Reddit, mặc định `5` |
