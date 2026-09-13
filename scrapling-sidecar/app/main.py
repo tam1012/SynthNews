@@ -1,8 +1,11 @@
 import time
 import asyncio
 import ipaddress
+import os
 import secrets
 import socket
+import sys
+import threading
 from typing import Optional
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlparse
@@ -11,7 +14,7 @@ from http.cookies import SimpleCookie
 from fastapi import FastAPI, Header, Response
 from pydantic import BaseModel, Field
 
-from .config import TIMEOUT_MS, MAX_CONCURRENCY, SERVICE_TOKEN
+from .config import TIMEOUT_MS, MAX_CONCURRENCY, RESTART_DELAY_MS, SERVICE_TOKEN
 
 app = FastAPI(title="Scrapling Sidecar", version="1.0.0")
 
@@ -24,6 +27,9 @@ _executor = ThreadPoolExecutor(max_workers=MAX_CONCURRENCY)
 _fetch_semaphore = asyncio.Semaphore(MAX_CONCURRENCY)
 _in_flight = 0
 _in_flight_lock = asyncio.Lock()
+_active_fetches: dict[int, float] = {}
+_next_fetch_id = 0
+_restart_scheduled = False
 
 
 class UrlValidationError(ValueError):
@@ -31,6 +37,10 @@ class UrlValidationError(ValueError):
 
 
 class DnsResolutionError(RuntimeError):
+    pass
+
+
+class BrowserFetchTimeout(RuntimeError):
     pass
 
 
@@ -76,13 +86,21 @@ class FetchResponse(BaseModel):
 
 
 @app.get("/health")
-async def health():
+async def health(response: Response):
+    now = time.monotonic()
+    oldest_in_flight_s = None
+    if _active_fetches:
+        oldest_in_flight_s = max(0, int(now - min(_active_fetches.values())))
+    if _restart_scheduled:
+        response.status_code = 503
     return {
-        "ok": True,
+        "ok": not _restart_scheduled,
         "version": "1.0.0",
         "uptime_s": int(time.time() - _start_time),
         "max_concurrency": MAX_CONCURRENCY,
         "in_flight": _in_flight,
+        "oldest_in_flight_s": oldest_in_flight_s,
+        "restart_pending": _restart_scheduled,
         "auth_configured": bool(SERVICE_TOKEN),
     }
 
@@ -104,16 +122,16 @@ async def fetch(
         await asyncio.wait_for(asyncio.to_thread(validate_public_http_url, req.url), timeout=5)
 
         async with _fetch_semaphore:
-            await _increment_in_flight()
+            fetch_id = await _increment_in_flight(timeout)
             try:
                 loop = asyncio.get_running_loop()
                 fetcher = _stealth_fetch_sync if req.mode == "stealth" else _fast_fetch_sync
-                html = await asyncio.wait_for(
+                html = await _await_browser_result(
                     loop.run_in_executor(_executor, fetcher, req.url, req.options, timeout),
-                    timeout=max(1, timeout / 1000) + 5,
+                    timeout,
                 )
             finally:
-                await _decrement_in_flight()
+                await _decrement_in_flight(fetch_id)
 
         elapsed = int((time.time() - start) * 1000)
 
@@ -136,6 +154,10 @@ async def fetch(
         elapsed = int((time.time() - start) * 1000)
         response.status_code = 502
         return FetchResponse(ok=False, error=str(e), status_code=502, elapsed_ms=elapsed)
+    except BrowserFetchTimeout:
+        elapsed = int((time.time() - start) * 1000)
+        response.status_code = 504
+        return FetchResponse(ok=False, error="Browser fetch timed out; sidecar restart scheduled", status_code=504, elapsed_ms=elapsed)
     except asyncio.TimeoutError:
         elapsed = int((time.time() - start) * 1000)
         response.status_code = 504
@@ -147,15 +169,46 @@ async def fetch(
         return FetchResponse(ok=False, error=_safe_error_message(e), status_code=status_code, elapsed_ms=elapsed)
 
 
-async def _increment_in_flight() -> None:
-    global _in_flight
+async def _await_browser_result(future, timeout_ms: int):
+    try:
+        return await asyncio.wait_for(future, timeout=max(1, timeout_ms / 1000) + 5)
+    except asyncio.TimeoutError as exc:
+        _schedule_restart_after_timeout()
+        raise BrowserFetchTimeout("Browser executor exceeded its timeout") from exc
+
+
+def _schedule_restart_after_timeout() -> bool:
+    global _restart_scheduled
+    if _restart_scheduled:
+        return False
+
+    _restart_scheduled = True
+    delay_s = RESTART_DELAY_MS / 1000
+    print(
+        f"Browser executor timed out; exiting sidecar in {delay_s:.3f}s so Docker can recycle leaked browser processes",
+        file=sys.stderr,
+        flush=True,
+    )
+    timer = threading.Timer(delay_s, os._exit, args=(1,))
+    timer.daemon = True
+    timer.start()
+    return True
+
+
+async def _increment_in_flight(timeout_ms: int) -> int:
+    global _in_flight, _next_fetch_id
     async with _in_flight_lock:
+        _next_fetch_id += 1
+        fetch_id = _next_fetch_id
         _in_flight += 1
+        _active_fetches[fetch_id] = time.monotonic()
+        return fetch_id
 
 
-async def _decrement_in_flight() -> None:
+async def _decrement_in_flight(fetch_id: int) -> None:
     global _in_flight
     async with _in_flight_lock:
+        _active_fetches.pop(fetch_id, None)
         _in_flight = max(0, _in_flight - 1)
 
 

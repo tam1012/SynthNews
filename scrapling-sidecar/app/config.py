@@ -8,3 +8,4 @@ SERVICE_TOKEN = os.environ.get("SCRAPLING_SERVICE_TOKEN", "")
 # launch spawns a Camoufox/Firefox tree; unbounded concurrency under a burst of
 # VOZ/Reddit fetches forked thousands of PIDs and pinned host CPU at 300%+.
 MAX_CONCURRENCY = int(os.environ.get("SCRAPLING_MAX_CONCURRENCY", "2"))
+RESTART_DELAY_MS = max(0, int(os.environ.get("SCRAPLING_RESTART_DELAY_MS", "250")))
