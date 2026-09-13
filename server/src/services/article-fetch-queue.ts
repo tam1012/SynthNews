@@ -5,6 +5,7 @@ import { getBlocklistMatch, recordBlocklistHit } from './fetchers/blocklist.js';
 import { classifyFetchJobError } from './fetchers/fetch-job-errors.js';
 
 export const MAX_ARTICLE_FETCH_RETRIES = 3;
+export const STALE_FETCH_JOB_SKIP_REASON = 'Skipped: stale fetch job exceeded freshness window';
 
 export interface DiscoveredArticle {
   sourceId: string;
@@ -79,7 +80,7 @@ export function buildClaimArticleFetchJobsSql(limit: number): SqlStatement {
             SELECT id
             FROM article_fetch_jobs
             WHERE status = 'discovered'
-            ORDER BY created_at ASC
+            ORDER BY created_at DESC
             FOR UPDATE SKIP LOCKED
             LIMIT $1
           ), claimed AS (
@@ -103,6 +104,30 @@ export function buildClaimArticleFetchJobsSql(limit: number): SqlStatement {
           JOIN sources s ON s.id = c.source_id`,
     params: [limit],
   };
+}
+
+export function buildExpireStaleArticleFetchJobsSql(maxAgeHours: number): SqlStatement {
+  return {
+    sql: `UPDATE article_fetch_jobs
+          SET status = 'skipped',
+              skip_reason = $2,
+              last_error = NULL,
+              error_type = NULL,
+              last_http_status = NULL,
+              next_attempt_at = NULL,
+              updated_at = NOW()
+          WHERE status = 'discovered'
+            AND created_at < NOW() - ($1::int * INTERVAL '1 hour')
+            AND COALESCE(payload_json->>'rescueArticleId', '') = ''
+            AND COALESCE(payload_json->>'isManualSave', 'false') <> 'true'`,
+    params: [maxAgeHours, STALE_FETCH_JOB_SKIP_REASON],
+  };
+}
+
+export async function expireStaleArticleFetchJobs(maxAgeHours: number): Promise<number> {
+  const statement = buildExpireStaleArticleFetchJobsSql(maxAgeHours);
+  const result = await query(statement.sql, statement.params);
+  return result.rowCount || 0;
 }
 
 export function buildResetStuckArticleFetchJobsSql(): SqlStatement {

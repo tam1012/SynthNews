@@ -49,6 +49,7 @@ const schedulerStubs = {
     buildResetStuckArticleFetchJobsSql: () => ({ sql: '', params: [] }),
     claimArticleFetchJobs: async () => [],
     enqueueDiscoveredArticles: async () => 0,
+    expireStaleArticleFetchJobs: async () => 0,
     markArticleFetchJobDone: async () => undefined,
     markArticleFetchJobFailed: async () => undefined,
     requeueShortContentArticles: async () => ({ checked: 0, enqueued: 0 }),

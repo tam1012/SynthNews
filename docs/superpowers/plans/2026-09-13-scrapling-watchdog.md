@@ -52,7 +52,7 @@
 - [ ] Add failing tests proving stale discovered jobs receive a stable skip reason and claim SQL orders by publish/discovery freshness descending.
 - [ ] Run `node --test server/tests/article-fetch-queue.test.mjs` and verify the SQL assertions fail.
 - [ ] Add `buildExpireStaleArticleFetchJobsSql`, call it before each claim, and log the number expired.
-- [ ] Configure a 36-hour freshness window plus bounded per-run and timeout values in Compose.
+- [ ] Configure a 12-hour freshness window plus bounded per-run and timeout values in Compose.
 - [ ] Re-run queue and scheduler timeout tests and verify they pass.
 
 ### Task 4: Verify, commit, deploy, and inspect production

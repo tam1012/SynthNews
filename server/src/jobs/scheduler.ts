@@ -12,6 +12,7 @@ import {
   buildResetStuckArticleFetchJobsSql,
   claimArticleFetchJobs,
   enqueueDiscoveredArticles,
+  expireStaleArticleFetchJobs,
   markArticleFetchJobDone,
   markArticleFetchJobFailed,
   markArticleFetchJobSkipped,
@@ -207,6 +208,11 @@ export function getArticleFetchTimeoutMs(job: { url: string }): number {
 
 async function runArticleFetchJob() {
   console.log(`[${new Date().toISOString()}] Starting article fetch job...`);
+  const freshnessHours = parseInt(process.env.ARTICLE_FETCH_FRESHNESS_HOURS || '12', 10);
+  const expired = await expireStaleArticleFetchJobs(Number.isFinite(freshnessHours) && freshnessHours > 0 ? freshnessHours : 12);
+  if (expired > 0) {
+    console.log(`  Expired ${expired} stale article fetch jobs`);
+  }
   const limit = parseInt(process.env.MAX_ARTICLE_FETCH_JOBS_PER_RUN || '30');
   const jobs = await claimArticleFetchJobs(limit);
   let succeeded = 0;

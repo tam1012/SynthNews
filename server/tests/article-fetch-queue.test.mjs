@@ -60,7 +60,7 @@ test('build discovered article job row with normalized public URL and discovered
   assert.deepEqual(row.payload_json, { rawExcerpt: 'excerpt' });
 });
 
-test('claim pending article fetch jobs uses FOR UPDATE SKIP LOCKED', () => {
+test('claim pending article fetch jobs prioritizes newest work with SKIP LOCKED', () => {
   const { buildClaimArticleFetchJobsSql } = loadTsModule('../src/services/article-fetch-queue.ts', {
     '../lib/utils.js': {},
     '../lib/promoFilter.js': { matchPromoKeyword: () => null },
@@ -73,8 +73,27 @@ test('claim pending article fetch jobs uses FOR UPDATE SKIP LOCKED', () => {
   assert.match(statement.sql, /status = 'discovered'/);
   assert.match(statement.sql, /FOR UPDATE SKIP LOCKED/);
   assert.match(statement.sql, /SET status = 'fetching'/);
-  assert.match(statement.sql, /ORDER BY created_at ASC/);
+  assert.match(statement.sql, /ORDER BY created_at DESC/);
   assert.deepEqual(Array.from(statement.params), [7]);
+});
+
+test('expire stale fetch jobs skips only ordinary discovered work', () => {
+  const { buildExpireStaleArticleFetchJobsSql, STALE_FETCH_JOB_SKIP_REASON } = loadTsModule('../src/services/article-fetch-queue.ts', {
+    '../lib/utils.js': {},
+    '../lib/promoFilter.js': { matchPromoKeyword: () => null },
+    './fetchers/blocklist.js': { getBlocklistMatch: async () => null, recordBlocklistHit: async () => {} },
+    './fetchers/fetch-job-errors.js': { classifyFetchJobError: () => ({ type: 'unknown', retryable: true, httpStatus: null }) },
+    '../db/index.js': {},
+  });
+  const statement = buildExpireStaleArticleFetchJobsSql(12);
+
+  assert.equal(STALE_FETCH_JOB_SKIP_REASON, 'Skipped: stale fetch job exceeded freshness window');
+  assert.match(statement.sql, /SET status = 'skipped'/);
+  assert.match(statement.sql, /status = 'discovered'/);
+  assert.match(statement.sql, /created_at < NOW\(\) - \(\$1::int \* INTERVAL '1 hour'\)/);
+  assert.match(statement.sql, /rescueArticleId/);
+  assert.match(statement.sql, /isManualSave/);
+  assert.deepEqual(Array.from(statement.params), [12, STALE_FETCH_JOB_SKIP_REASON]);
 });
 
 test('reset retryable article fetch jobs respects retry cap', () => {

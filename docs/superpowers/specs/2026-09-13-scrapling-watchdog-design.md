@@ -10,7 +10,7 @@ Keep the existing sidecar and Docker restart policy, but make a browser timeout 
 
 Residential proxy use becomes allowlist-first. Proactive domains in `SCRAPLING_PROXY_DOMAINS` continue to use the proxy, but broad escalation of every blocked host is disabled by default behind `SCRAPLING_BLOCK_TRIGGERED_PROXY_ENABLED=false`. This preserves an opt-in escape hatch without spending proxy bandwidth or worker time on arbitrary AP, NYTimes, and similar failures.
 
-The article fetch queue expires stale discovered work and claims fresh work first. The freshness window is configurable and defaults to 36 hours. The VPS-local fetch limits are moved into tracked Compose configuration so deployments reproduce the intended bounded runtime.
+The article fetch queue expires stale discovered work and claims fresh work first. The freshness window is configurable and defaults to 12 hours; manual-save and explicit rescue jobs are exempt. The VPS-local fetch limits are moved into tracked Compose configuration so deployments reproduce the intended bounded runtime.
 
 ## Error Handling And Recovery
 
