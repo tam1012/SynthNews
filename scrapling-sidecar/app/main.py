@@ -5,7 +5,6 @@ import os
 import secrets
 import socket
 import sys
-import threading
 from typing import Optional
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlparse
@@ -182,16 +181,25 @@ def _schedule_restart_after_timeout() -> bool:
     if _restart_scheduled:
         return False
 
-    _restart_scheduled = True
     delay_s = RESTART_DELAY_MS / 1000
+    try:
+        loop = asyncio.get_running_loop()
+        loop.call_later(delay_s, os._exit, 1)
+    except Exception as exc:
+        print(
+            f"Unable to schedule sidecar restart ({_safe_error_message(exc)}); exiting immediately",
+            file=sys.stderr,
+            flush=True,
+        )
+        os._exit(1)
+        return True
+
+    _restart_scheduled = True
     print(
         f"Browser executor timed out; exiting sidecar in {delay_s:.3f}s so Docker can recycle leaked browser processes",
         file=sys.stderr,
         flush=True,
     )
-    timer = threading.Timer(delay_s, os._exit, args=(1,))
-    timer.daemon = True
-    timer.start()
     return True
 
 

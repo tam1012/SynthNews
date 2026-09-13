@@ -77,6 +77,21 @@ class RestartSchedulingTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(second)
         process_exit.assert_called_once_with(1)
 
+    async def test_restart_exits_immediately_when_event_loop_scheduling_fails(self):
+        with (
+            patch.object(
+                main.asyncio,
+                "get_running_loop",
+                side_effect=RuntimeError("event loop unavailable"),
+            ),
+            patch.object(main.os, "_exit") as process_exit,
+        ):
+            scheduled = main._schedule_restart_after_timeout()
+
+        self.assertTrue(scheduled)
+        self.assertFalse(main._restart_scheduled)
+        process_exit.assert_called_once_with(1)
+
 
 if __name__ == "__main__":
     unittest.main()
