@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { lazy, Suspense } from 'react';
 import { Layout } from './components/Layout';
 import { Home } from './pages/Home';
@@ -15,19 +15,20 @@ export function Router() {
     <BrowserRouter>
       <Routes>
         <Route element={<Layout />}>
-          <Route path="/" element={<Home />} />
-          <Route path="/news" element={<Home />} />
-          <Route path="/tech" element={<Home />} />
-          <Route path="/voz" element={<Home />} />
-          <Route path="/reddit" element={<Home />} />
-          <Route path="/saved" element={<Home />} />
-          <Route path="/digest" element={<Home />} />
-          <Route path="/:dateSlug/:tabSlug" element={<Home />} />
-          <Route path="/:dateSlug" element={<Home />} />
+          <Route path="/app" element={<Home />} />
+          <Route path="/app/news" element={<Home />} />
+          <Route path="/app/tech" element={<Home />} />
+          <Route path="/app/voz" element={<Home />} />
+          <Route path="/app/reddit" element={<Home />} />
+          <Route path="/app/saved" element={<Home />} />
+          <Route path="/app/digest" element={<Home />} />
+          <Route path="/app/:dateSlug/:tabSlug" element={<Home />} />
+          <Route path="/app/:dateSlug" element={<Home />} />
           <Route path="/article/:articleId" element={<Home />} />
           <Route path="/sources" element={<Suspense fallback={<PageLoader />}><Sources /></Suspense>} />
           <Route path="/admin" element={<Suspense fallback={<PageLoader />}><Admin /></Suspense>} />
           <Route path="/admin/:tab" element={<Suspense fallback={<PageLoader />}><Admin /></Suspense>} />
+          <Route path="*" element={<Navigate to="/app" replace />} />
         </Route>
       </Routes>
     </BrowserRouter>

@@ -3,6 +3,7 @@ import { getOne, getMany } from '../db/index.js';
 import { runScrapeJob, runArticleFetchJob, runSummarizeJob, runDigestJob, runCleanupJob } from '../jobs/scheduler.js';
 import { triggerLockedJobInBackground, triggerQueueWorkerInBackground } from '../lib/jobLock.js';
 import { getDeployInfo, getPublicChecks, getRuntimeInfo } from '../lib/runtime-status.js';
+import { normalizePublicHttpUrl } from '../lib/utils.js';
 
 const health = new Hono();
 
@@ -24,8 +25,10 @@ type SourceQualityStatus = 'healthy' | 'low_yield' | 'failing' | 'stale' | 'disa
 async function getScraplingStatus(): Promise<{ configured: boolean; ok: boolean; message: string; uptimeSeconds?: number; maxConcurrency?: number; inFlight?: number }> {
   const url = process.env.SCRAPLING_SERVICE_URL;
   if (!url) return { configured: false, ok: false, message: 'SCRAPLING_SERVICE_URL not configured' };
+  const healthUrl = normalizePublicHttpUrl(`${url}/health`, false);
+  if (!healthUrl) return { configured: true, ok: false, message: 'SCRAPLING_SERVICE_URL is not a safe public target' };
   try {
-    const res = await fetch(`${url}/health`, { signal: AbortSignal.timeout(3000) });
+    const res = await fetch(healthUrl, { signal: AbortSignal.timeout(3000) });
     const data = await res.json() as { ok?: boolean; uptime_s?: number; max_concurrency?: number; in_flight?: number };
     return {
       configured: true,

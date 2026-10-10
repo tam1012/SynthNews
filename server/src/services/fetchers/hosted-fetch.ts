@@ -38,6 +38,7 @@
 //     datacenter — skip it, end the chain with residential)
 
 import { reserveHostedFetchAttempt } from './hosted-fetch-usage.js';
+import { normalizePublicHttpUrl } from '../../lib/utils.js';
 
 function parsePositiveInt(value: string | undefined, fallback: number): number {
   const parsed = parseInt(value || '', 10);
@@ -157,9 +158,13 @@ async function scrapeDoFetch(url: string, timeoutMs: number): Promise<string> {
 const FIRECRAWL_API_KEY = process.env.FIRECRAWL_API_KEY || '';
 const FIRECRAWL_API_URL = (process.env.FIRECRAWL_API_URL || 'https://api.firecrawl.dev').replace(/\/+$/, '');
 async function firecrawlFetchRaw(url: string, timeoutMs: number): Promise<string> {
+  // FIRECRAWL_API_URL is operator config; validate it before requesting so a
+  // mis-set value cannot point the server at an internal address.
+  const endpoint = normalizePublicHttpUrl(`${FIRECRAWL_API_URL}/v1/scrape`, false);
+  if (!endpoint) throw new HostedFetchUnavailableError('Firecrawl API URL is not a safe public target');
   let res: Response;
   try {
-    res = await fetch(`${FIRECRAWL_API_URL}/v1/scrape`, {
+    res = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${FIRECRAWL_API_KEY}` },
       body: JSON.stringify({ url, formats: ['rawHtml'], onlyMainContent: false, timeout: timeoutMs }),

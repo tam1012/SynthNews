@@ -91,7 +91,23 @@ test('date deep links map ddmmyyyy paths to local ISO dates', () => {
   assert.equal(parseDateDeepLinkPath('/29022024'), '2024-02-29');
   assert.equal(parseDateDeepLinkPath('/31022026'), null);
   assert.equal(parseDateDeepLinkPath('/news'), null);
-  assert.equal(formatDateDeepLink('2026-05-28'), '/28052026');
+  // The reader app is mounted under /app, so app-prefixed dates parse the same way.
+  assert.equal(parseDateDeepLinkPath('/app/28052026'), '2026-05-28');
+  assert.equal(parseDateDeepLinkPath('/app/31022026'), null);
+  // Generated deep links point into the app.
+  assert.equal(formatDateDeepLink('2026-05-28'), '/app/28052026');
+});
+
+test('app base helpers keep reader routes under /app', () => {
+  const { APP_BASE, appPath, withAppBase } = loadTsModule('../src/pages/homeUx.ts');
+
+  assert.equal(APP_BASE, '/app');
+  assert.equal(appPath('/app'), '/');
+  assert.equal(appPath('/app/news'), '/news');
+  assert.equal(appPath('/app/28052026/news'), '/28052026/news');
+  assert.equal(appPath('/article/abc'), '/article/abc');
+  assert.equal(withAppBase('/'), '/app');
+  assert.equal(withAppBase('/digest'), '/app/digest');
 });
 
 test('date stepping moves one step per click and stops at the ends', () => {

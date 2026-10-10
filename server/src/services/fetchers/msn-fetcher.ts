@@ -119,7 +119,12 @@ export interface MsnArticleContent {
   metadata: any;
 }
 
-async function fetchMsnJson(url: string, timeoutMs = 15000): Promise<any> {
+async function fetchMsnJson(rawUrl: string, timeoutMs = 15000): Promise<any> {
+  // Callers compose the URL from MSN base hosts and an env-provided API key;
+  // validate it before requesting so a mis-set value cannot point the server at
+  // an internal address.
+  const url = normalizePublicHttpUrl(rawUrl, false);
+  if (!url) throw new Error('MSN request target is not a safe public URL');
   const res = await fetch(url, {
     headers: {
       'User-Agent': MSN_UA,

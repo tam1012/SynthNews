@@ -9,10 +9,10 @@ export function MobileTopNav({ onOpenSettings, onOpenSearch }: MobileTopNavProps
   return (
     <header className="mobile-top-nav">
       <NavLink
-        to="/"
+        to="/app"
         className="mobile-top-logo"
         onClick={(e) => {
-          if (window.location.pathname === '/') {
+          if (window.location.pathname === '/app') {
             e.preventDefault();
             window.location.reload();
           }

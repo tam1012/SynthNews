@@ -1,6 +1,7 @@
 import { NavLink, useLocation } from 'react-router-dom';
 import { useMemo } from 'react';
 import { FONT_SIZES } from '../hooks/useApi';
+import { APP_BASE, withAppBase } from '../pages/homeUx';
 
 interface SidebarProps {
   onOpenSearch?: () => void;
@@ -10,9 +11,9 @@ interface SidebarProps {
   setFontSize?: (size: number) => void;
 }
 
-/** Trích xuất date slug (ddmmyyyy) từ pathname nếu có, ví dụ /15062026/news → "15062026" */
+/** Trích xuất date slug (ddmmyyyy) từ pathname nếu có, ví dụ /app/15062026/news → "15062026" */
 function extractDateSlug(pathname: string): string | null {
-  const m = pathname.match(/^\/(\d{8})(?:\/|$)/);
+  const m = pathname.match(/^\/app\/(\d{8})(?:\/|$)/);
   return m ? m[1] : null;
 }
 
@@ -30,12 +31,12 @@ export function Sidebar({
   const path = location.pathname;
   const dateSlug = useMemo(() => extractDateSlug(path), [path]);
 
-  // Ghép date slug vào href nếu đang xem một ngày cụ thể
+  // Ghép date slug vào href nếu đang xem một ngày cụ thể (baseHref là app-relative)
   const navHref = (baseHref: string) => {
-    if (!dateSlug) return baseHref;
-    if (baseHref === '/') return `/${dateSlug}`;
-    if (FEED_TABS.includes(baseHref)) return `/${dateSlug}${baseHref}`;
-    return baseHref;
+    if (!dateSlug) return withAppBase(baseHref);
+    if (baseHref === '/') return `${APP_BASE}/${dateSlug}`;
+    if (FEED_TABS.includes(baseHref)) return `${APP_BASE}/${dateSlug}${baseHref}`;
+    return withAppBase(baseHref);
   };
 
   const navItems = [
@@ -49,8 +50,8 @@ export function Sidebar({
   ];
 
   const isNavActive = (href: string) => {
-    // "All News" — matches /, /<date>, /article/*
-    if (href === '/' || (dateSlug && href === `/${dateSlug}`)) {
+    // "All News" — matches /app, /app/<date>, /article/*
+    if (href === APP_BASE || (dateSlug && href === `${APP_BASE}/${dateSlug}`)) {
       if (path.startsWith('/article')) return true;
       return path === href;
     }
@@ -66,10 +67,10 @@ export function Sidebar({
     <aside className="sidebar">
       <div className="sidebar-brand">
         <NavLink
-          to="/"
+          to="/app"
           className="sidebar-logo"
           onClick={(e) => {
-            if (window.location.pathname === '/') {
+            if (window.location.pathname === '/app') {
               e.preventDefault();
               window.location.reload();
             }

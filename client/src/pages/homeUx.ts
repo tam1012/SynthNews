@@ -1,11 +1,28 @@
 export type ReaderTab = 'all' | 'news' | 'tech' | 'voz' | 'reddit' | 'digest' | 'saved';
 export type ReaderLoadingState = 'feed-only' | 'split';
 
+// The reader app is mounted under /app so the bare domain (/) can serve the
+// public landing page. URLs keep the same shape, just prefixed with /app.
+export const APP_BASE = '/app';
+
+/** Strip the /app prefix so route parsing keeps working on app-relative paths. */
+export function appPath(pathname: string): string {
+  if (pathname === APP_BASE) return '/';
+  if (pathname.startsWith(`${APP_BASE}/`)) return pathname.slice(APP_BASE.length);
+  return pathname;
+}
+
+/** Prefix an app-relative path with /app (leaves /article, /sources, /admin alone). */
+export function withAppBase(path: string): string {
+  if (path === '/') return APP_BASE;
+  return `${APP_BASE}${path}`;
+}
+
 const DATE_DEEP_LINK_RE = /^\/(\d{2})(\d{2})(\d{4})$/;
 const LOCAL_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 export function parseDateDeepLinkPath(pathname: string): string | null {
-  const match = pathname.match(DATE_DEEP_LINK_RE);
+  const match = appPath(pathname).match(DATE_DEEP_LINK_RE);
   if (!match) return null;
 
   const [, dayText, monthText, yearText] = match;
@@ -31,7 +48,7 @@ export function formatDateDeepLink(localDate: string | null | undefined): string
 
   const [, yearText, monthText, dayText] = match;
   const path = `/${dayText}${monthText}${yearText}`;
-  return parseDateDeepLinkPath(path) ? path : null;
+  return parseDateDeepLinkPath(path) ? withAppBase(path) : null;
 }
 
 export function getReaderLoadingState({

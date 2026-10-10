@@ -1,4 +1,5 @@
 import { playwrightFetch, type PlaywrightFetchOptions } from './http-utils.js';
+import { normalizePublicHttpUrl } from '../../lib/utils.js';
 
 const SCRAPLING_SERVICE_URL = process.env.SCRAPLING_SERVICE_URL || '';
 const SCRAPLING_SERVICE_TOKEN = process.env.SCRAPLING_SERVICE_TOKEN || '';
@@ -139,9 +140,14 @@ export async function scraplingFetch(url: string, options: ScraplingFetchOptions
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (SCRAPLING_SERVICE_TOKEN) headers['X-Sidecar-Token'] = SCRAPLING_SERVICE_TOKEN;
 
+  // SCRAPLING_SERVICE_URL is operator config; validate it before requesting so a
+  // mis-set value cannot point the server at an internal address.
+  const endpoint = normalizePublicHttpUrl(`${SCRAPLING_SERVICE_URL}/fetch`, false);
+  if (!endpoint) throw new ScraplingUnavailableError('SCRAPLING_SERVICE_URL is not a safe public target');
+
   let res: Response;
   try {
-    res = await fetch(`${SCRAPLING_SERVICE_URL}/fetch`, {
+    res = await fetch(endpoint, {
       method: 'POST',
       headers,
       body: JSON.stringify({

@@ -34,8 +34,17 @@ const app = new Hono();
 // Middleware
 app.use('*', compress());
 app.use('*', logger());
+
+// CORS: only reflect a configured site origin. When nothing is configured,
+// allow local origins (dev) instead of falling back to a wildcard.
+const configuredCorsOrigin = process.env.CORS_ORIGIN
+  || (process.env.PUBLIC_SITE_URL ? process.env.PUBLIC_SITE_URL.replace(/\/$/, '') : '');
 app.use('*', cors({
-  origin: process.env.CORS_ORIGIN || (process.env.PUBLIC_SITE_URL ? process.env.PUBLIC_SITE_URL.replace(/\/$/, '') : '*'),
+  origin: (origin) => {
+    if (configuredCorsOrigin) return origin === configuredCorsOrigin ? origin : configuredCorsOrigin;
+    if (!origin) return undefined;
+    return /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(origin) ? origin : undefined;
+  },
   allowMethods: ['GET', 'POST', 'PATCH', 'DELETE'],
   allowHeaders: ['Content-Type', 'Authorization'],
 }));
@@ -100,6 +109,27 @@ app.get('/sitemap.xml', async (c) => {
 
 // Serve static frontend (production)
 const publicDir = join(__dirname, '..', 'public');
+
+// Public English landing page at the domain root. The reader app lives under
+// /app, so the bare domain can serve a crawlable, no-JS page for external
+// verification (partner/startup programs, search engines, etc).
+const landingHtmlPath = join(publicDir, 'landing.html');
+app.get('/', (c) => {
+  try {
+    if (existsSync(landingHtmlPath)) {
+      c.header('Cache-Control', 'public, max-age=300');
+      return c.html(readFileSync(landingHtmlPath, 'utf-8'));
+    }
+  } catch (err) {
+    console.error('Failed to serve landing page:', err);
+  }
+  const fallbackIndex = join(publicDir, 'index.html');
+  if (existsSync(fallbackIndex)) {
+    return c.html(readFileSync(fallbackIndex, 'utf-8'));
+  }
+  return c.json({ name: 'News Digest V2 API', version: '1.0.0' });
+});
+
 if (existsSync(publicDir)) {
   const indexHtmlPath = join(publicDir, 'index.html');
   const renderSpaHtml = async (path: string, requestUrl: string) => {

@@ -158,7 +158,7 @@ export function SearchModal({ open, onClose }: SearchModalProps) {
   const handleSelect = (item: SearchResult) => {
     onClose();
     if (item.result_type === 'digest') {
-      navigate(`/digest?digestId=${encodeURIComponent(item.id)}`);
+      navigate(`/app/digest?digestId=${encodeURIComponent(item.id)}`);
       return;
     }
     navigate(`/article/${item.id}`);

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, useRef, useCallback, startTransition } fr
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../services/api';
 import { useFetchRaw } from '../hooks/useApi';
-import { filterArticlesBySelectedDate, formatDateDeepLink, getEmptyFeedMessage, getReaderLoadingState, parseDateDeepLinkPath, shouldShowDetailPane, shouldShowRightPane, shouldShowScrollTopButton, stepSelectedDate } from './homeUx';
+import { appPath, APP_BASE, filterArticlesBySelectedDate, formatDateDeepLink, getEmptyFeedMessage, getReaderLoadingState, parseDateDeepLinkPath, shouldShowDetailPane, shouldShowRightPane, shouldShowScrollTopButton, stepSelectedDate } from './homeUx';
 import { ArticleDetail } from './home/ArticleDetail';
 import { DigestTab } from './home/DigestTab';
 import { ArticleDetailSkeleton, FeedItem, FeedListSkeleton } from './home/FeedItem';
@@ -34,7 +34,7 @@ export function Home() {
 
   // Derive initial tab from URL path
   const initialTab = useMemo(() => {
-    const path = location.pathname;
+    const path = appPath(location.pathname);
     if (path === '/voz') return 'voz' as const;
     if (path === '/reddit') return 'reddit' as const;
     if (path === '/digest') return 'digest' as const;
@@ -51,8 +51,8 @@ export function Home() {
 
   // Sync tab and date when URL changes (e.g. sidebar navigation)
   useEffect(() => {
-    const path = location.pathname;
-    // URL formats: /, /<tab>, /<dateSlug>, /<dateSlug>/<tab>
+    const path = appPath(location.pathname);
+    // URL formats (app-relative): /, /<tab>, /<dateSlug>, /<dateSlug>/<tab>
     const VALID_TABS = ['news', 'tech', 'voz', 'reddit', 'saved'];
     let pathDate: string | null = parseDateDeepLinkPath(path);
     let newTab: 'all' | 'news' | 'tech' | 'voz' | 'reddit' | 'digest' | 'saved' = 'all';
@@ -87,7 +87,7 @@ export function Home() {
     }
   }, [location.pathname]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
-    if (location.pathname === '/digest') setSelectedDigestId(linkedDigestId);
+    if (appPath(location.pathname) === '/digest') setSelectedDigestId(linkedDigestId);
   }, [linkedDigestId, location.pathname]);
   const [filterSource, setFilterSource] = useState<string>('all');
   const [filterTag, setFilterTag] = useState<string>('');
@@ -495,15 +495,15 @@ export function Home() {
     let path: string;
     if (datePath && t !== 'all') path = `${datePath}/${t}`;
     else if (datePath) path = datePath;  // all tab with date
-    else path = t === 'all' ? '/' : `/${t}`;  // bare tab, no date
+    else path = t === 'all' ? APP_BASE : `${APP_BASE}/${t}`;  // bare tab, no date
     window.history.replaceState(null, '', path);
   }, [linkedDate, userSelectedDate]);
 
   const currentFeedPath = useMemo(() => {
     const explicitDate = linkedDate || userSelectedDate;
-    if (explicitDate && tab === 'all') return formatDateDeepLink(explicitDate) || '/';
+    if (explicitDate && tab === 'all') return formatDateDeepLink(explicitDate) || APP_BASE;
     if (explicitDate) return `${formatDateDeepLink(explicitDate)}/${tab}`;
-    return tab === 'all' ? '/' : `/${tab}`;
+    return tab === 'all' ? APP_BASE : `${APP_BASE}/${tab}`;
   }, [linkedDate, tab, userSelectedDate]);
 
   // Load article from URL deep link (/article/:id)
@@ -528,7 +528,7 @@ export function Home() {
         }
       } catch {
         if (!isActive) return;
-        window.history.replaceState(null, '', '/');
+        window.history.replaceState(null, '', APP_BASE);
       } finally {
         if (isActive) setDeepLinkLoading(false);
       }
@@ -878,7 +878,7 @@ export function Home() {
                       className={`feed-item ${selectedDigestId === item.id || (!selectedDigestId && digestList[0]?.id === item.id) ? 'active' : ''}`}
                       onClick={() => {
                         setSelectedDigestId(item.id);
-                        window.history.replaceState(null, '', `/digest?digestId=${encodeURIComponent(item.id)}`);
+                        window.history.replaceState(null, '', `${APP_BASE}/digest?digestId=${encodeURIComponent(item.id)}`);
                       }}
                     >
                       <div className="feed-item-text">

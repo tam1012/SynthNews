@@ -28,11 +28,11 @@ test('article deep links use the fluid layout shell', () => {
 });
 
 test('home feed routes use the fluid layout shell on hard refresh', () => {
-  assert.equal(usesFluidShell('/'), true);
-  assert.equal(usesFluidShell('/voz'), true);
-  assert.equal(usesFluidShell('/reddit'), true);
-  assert.equal(usesFluidShell('/digest'), true);
-  assert.equal(usesFluidShell('/28052026'), true);
+  assert.equal(usesFluidShell('/app'), true);
+  assert.equal(usesFluidShell('/app/voz'), true);
+  assert.equal(usesFluidShell('/app/reddit'), true);
+  assert.equal(usesFluidShell('/app/digest'), true);
+  assert.equal(usesFluidShell('/app/28052026'), true);
 });
 
 test('admin routes keep the fluid layout shell', () => {
@@ -40,6 +40,6 @@ test('admin routes keep the fluid layout shell', () => {
   assert.equal(usesFluidShell('/sources'), true);
 });
 
-test('router serves ddmmyyyy date deep links through the home page', () => {
-  assert.match(routerSource, /<Route path="\/:dateSlug" element=\{<Home \/>\} \/>/);
+test('router serves ddmmyyyy date deep links through the home page under /app', () => {
+  assert.match(routerSource, /<Route path="\/app\/:dateSlug" element=\{<Home \/>\} \/>/);
 });

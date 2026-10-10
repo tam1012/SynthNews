@@ -1,9 +1,10 @@
 import { NavLink, useLocation } from 'react-router-dom';
 import { useEffect, useRef, useMemo } from 'react';
+import { APP_BASE, withAppBase } from '../pages/homeUx';
 
-/** Trích xuất date slug (ddmmyyyy) từ pathname nếu có, ví dụ /15062026/news → "15062026" */
+/** Trích xuất date slug (ddmmyyyy) từ pathname nếu có, ví dụ /app/15062026/news → "15062026" */
 function extractDateSlug(pathname: string): string | null {
-  const m = pathname.match(/^\/(\d{8})(?:\/|$)/);
+  const m = pathname.match(/^\/app\/(\d{8})(?:\/|$)/);
   return m ? m[1] : null;
 }
 
@@ -16,12 +17,14 @@ export function MobileBottomNav() {
   const navRef = useRef<HTMLElement>(null);
   const dateSlug = useMemo(() => extractDateSlug(path), [path]);
 
-  // Ghép date slug vào href nếu đang xem một ngày cụ thể
+  // Ghép date slug vào href nếu đang xem một ngày cụ thể (baseHref là app-relative;
+  // /sources và /admin ở gốc domain nên không gắn /app).
   const navHref = (baseHref: string) => {
-    if (!dateSlug) return baseHref;
-    if (baseHref === '/') return `/${dateSlug}`;
-    if (FEED_TABS.includes(baseHref)) return `/${dateSlug}${baseHref}`;
-    return baseHref;
+    if (baseHref === '/sources' || baseHref === '/admin') return baseHref;
+    if (!dateSlug) return withAppBase(baseHref);
+    if (baseHref === '/') return `${APP_BASE}/${dateSlug}`;
+    if (FEED_TABS.includes(baseHref)) return `${APP_BASE}/${dateSlug}${baseHref}`;
+    return withAppBase(baseHref);
   };
 
   const tabs = [
@@ -37,8 +40,8 @@ export function MobileBottomNav() {
   ];
 
   const isActive = (href: string) => {
-    // "Tất cả" — matches /, /<date>, /article/*
-    if (href === '/' || (dateSlug && href === `/${dateSlug}`)) {
+    // "Tất cả" — matches /app, /app/<date>, /article/*
+    if (href === APP_BASE || (dateSlug && href === `${APP_BASE}/${dateSlug}`)) {
       if (path.startsWith('/article')) return true;
       return path === href;
     }
